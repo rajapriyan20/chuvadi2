@@ -1,0 +1,487 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  subscribeToAccounts, 
+  subscribeToTransactions, 
+  subscribeToVehicles, 
+  subscribeToVehicleLogs, 
+  subscribeToTodos, 
+  subscribeToEntities,
+  saveTransactionAtomic,
+  deleteTransactionAtomic,
+  saveAccount,
+  deleteAccount,
+  saveVehicle,
+  deleteVehicle,
+  saveVehicleLog,
+  deleteVehicleLog,
+  saveTodo,
+  deleteTodo,
+  saveEntity,
+  deleteEntity,
+  seedStarterData,
+  clearLocalCache,
+  loginWithGoogle,
+  logoutUser,
+  subscribeAuth
+} from './services/firebase';
+import type { User } from 'firebase/auth';
+
+import { Header } from './components/Header';
+import { Navigation } from './components/Navigation';
+
+// Modals
+import { TransactionModal } from './components/modals/TransactionModal';
+import { AccountModal } from './components/modals/AccountModal';
+import { PassbookModal } from './components/modals/PassbookModal';
+import { VehicleModal } from './components/modals/VehicleModal';
+import { ServiceLogModal } from './components/modals/ServiceLogModal';
+import { TodoModal } from './components/modals/TodoModal';
+import { EntityModal } from './components/modals/EntityModal';
+import { ExportModal } from './components/modals/ExportModal';
+import { SettingsModal } from './components/modals/SettingsModal';
+
+// Tabs
+import { DashboardTab } from './components/tabs/DashboardTab';
+import { FinanceTab } from './components/tabs/FinanceTab';
+import { GarageTab } from './components/tabs/GarageTab';
+import { TodosTab } from './components/tabs/TodosTab';
+import { ReportsTab } from './components/tabs/ReportsTab';
+import { AiAssistantTab } from './components/tabs/AiAssistantTab';
+
+import { getDaysRemaining } from './utils/formatters';
+import type { 
+  ActiveTab, 
+  Account, 
+  Transaction, 
+  Vehicle, 
+  VehicleLog, 
+  TodoNote, 
+  Entity 
+} from './types';
+
+export function App() {
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+
+  // Auth & Network State
+  const [user, setUser] = useState<User | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+
+  // Domain State from Firebase & Local Mirror
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleLogs, setVehicleLogs] = useState<VehicleLog[]>([]);
+  const [todos, setTodos] = useState<TodoNote[]>([]);
+  const [entities, setEntities] = useState<Entity[]>([]);
+
+  // Modals Visibility & Editing State
+  const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
+  const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
+
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+
+  const [isPassbookOpen, setIsPassbookOpen] = useState(false);
+  const [passbookAccount, setPassbookAccount] = useState<Account | null>(null);
+
+  const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+
+  const [isServiceLogModalOpen, setIsServiceLogModalOpen] = useState(false);
+  const [editingServiceLog, setEditingServiceLog] = useState<VehicleLog | null>(null);
+  const [logInitialVehicleId, setLogInitialVehicleId] = useState<string | undefined>(undefined);
+
+  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
+  const [editingTodo, setEditingTodo] = useState<TodoNote | null>(null);
+
+  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Subscribe to real-time Cloud Firestore collections & Auth
+  useEffect(() => {
+    const unsubAuth = subscribeAuth(setUser);
+    const unsubAccounts = subscribeToAccounts(setAccounts);
+    const unsubTxns = subscribeToTransactions(setTransactions);
+    const unsubVehicles = subscribeToVehicles(setVehicles);
+    const unsubLogs = subscribeToVehicleLogs(setVehicleLogs);
+    const unsubTodos = subscribeToTodos(setTodos);
+    const unsubEntities = subscribeToEntities(setEntities);
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      unsubAuth();
+      unsubAccounts();
+      unsubTxns();
+      unsubVehicles();
+      unsubLogs();
+      unsubTodos();
+      unsubEntities();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Compute Net Worth
+  const totalNetWorth = useMemo(() => {
+    return accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+  }, [accounts]);
+
+  // Compute Current Month Inflow & Outflow
+  const { monthlyIncome, monthlyExpense } = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+    let income = 0;
+    let expense = 0;
+
+    for (const t of transactions) {
+      if (t.date && t.date.startsWith(currentMonth)) {
+        if (t.type === 'INCOME') income += t.amount;
+        if (t.type === 'EXPENSE') expense += t.amount;
+      }
+    }
+    return { monthlyIncome: income, monthlyExpense: expense };
+  }, [transactions]);
+
+  // Count expiring vehicle renewals (< 30 days)
+  const renewalsCount = useMemo(() => {
+    let count = 0;
+    for (const v of vehicles) {
+      if (v.insuranceExpiry) {
+        const s = getDaysRemaining(v.insuranceExpiry);
+        if (s && (s.days <= 30 || s.isOverdue)) count++;
+      }
+      if (v.pucExpiry) {
+        const s = getDaysRemaining(v.pucExpiry);
+        if (s && (s.days <= 30 || s.isOverdue)) count++;
+      }
+    }
+    return count;
+  }, [vehicles]);
+
+  // Count pending todos
+  const pendingTodosCount = useMemo(() => {
+    return todos.reduce((acc, note) => {
+      return acc + note.items.filter(i => !i.completed).length;
+    }, 0);
+  }, [todos]);
+
+  // Transaction Handlers (ATOMIC FIRESTORE TRANSACTIONS)
+  const handleSaveTransaction = async (txn: Omit<Transaction, 'id'> & { id?: string }) => {
+    await saveTransactionAtomic(txn);
+
+    // If transaction had a vehicle link & odometer update, sync vehicle's current odometer
+    if (txn.vehicleId && txn.odometer) {
+      const veh = vehicles.find(v => v.id === txn.vehicleId);
+      if (veh && txn.odometer > veh.currentOdometer) {
+        await saveVehicle({ ...veh, currentOdometer: txn.odometer });
+      }
+    }
+  };
+
+  const handleDeleteTransaction = async (txn: Transaction) => {
+    await deleteTransactionAtomic(txn);
+  };
+
+  // Todo Note Toggle Item Handler
+  const handleToggleTodoItem = async (noteId: string, itemId: string) => {
+    const note = todos.find(t => t.id === noteId);
+    if (!note) return;
+
+    const updatedItems = note.items.map(it => 
+      it.id === itemId ? { ...it, completed: !it.completed } : it
+    );
+
+    await saveTodo({
+      ...note,
+      items: updatedItems,
+      updatedAt: Date.now()
+    });
+  };
+
+  const handleTogglePin = async (todo: TodoNote) => {
+    await saveTodo({
+      ...todo,
+      pinned: !todo.pinned,
+      updatedAt: Date.now()
+    });
+  };
+
+  // Open Passbook for specific account
+  const handleOpenPassbook = (acc: Account) => {
+    setPassbookAccount(acc);
+    setIsPassbookOpen(true);
+  };
+
+  // Edit existing transaction
+  const handleSelectTxn = (txn: Transaction) => {
+    setEditingTxn(txn);
+    setIsTxnModalOpen(true);
+  };
+
+  // Quick action from Garage to log fuel/service
+  const handleOpenNewLog = (vehicleId?: string, defaultType: 'FUEL' | 'SERVICE' = 'FUEL') => {
+    setEditingServiceLog(null);
+    setLogInitialVehicleId(vehicleId);
+    setIsServiceLogModalOpen(true);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+      {/* Top Application Header with Chuvadi Logo and Net Worth */}
+      <Header
+        totalNetWorth={totalNetWorth}
+        monthlyExpense={monthlyExpense}
+        user={user}
+        isOnline={isOnline}
+        onOpenQuickAdd={() => {
+          setEditingTxn(null);
+          setIsTxnModalOpen(true);
+        }}
+        onOpenAi={() => setActiveTab('ai')}
+        onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onLogin={loginWithGoogle}
+        onLogout={logoutUser}
+      />
+
+      {/* Desktop & Mobile Navigation Menu */}
+      <Navigation
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        renewalsCount={renewalsCount}
+        pendingTodosCount={pendingTodosCount}
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+        {activeTab === 'dashboard' && (
+          <DashboardTab
+            totalNetWorth={totalNetWorth}
+            monthlyExpense={monthlyExpense}
+            monthlyIncome={monthlyIncome}
+            accounts={accounts}
+            transactions={transactions}
+            vehicles={vehicles}
+            todos={todos}
+            onOpenQuickAdd={() => {
+              setEditingTxn(null);
+              setIsTxnModalOpen(true);
+            }}
+            onOpenPassbook={handleOpenPassbook}
+            onSelectTxn={handleSelectTxn}
+            onSelectTab={setActiveTab}
+            onToggleTodoItem={handleToggleTodoItem}
+          />
+        )}
+
+        {activeTab === 'finance' && (
+          <FinanceTab
+            accounts={accounts}
+            transactions={transactions}
+            entities={entities}
+            onOpenNewAccount={() => {
+              setEditingAccount(null);
+              setIsAccountModalOpen(true);
+            }}
+            onEditAccount={(acc) => {
+              setEditingAccount(acc);
+              setIsAccountModalOpen(true);
+            }}
+            onOpenPassbook={handleOpenPassbook}
+            onSelectTxn={handleSelectTxn}
+            onOpenNewTxn={() => {
+              setEditingTxn(null);
+              setIsTxnModalOpen(true);
+            }}
+            onOpenNewEntity={() => setIsEntityModalOpen(true)}
+            onDeleteEntity={deleteEntity}
+          />
+        )}
+
+        {activeTab === 'garage' && (
+          <GarageTab
+            vehicles={vehicles}
+            vehicleLogs={vehicleLogs}
+            onOpenNewVehicle={() => {
+              setEditingVehicle(null);
+              setIsVehicleModalOpen(true);
+            }}
+            onEditVehicle={(veh) => {
+              setEditingVehicle(veh);
+              setIsVehicleModalOpen(true);
+            }}
+            onOpenNewLog={handleOpenNewLog}
+            onEditLog={(log) => {
+              setEditingServiceLog(log);
+              setIsServiceLogModalOpen(true);
+            }}
+          />
+        )}
+
+        {activeTab === 'todos' && (
+          <TodosTab
+            todos={todos}
+            onOpenNewTodo={() => {
+              setEditingTodo(null);
+              setIsTodoModalOpen(true);
+            }}
+            onEditTodo={(todo) => {
+              setEditingTodo(todo);
+              setIsTodoModalOpen(true);
+            }}
+            onToggleTodoItem={handleToggleTodoItem}
+            onTogglePin={handleTogglePin}
+            onDeleteTodo={deleteTodo}
+          />
+        )}
+
+        {activeTab === 'reports' && (
+          <ReportsTab
+            transactions={transactions}
+            accounts={accounts}
+            vehicles={vehicles}
+          />
+        )}
+
+        {activeTab === 'ai' && (
+          <AiAssistantTab
+            accounts={accounts}
+            vehicles={vehicles}
+            transactions={transactions}
+            todos={todos}
+            onSaveParsedTransaction={handleSaveTransaction}
+          />
+        )}
+      </main>
+
+      {/* MODALS */}
+      {/* 1. Transaction Modal */}
+      <TransactionModal
+        isOpen={isTxnModalOpen}
+        onClose={() => {
+          setIsTxnModalOpen(false);
+          setEditingTxn(null);
+        }}
+        onSave={handleSaveTransaction}
+        onDelete={handleDeleteTransaction}
+        initialData={editingTxn}
+        accounts={accounts}
+        vehicles={vehicles}
+      />
+
+      {/* 2. Account Modal */}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => {
+          setIsAccountModalOpen(false);
+          setEditingAccount(null);
+        }}
+        onSave={async (acc) => { await saveAccount(acc); }}
+        onDelete={deleteAccount}
+        initialData={editingAccount}
+      />
+
+      {/* 3. Passbook Modal */}
+      <PassbookModal
+        isOpen={isPassbookOpen}
+        onClose={() => {
+          setIsPassbookOpen(false);
+          setPassbookAccount(null);
+        }}
+        account={passbookAccount}
+        transactions={transactions}
+        onSelectTxn={handleSelectTxn}
+      />
+
+      {/* 4. Vehicle Modal */}
+      <VehicleModal
+        isOpen={isVehicleModalOpen}
+        onClose={() => {
+          setIsVehicleModalOpen(false);
+          setEditingVehicle(null);
+        }}
+        onSave={async (veh) => { await saveVehicle(veh); }}
+        onDelete={deleteVehicle}
+        initialData={editingVehicle}
+      />
+
+      {/* 5. Service Log Modal */}
+      <ServiceLogModal
+        isOpen={isServiceLogModalOpen}
+        onClose={() => {
+          setIsServiceLogModalOpen(false);
+          setEditingServiceLog(null);
+          setLogInitialVehicleId(undefined);
+        }}
+        onSave={async (log) => {
+          await saveVehicleLog(log);
+          if (log.vehicleId && log.odometer) {
+            const veh = vehicles.find(v => v.id === log.vehicleId);
+            if (veh && log.odometer > veh.currentOdometer) {
+              await saveVehicle({ ...veh, currentOdometer: log.odometer });
+            }
+          }
+        }}
+        onDelete={deleteVehicleLog}
+        vehicles={vehicles}
+        initialVehicleId={logInitialVehicleId}
+        initialData={editingServiceLog}
+      />
+
+      {/* 6. Todo Note Modal */}
+      <TodoModal
+        isOpen={isTodoModalOpen}
+        onClose={() => {
+          setIsTodoModalOpen(false);
+          setEditingTodo(null);
+        }}
+        onSave={async (todo) => { await saveTodo(todo); }}
+        onDelete={deleteTodo}
+        initialData={editingTodo}
+      />
+
+      {/* 7. Entity (Receivables/Payables) Modal */}
+      <EntityModal
+        isOpen={isEntityModalOpen}
+        onClose={() => setIsEntityModalOpen(false)}
+        onSave={async (entity) => { await saveEntity(entity); }}
+      />
+
+      {/* 8. Export & Backup Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        accounts={accounts}
+        transactions={transactions}
+        vehicles={vehicles}
+        vehicleLogs={vehicleLogs}
+        todos={todos}
+        entities={entities}
+        onImportData={async (data) => {
+          if (data.accounts) for (const a of data.accounts) await saveAccount(a);
+          if (data.transactions) for (const t of data.transactions) await saveTransactionAtomic(t);
+          if (data.vehicles) for (const v of data.vehicles) await saveVehicle(v);
+          if (data.vehicleLogs) for (const l of data.vehicleLogs) await saveVehicleLog(l);
+          if (data.todos) for (const td of data.todos) await saveTodo(td);
+          if (data.entities) for (const e of data.entities) await saveEntity(e);
+        }}
+      />
+
+      {/* 9. Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onSeedData={seedStarterData}
+        onClearCache={clearLocalCache}
+      />
+    </div>
+  );
+}
+
+export default App;

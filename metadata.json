@@ -1,0 +1,6 @@
+{
+  "name": "Chuvadi",
+  "description": "Personal Life OS & ledger for managing accounts, passbooks, vehicle logs, checklists, and AI-powered expense tracking.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
