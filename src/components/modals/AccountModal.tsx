@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Trash2, Landmark, Wallet, CreditCard, PiggyBank } from 'lucide-react';
 import type { Account, AccountType } from '../../types';
+import { BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [institution, setInstitution] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState('#0284c7');
+  const [icon, setIcon] = useState('none');
   const [isSaving, setIsSaving] = useState(false);
 
   const colors = [
@@ -44,6 +46,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setInstitution(initialData.institution || '');
       setAccountNumber(initialData.accountNumber || '');
       setColor(initialData.color || '#0284c7');
+      setIcon(initialData.icon || resolveBankLogoId(initialData.icon, initialData.name, initialData.institution));
     } else {
       setName('');
       setType('BANK');
@@ -51,6 +54,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setInstitution('');
       setAccountNumber('');
       setColor('#0284c7');
+      setIcon('none');
     }
   }, [initialData, isOpen]);
 
@@ -63,13 +67,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     setIsSaving(true);
     try {
       await onSave({
-        id: initialData?.id,
+        id: initialData?.id ? initialData.id : undefined,
         name: name.trim(),
         type,
         balance: parseFloat(balance) || 0,
         institution: institution.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
-        color
+        color,
+        icon
       });
       onClose();
     } catch (err) {
@@ -98,7 +103,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       <div className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
           <div className="text-amber-300 font-bold text-base">
-            {initialData ? 'Edit Account' : 'New Account'}
+            {initialData && initialData.id ? 'Edit Account' : 'New Account'}
           </div>
           <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:text-white">
             <X size={18} />
@@ -180,6 +185,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Bank Logo Picker */}
+          <BankLogoPicker
+            selectedId={icon}
+            onSelect={setIcon}
+          />
 
           {/* Color Tag */}
           <div>

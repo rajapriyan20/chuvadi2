@@ -10,17 +10,22 @@ import {
   Edit3, 
   UserCheck, 
   UserMinus,
-  CheckCircle2
+  CheckCircle2,
+  Layers,
+  Receipt
 } from 'lucide-react';
 import { formatCurrency, formatDate, DEFAULT_CATEGORIES } from '../../utils/formatters';
-import type { Account, Transaction, Entity } from '../../types';
+import type { Account, Transaction, Entity, AccountType } from '../../types';
+import { ChartOfAccounts } from '../finance/ChartOfAccounts';
 
 interface FinanceTabProps {
   accounts: Account[];
   transactions: Transaction[];
   entities: Entity[];
-  onOpenNewAccount: () => void;
+  onOpenNewAccount: (defaultType?: AccountType) => void;
   onEditAccount: (account: Account) => void;
+  onSaveAccount: (account: Account) => Promise<void>;
+  onDeleteAccount?: (id: string) => Promise<void>;
   onOpenPassbook: (account: Account) => void;
   onSelectTxn: (txn: Transaction) => void;
   onOpenNewTxn: () => void;
@@ -34,12 +39,15 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   entities,
   onOpenNewAccount,
   onEditAccount,
+  onSaveAccount,
+  onDeleteAccount,
   onOpenPassbook,
   onSelectTxn,
   onOpenNewTxn,
   onOpenNewEntity,
   onDeleteEntity
 }) => {
+  const [subTab, setSubTab] = useState<'transactions' | 'coa'>('transactions');
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -72,35 +80,90 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   const totalPayables = entities.filter(e => e.type === 'PAYABLE').reduce((sum, e) => sum + e.amount, 0);
 
   return (
-    <div className="space-y-6 pb-20 md:pb-8">
-      {/* Header & Accounts Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Your Accounts</h2>
-            <div className="text-xs text-slate-400">Click any account to open its detailed Passbook ledger</div>
-          </div>
+    <div className="space-y-1.5 sm:space-y-2 pb-20 md:pb-8">
+      {/* Sub-tab Switcher: Transactions vs Chart of Accounts */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-0.5">
+        <div className="inline-flex p-0.5 sm:p-1 bg-[#121820] rounded-xl sm:rounded-2xl border border-slate-800 self-start sm:self-auto">
           <button
-            onClick={onOpenNewAccount}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-semibold transition"
+            id="finance-subtab-transactions-btn"
+            onClick={() => setSubTab('transactions')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
+              subTab === 'transactions'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
           >
-            <Plus size={15} />
-            <span>Add Account</span>
+            <Receipt size={14} />
+            <span>Transactions</span>
+          </button>
+          <button
+            id="finance-subtab-coa-btn"
+            onClick={() => setSubTab('coa')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
+              subTab === 'coa'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <Layers size={14} />
+            <span>Chart of Accounts</span>
           </button>
         </div>
 
-        {/* Accounts Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="text-xs text-slate-400">
+          {subTab === 'transactions' && (
+            <span>Ledger History & Account Balances</span>
+          )}
+        </div>
+      </div>
+
+      {/* View 1: Chart of Accounts */}
+      {subTab === 'coa' && (
+        <ChartOfAccounts
+          accounts={accounts}
+          transactions={transactions}
+          onOpenNewAccount={onOpenNewAccount}
+          onEditAccount={onEditAccount}
+          onSaveAccount={onSaveAccount}
+          onDeleteAccount={onDeleteAccount}
+          onOpenPassbook={onOpenPassbook}
+          onSelectTxn={onSelectTxn}
+        />
+      )}
+
+      {/* View 2: Current Transactions Page */}
+      {subTab === 'transactions' && (
+        <div className="space-y-6 pt-2">
+        <>
+          {/* Header & Accounts Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-white tracking-tight">Your Accounts</h2>
+                <div className="text-xs text-slate-400">Click any account to open its detailed Passbook ledger</div>
+              </div>
+              <button
+                onClick={() => onOpenNewAccount()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-semibold transition"
+              >
+                <Plus size={15} />
+                <span>Add Account</span>
+              </button>
+            </div>
+
+        {/* Accounts Grid - Compact 2 columns on mobile, 3 columns on desktop */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
           {accounts.map((acc) => (
             <div
               key={acc.id}
-              className="p-4 bg-[#141b24] hover:bg-[#18212c] rounded-3xl border border-slate-800 transition relative group shadow-sm flex flex-col justify-between"
+              onClick={() => onOpenPassbook(acc)}
+              className="p-3 sm:p-4 bg-[#141b24] hover:bg-[#18212c] rounded-2xl sm:rounded-3xl border border-slate-800 transition relative group shadow-sm flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: acc.color || '#0284c7' }} />
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full shrink-0" style={{ backgroundColor: acc.color || '#0284c7' }} />
+                    <span className="text-[9px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
                       {acc.type}
                     </span>
                   </div>
@@ -109,34 +172,37 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                       e.stopPropagation();
                       onEditAccount(acc);
                     }}
-                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition"
+                    className="p-1 -mr-1 -mt-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition"
                     title="Edit account"
                   >
-                    <Edit3 size={13} />
+                    <Edit3 size={12} className="sm:w-[13px] sm:h-[13px]" />
                   </button>
                 </div>
 
-                <div className="text-sm font-bold text-white mt-2 group-hover:text-amber-300 truncate">
+                <div className="text-xs sm:text-sm font-bold text-white mt-1.5 sm:mt-2 group-hover:text-amber-300 truncate">
                   {acc.name}
                 </div>
-                <div className="text-[11px] text-slate-400">
+                <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
                   {acc.institution || 'Account'} {acc.accountNumber ? `•••• ${acc.accountNumber}` : ''}
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] text-slate-400 uppercase">Balance</div>
-                  <div className="text-lg font-extrabold text-amber-200 font-mono">
+              <div className="mt-2.5 pt-2 sm:mt-3.5 sm:pt-2.5 border-t border-slate-800/80 flex items-end sm:items-center justify-between gap-1">
+                <div className="min-w-0">
+                  <div className="text-[8px] sm:text-[10px] text-slate-500 uppercase font-medium">Balance</div>
+                  <div className="text-xs sm:text-base font-extrabold text-amber-200 font-mono truncate">
                     {formatCurrency(acc.balance)}
                   </div>
                 </div>
                 <button
-                  onClick={() => onOpenPassbook(acc)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-xs font-semibold transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenPassbook(acc);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[10px] sm:text-xs font-semibold transition shrink-0"
                 >
-                  <BookOpen size={13} />
-                  <span>Passbook</span>
+                  <BookOpen size={11} className="sm:w-[13px] sm:h-[13px]" />
+                  <span className="hidden xs:inline">Passbook</span>
                 </button>
               </div>
             </div>
@@ -337,6 +403,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           )}
         </div>
       </div>
+    </>
     </div>
-  );
+  )}
+</div>
+);
 };

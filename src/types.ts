@@ -21,6 +21,8 @@ export interface Account {
   color?: string;
   icon?: string;
   institution?: string;
+  reconciledDate?: string;
+  categoryId?: string;
   updatedAt?: number;
 }
 

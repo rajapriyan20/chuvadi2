@@ -8,7 +8,9 @@ import {
   WifiOff, 
   LogIn, 
   LogOut, 
-  User as UserIcon 
+  User as UserIcon,
+  Menu,
+  MessageCircle
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { formatCurrency } from '../utils/formatters';
@@ -25,6 +27,8 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onLogin: () => void;
   onLogout: () => void;
+  onToggleSideMenu: () => void;
+  unreadNotificationsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,15 +41,64 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   onOpenSettings,
   onLogin,
-  onLogout
+  onLogout,
+  onToggleSideMenu,
+  unreadNotificationsCount = 0
 }) => {
   return (
-    <header className="sticky top-0 z-30 bg-[#0d1218]/95 backdrop-blur-md border-b border-amber-950/20 px-4 lg:px-8 py-3 transition-colors">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Logo & Brand Identity */}
-        <div className="flex items-center gap-3">
-          <ChuvadiLogo size={42} showText={true} />
+    <header className="sticky top-0 z-30 transition-colors">
+      {/* Top Credit & WhatsApp Announcement Bar */}
+      <div className="bg-[#090d13] border-b border-slate-800/80 px-3 sm:px-6 lg:px-8 py-1.5 text-xs">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-slate-400 text-xs">
+              developed by <strong className="text-slate-200 font-semibold">Rajapriyan</strong>
+            </span>
+            <a
+              href="https://wa.me/919600001118"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center p-1 sm:p-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition active:scale-95 shadow-sm"
+              title="Chat on WhatsApp (+91 9600001118)"
+              aria-label="Chat on WhatsApp (+91 9600001118)"
+            >
+              <MessageCircle size={13} className="text-emerald-400 fill-emerald-400/20" />
+            </a>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span className="hidden sm:inline">Personal Financial OS</span>
+            {/* Online indicator */}
+            <div className="flex items-center gap-1.5">
+              <div 
+                className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 shadow-sm shadow-emerald-500/50' : 'bg-rose-500 animate-ping'}`} 
+                title={isOnline ? 'Online - Live Cloud Sync' : 'Offline - Running on Local Storage Cache'}
+              />
+              <span className="text-[10px] hidden md:inline">{isOnline ? 'Synced' : 'Offline'}</span>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Main Header Bar */}
+      <div className="bg-[#0d1218]/95 backdrop-blur-md border-b border-amber-950/20 px-3 sm:px-6 lg:px-8 py-2.5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
+          {/* Hamburger Menu Trigger & Logo */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              id="header-side-menu-trigger-btn"
+              onClick={onToggleSideMenu}
+              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-400 hover:text-amber-300 border border-slate-800 transition active:scale-95 relative"
+              title="Open Navigation Menu"
+              aria-label="Toggle Side Menu Navigation"
+            >
+              <Menu size={20} />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-[#0d1218]" />
+              )}
+            </button>
+            <ChuvadiLogo size={38} showText={true} />
+          </div>
 
         {/* Quick Net Worth Display (Desktop & Tablet) */}
         <div className="hidden md:flex items-center gap-6 px-4 py-1.5 bg-[#161c24]/90 rounded-2xl border border-slate-800/80 shadow-inner">
@@ -150,6 +203,7 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </div>
       </div>
-    </header>
+    </div>
+  </header>
   );
 };

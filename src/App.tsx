@@ -27,7 +27,7 @@ import {
 import type { User } from 'firebase/auth';
 
 import { Header } from './components/Header';
-import { Navigation } from './components/Navigation';
+import { SideMenu } from './components/SideMenu';
 
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
@@ -62,6 +62,7 @@ import type {
 export function App() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState<boolean>(false);
 
   // Auth & Network State
   const [user, setUser] = useState<User | null>(null);
@@ -233,7 +234,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
-      {/* Top Application Header with Chuvadi Logo and Net Worth */}
+      {/* Top Application Header with Chuvadi Logo, Credit Bar and Net Worth */}
       <Header
         totalNetWorth={totalNetWorth}
         monthlyExpense={monthlyExpense}
@@ -248,14 +249,24 @@ export function App() {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onLogin={loginWithGoogle}
         onLogout={logoutUser}
+        onToggleSideMenu={() => setIsSideMenuOpen(prev => !prev)}
+        unreadNotificationsCount={renewalsCount + pendingTodosCount}
       />
 
-      {/* Desktop & Mobile Navigation Menu */}
-      <Navigation
+      {/* Open-Closable Side Navigation Menu */}
+      <SideMenu
+        isOpen={isSideMenuOpen}
+        onClose={() => setIsSideMenuOpen(false)}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         renewalsCount={renewalsCount}
         pendingTodosCount={pendingTodosCount}
+        onOpenQuickAdd={() => {
+          setEditingTxn(null);
+          setIsTxnModalOpen(true);
+        }}
+        onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -285,13 +296,19 @@ export function App() {
             accounts={accounts}
             transactions={transactions}
             entities={entities}
-            onOpenNewAccount={() => {
-              setEditingAccount(null);
+            onOpenNewAccount={(defaultType) => {
+              setEditingAccount(defaultType ? ({ id: '', name: '', type: defaultType, balance: 0 } as any) : null);
               setIsAccountModalOpen(true);
             }}
             onEditAccount={(acc) => {
               setEditingAccount(acc);
               setIsAccountModalOpen(true);
+            }}
+            onSaveAccount={async (acc) => {
+              await saveAccount(acc);
+            }}
+            onDeleteAccount={async (id) => {
+              await deleteAccount(id);
             }}
             onOpenPassbook={handleOpenPassbook}
             onSelectTxn={handleSelectTxn}

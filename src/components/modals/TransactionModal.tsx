@@ -54,7 +54,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setType('EXPENSE');
       setAmount('');
       setDescription('');
-      setCategory('Fuel');
+      setCategory('Food & Dining');
       setFromAccountId(accounts[0]?.id || '');
       setToAccountId(accounts[1]?.id || '');
       setDate(new Date().toISOString().split('T')[0]);
@@ -78,8 +78,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           setOdometer(String(vehicles[0].currentOdometer));
         }
       }
-    } else if (cat === 'Vehicle Maintenance') {
-      if (!vehicleId && vehicles.length > 0) setVehicleId(vehicles[0].id);
+    } else {
+      setIsFuel(false);
+      setVehicleId('');
+      setFuelLiters('');
+      setOdometer('');
     }
   };
 
@@ -88,6 +91,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     const numAmt = parseFloat(amount);
     if (!numAmt || numAmt <= 0) return;
 
+    const isFuelRecord = type === 'EXPENSE' && category === 'Fuel';
+
     setIsSaving(true);
     try {
       await onSave({
@@ -95,15 +100,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         type,
         amount: numAmt,
         description: description.trim() || `${category} Record`,
-        category,
+        category: type === 'TRANSFER' ? 'Transfer' : category,
         fromAccountId: (type === 'EXPENSE' || type === 'TRANSFER') ? fromAccountId : null,
         toAccountId: (type === 'INCOME' || type === 'TRANSFER') ? toAccountId : null,
         date,
         timestamp: initialData?.timestamp || Date.now(),
-        vehicleId: vehicleId || null,
-        isFuel,
-        fuelLiters: fuelLiters ? parseFloat(fuelLiters) : null,
-        odometer: odometer ? parseFloat(odometer) : null,
+        vehicleId: isFuelRecord ? (vehicleId || null) : null,
+        isFuel: isFuelRecord,
+        fuelLiters: isFuelRecord && fuelLiters ? parseFloat(fuelLiters) : null,
+        odometer: isFuelRecord && odometer ? parseFloat(odometer) : null,
         notes: notes.trim()
       });
       onClose();
@@ -340,60 +345,69 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             )}
           </div>
 
-          {/* Vehicle Link Option (Auto active if Fuel or Maintenance) */}
-          {(category === 'Fuel' || category === 'Vehicle Maintenance' || vehicles.length > 0) && (
-            <div className="p-3.5 bg-amber-950/20 border border-amber-900/40 rounded-2xl space-y-3">
+          {/* Vehicle Link & Odometer Reading: ONLY shown when EXPENSE and category is Fuel */}
+          {type === 'EXPENSE' && category === 'Fuel' && (
+            <div className="p-3.5 bg-amber-950/20 border border-amber-900/40 rounded-2xl space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                   <Fuel size={15} />
-                  <span>Garage & Vehicle Tracking</span>
+                  <span>Fuel & Vehicle Odometer</span>
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isFuel}
-                    onChange={(e) => setIsFuel(e.target.checked)}
-                    className="accent-amber-500 rounded"
-                  />
-                  <span>Fuel Entry</span>
-                </label>
+                {vehicleId && (
+                  <span className="text-[10px] text-amber-400/80 font-medium">
+                    Updates vehicle odometer
+                  </span>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">Vehicle</label>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Vehicle
+                  </label>
                   <select
                     value={vehicleId}
-                    onChange={(e) => setVehicleId(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    onChange={(e) => {
+                      const vId = e.target.value;
+                      setVehicleId(vId);
+                      const sel = vehicles.find(v => v.id === vId);
+                      if (sel && sel.currentOdometer && !odometer) {
+                        setOdometer(String(sel.currentOdometer));
+                      }
+                    }}
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="">None</option>
+                    <option value="">Select Vehicle (Optional)</option>
                     {vehicles.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
+                      <option key={v.id} value={v.id}>{v.name} ({v.vehicleNumber || v.type})</option>
                     ))}
                   </select>
                 </div>
-                {isFuel && (
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1">Fuel (Liters)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 15.5"
-                      value={fuelLiters}
-                      onChange={(e) => setFuelLiters(e.target.value)}
-                      className="w-full bg-[#0e131a] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                )}
+
                 <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">Odometer (km)</label>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Odometer (km)
+                  </label>
                   <input
                     type="number"
                     placeholder="e.g. 15400"
                     value={odometer}
                     onChange={(e) => setOdometer(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Fuel (Liters)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 15.5"
+                    value={fuelLiters}
+                    onChange={(e) => setFuelLiters(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
