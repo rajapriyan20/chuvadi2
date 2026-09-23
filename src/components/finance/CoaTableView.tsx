@@ -211,15 +211,15 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                   className="py-3 px-3 cursor-pointer hover:text-white transition"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Financial Type</span>
+                    <span>Nature</span>
                     {renderSortIcon('type')}
                   </div>
                 </th>
                 <th 
                   onClick={() => handleSort('reconciledDate')}
-                  className="py-3 px-3 cursor-pointer hover:text-white transition"
+                  className="py-3 px-3 cursor-pointer hover:text-white transition min-w-[115px]"
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
                     <span>Date of Reco</span>
                     {renderSortIcon('reconciledDate')}
                   </div>
@@ -299,7 +299,7 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                               onOpenCategory(cat);
                             }}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#0a0e14] hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-amber-300 transition text-[11px] font-medium max-w-[180px] truncate"
-                            title="Click to view category details, icon, classification, or edit"
+                            title="Click to view category details, icon, or edit"
                           >
                             <span 
                               className="w-4 h-4 rounded flex items-center justify-center shrink-0"
@@ -314,14 +314,14 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                         )}
                       </td>
 
-                      {/* Column 3: Financial Type */}
+                      {/* Column 3: Account Nature */}
                       <td className="py-2.5 px-3" onClick={() => onOpenAccount(acc)}>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                           isLiability
                             ? 'bg-rose-500/10 text-rose-300 border-rose-500/20'
                             : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                         }`}>
-                          {acc.type}
+                          {isLiability ? 'Liability' : 'Asset'}
                         </span>
                       </td>
 

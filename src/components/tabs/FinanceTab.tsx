@@ -2,15 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { 
   Plus, 
   Search, 
-  Filter, 
   ArrowUpRight, 
   ArrowDownLeft, 
   ArrowRightLeft, 
-  BookOpen, 
-  Edit3, 
-  UserCheck, 
-  UserMinus,
-  CheckCircle2,
   Layers,
   Receipt
 } from 'lucide-react';
@@ -36,7 +30,7 @@ interface FinanceTabProps {
 export const FinanceTab: React.FC<FinanceTabProps> = ({
   accounts,
   transactions,
-  entities,
+  entities: _entities,
   onOpenNewAccount,
   onEditAccount,
   onSaveAccount,
@@ -44,10 +38,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onOpenPassbook,
   onSelectTxn,
   onOpenNewTxn,
-  onOpenNewEntity,
-  onDeleteEntity
+  onOpenNewEntity: _onOpenNewEntity,
+  onDeleteEntity: _onDeleteEntity
 }) => {
-  const [subTab, setSubTab] = useState<'transactions' | 'coa'>('transactions');
+  // Chart of Accounts is shown first by default, then Transactions
+  const [subTab, setSubTab] = useState<'coa' | 'transactions'>('coa');
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -75,27 +70,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
     });
   }, [transactions, typeFilter, categoryFilter, selectedAccountId, searchTerm]);
 
-  // Receivables & Payables stats
-  const totalReceivables = entities.filter(e => e.type === 'RECEIVABLE').reduce((sum, e) => sum + e.amount, 0);
-  const totalPayables = entities.filter(e => e.type === 'PAYABLE').reduce((sum, e) => sum + e.amount, 0);
-
   return (
     <div className="space-y-1.5 sm:space-y-2 pb-20 md:pb-8">
-      {/* Sub-tab Switcher: Transactions vs Chart of Accounts */}
+      {/* Sub-tab Switcher: Chart of Accounts FIRST, then Transactions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-0.5">
         <div className="inline-flex p-0.5 sm:p-1 bg-[#121820] rounded-xl sm:rounded-2xl border border-slate-800 self-start sm:self-auto">
-          <button
-            id="finance-subtab-transactions-btn"
-            onClick={() => setSubTab('transactions')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
-              subTab === 'transactions'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Receipt size={14} />
-            <span>Transactions</span>
-          </button>
           <button
             id="finance-subtab-coa-btn"
             onClick={() => setSubTab('coa')}
@@ -108,11 +87,26 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <Layers size={14} />
             <span>Chart of Accounts</span>
           </button>
+          <button
+            id="finance-subtab-transactions-btn"
+            onClick={() => setSubTab('transactions')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
+              subTab === 'transactions'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <Receipt size={14} />
+            <span>Transactions</span>
+          </button>
         </div>
 
         <div className="text-xs text-slate-400">
+          {subTab === 'coa' && (
+            <span>Categorised, Table & PowerBI Decomposition Views</span>
+          )}
           {subTab === 'transactions' && (
-            <span>Ledger History & Account Balances</span>
+            <span>Ledger History & Search</span>
           )}
         </div>
       </div>
@@ -131,171 +125,25 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         />
       )}
 
-      {/* View 2: Current Transactions Page */}
+      {/* View 2: Transactions Tab - Directly Starts from Transactions History */}
       {subTab === 'transactions' && (
-        <div className="space-y-6 pt-2">
-        <>
-          {/* Header & Accounts Section */}
+        <div className="space-y-4 pt-2">
+          {/* Transactions Search & Filter Bar */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">Your Accounts</h2>
-                <div className="text-xs text-slate-400">Click any account to open its detailed Passbook ledger</div>
-              </div>
-              <button
-                onClick={() => onOpenNewAccount()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-semibold transition"
-              >
-                <Plus size={15} />
-                <span>Add Account</span>
-              </button>
-            </div>
-
-        {/* Accounts Grid - Compact 2 columns on mobile, 3 columns on desktop */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-          {accounts.map((acc) => (
-            <div
-              key={acc.id}
-              onClick={() => onOpenPassbook(acc)}
-              className="p-3 sm:p-4 bg-[#141b24] hover:bg-[#18212c] rounded-2xl sm:rounded-3xl border border-slate-800 transition relative group shadow-sm flex flex-col justify-between cursor-pointer"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                    <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full shrink-0" style={{ backgroundColor: acc.color || '#0284c7' }} />
-                    <span className="text-[9px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
-                      {acc.type}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditAccount(acc);
-                    }}
-                    className="p-1 -mr-1 -mt-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition"
-                    title="Edit account"
-                  >
-                    <Edit3 size={12} className="sm:w-[13px] sm:h-[13px]" />
-                  </button>
-                </div>
-
-                <div className="text-xs sm:text-sm font-bold text-white mt-1.5 sm:mt-2 group-hover:text-amber-300 truncate">
-                  {acc.name}
-                </div>
-                <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-                  {acc.institution || 'Account'} {acc.accountNumber ? `•••• ${acc.accountNumber}` : ''}
-                </div>
-              </div>
-
-              <div className="mt-2.5 pt-2 sm:mt-3.5 sm:pt-2.5 border-t border-slate-800/80 flex items-end sm:items-center justify-between gap-1">
-                <div className="min-w-0">
-                  <div className="text-[8px] sm:text-[10px] text-slate-500 uppercase font-medium">Balance</div>
-                  <div className="text-xs sm:text-base font-extrabold text-amber-200 font-mono truncate">
-                    {formatCurrency(acc.balance)}
-                  </div>
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
+              
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenPassbook(acc);
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[10px] sm:text-xs font-semibold transition shrink-0"
+                  id="transactions-record-txn-btn"
+                  onClick={onOpenNewTxn}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-md"
                 >
-                  <BookOpen size={11} className="sm:w-[13px] sm:h-[13px]" />
-                  <span className="hidden xs:inline">Passbook</span>
+                  <Plus size={15} strokeWidth={2.5} />
+                  <span>Record Transaction</span>
                 </button>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Receivables & Payables Ledger Tracker */}
-      <div className="p-4 bg-[#131922] rounded-3xl border border-slate-800 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Receivables & Payables (Credits / Debts)
-            </h3>
-          </div>
-          <button
-            onClick={onOpenNewEntity}
-            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1"
-          >
-            <Plus size={13} />
-            <span>Track Person / Loan</span>
-          </button>
-        </div>
-
-        {/* Summary badges */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 bg-[#161c24] rounded-2xl border border-emerald-900/30">
-            <div className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
-              <UserCheck size={13} />
-              <span>To Collect (Receivables)</span>
-            </div>
-            <div className="text-base font-bold text-emerald-300 font-mono mt-0.5">
-              {formatCurrency(totalReceivables)}
-            </div>
-          </div>
-          <div className="p-3 bg-[#161c24] rounded-2xl border border-rose-900/30">
-            <div className="text-[10px] uppercase font-bold text-rose-400 flex items-center gap-1">
-              <UserMinus size={13} />
-              <span>To Pay (Payables)</span>
-            </div>
-            <div className="text-base font-bold text-rose-300 font-mono mt-0.5">
-              {formatCurrency(totalPayables)}
-            </div>
-          </div>
-        </div>
-
-        {/* Entity chips / list */}
-        {entities.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-            {entities.map((e) => (
-              <div
-                key={e.id}
-                className="p-2.5 bg-[#161d27] rounded-xl border border-slate-800 flex items-center justify-between"
-              >
-                <div>
-                  <div className="text-xs font-bold text-white">{e.name}</div>
-                  <div className="text-[10px] text-slate-400">
-                    {e.type === 'RECEIVABLE' ? 'Owes you' : 'You owe'} {e.dueDate ? `• Due ${formatDate(e.dueDate)}` : ''}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold font-mono ${e.type === 'RECEIVABLE' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {formatCurrency(e.amount)}
-                  </span>
-                  <button
-                    onClick={() => onDeleteEntity(e.id)}
-                    className="p-1 text-slate-500 hover:text-emerald-400 transition"
-                    title="Mark as Settled"
-                  >
-                    <CheckCircle2 size={15} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Transactions Search & Filter Bar */}
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onOpenNewTxn}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              <span>Record Transaction</span>
-            </button>
-          </div>
-        </div>
 
         {/* Filters */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
@@ -403,7 +251,6 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           )}
         </div>
       </div>
-    </>
     </div>
   )}
 </div>

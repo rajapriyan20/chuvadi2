@@ -246,7 +246,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState<boolean>(false);
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatParentId, setNewCatParentId] = useState<string>('MAIN');
-  const [newCatType, setNewCatType] = useState<AccountType>('BANK');
+  const [newCatIsLiability, setNewCatIsLiability] = useState<boolean>(false);
   const [newCatIconName, setNewCatIconName] = useState<string>('Landmark');
   const [newCatDesc, setNewCatDesc] = useState<string>('');
   const [newCatColor, setNewCatColor] = useState<string>('#0284c7');
@@ -267,7 +267,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [isEditingCategoryInPopup, setIsEditingCategoryInPopup] = useState<boolean>(false);
   const [popupCategoryName, setPopupCategoryName] = useState<string>('');
   const [popupCategoryParentId, setPopupCategoryParentId] = useState<string>('MAIN');
-  const [popupCategoryType, setPopupCategoryType] = useState<AccountType>('BANK');
+  const [popupCategoryIsLiability, setPopupCategoryIsLiability] = useState<boolean>(false);
   const [popupCategoryIconName, setPopupCategoryIconName] = useState<string>('Landmark');
   const [popupCategoryColor, setPopupCategoryColor] = useState<string>('#0284c7');
   const [isSavingCategoryPopup, setIsSavingCategoryPopup] = useState<boolean>(false);
@@ -514,7 +514,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setSelectedCategoryForPopup(cat);
     setPopupCategoryName(getCategoryTitle(cat));
     setPopupCategoryParentId(cat.parentId || 'MAIN');
-    setPopupCategoryType(cat.type);
+    setPopupCategoryIsLiability(cat.type === 'CREDIT_CARD' || cat.type === 'LOAN');
     setPopupCategoryIconName(cat.iconName || getDefaultIconNameForType(cat.type));
     setPopupCategoryColor(cat.color || '#0284c7');
     setIsEditingCategoryInPopup(false);
@@ -542,8 +542,26 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setIsSavingCategoryPopup(true);
     try {
       const origKey = selectedCategoryForPopup.id || selectedCategoryForPopup.type;
-      const targetType = popupCategoryType;
       const finalParentId = popupCategoryParentId === 'MAIN' ? undefined : popupCategoryParentId;
+      
+      let targetType: AccountType = selectedCategoryForPopup.type;
+      if (finalParentId) {
+        const parent = categoriesList.find(c => (c.id || c.type) === finalParentId);
+        if (parent) {
+          targetType = parent.type;
+        }
+      } else {
+        // If main category, determine type from the Debt / Liability toggle
+        if (popupCategoryIsLiability) {
+          targetType = (selectedCategoryForPopup.type === 'CREDIT_CARD' || selectedCategoryForPopup.type === 'LOAN')
+            ? selectedCategoryForPopup.type
+            : 'LOAN';
+        } else {
+          targetType = (selectedCategoryForPopup.type === 'CREDIT_CARD' || selectedCategoryForPopup.type === 'LOAN')
+            ? 'OTHER'
+            : selectedCategoryForPopup.type;
+        }
+      }
 
       // 1. Update custom name in dictionary & localStorage
       const updatedNames = {
@@ -589,7 +607,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         console.warn('Failed to persist categories list:', err);
       }
 
-      // 3. If category classification type changed, migrate tagged accounts
+      // 3. If category liability type changed, migrate tagged accounts
       if (selectedCategoryForPopup.type !== targetType) {
         const accountsToMove = groupedAccounts.get(origKey) || [];
         for (const a of accountsToMove) {
@@ -666,7 +684,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     e.preventDefault();
     if (!newCatName.trim()) return;
 
-    let finalType = newCatType;
+    let finalType: AccountType = newCatIsLiability ? 'LOAN' : 'OTHER';
     let finalParentId: string | undefined = undefined;
     if (newCatParentId !== 'MAIN') {
       finalParentId = newCatParentId;
@@ -709,6 +727,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setNewCatName('');
     setNewCatDesc('');
     setNewCatParentId('MAIN');
+    setNewCatIsLiability(false);
     setNewCatIconName('Landmark');
     setIsAddCategoryModalOpen(false);
   };
@@ -1248,6 +1267,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       {activeView === 'DIAGRAM' && (
         <CoaDiagramView
           accounts={accounts}
+          transactions={transactions}
           categoriesList={categoriesList}
           mainCategories={mainCategories}
           subCategoriesByParent={subCategoriesByParent}
@@ -1256,8 +1276,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           getCategoryTitle={getCategoryTitle}
-          onOpenAccount={handleOpenAccountPopup}
-          onOpenCategory={handleOpenCategoryPopup}
         />
       )}
 
@@ -1410,9 +1428,10 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       {categoriesList.map((c) => {
                         const title = getCategoryTitle(c);
                         const isSub = !!c.parentId && c.parentId !== 'MAIN';
+                        const isLiab = c.type === 'CREDIT_CARD' || c.type === 'LOAN';
                         return (
                           <option key={c.id || c.type} value={c.id || c.type}>
-                            {isSub ? `↳ ${title} (Subcategory)` : title} ({c.type})
+                            {isSub ? `↳ ${title} (Subcategory)` : title}{isLiab ? ' [Liability]' : ''}
                           </option>
                         );
                       })}
@@ -1722,22 +1741,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       />
                     </div>
 
-                    {/* Field 2: Category Classification (Main category OR an existing category) */}
+                    {/* Field 2: Category Hierarchy / Parent Category */}
                     <div>
                       <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Category Classification
+                        Category Level / Parent
                       </label>
                       <select
                         value={popupCategoryParentId}
                         onChange={(e) => {
                           const val = e.target.value;
                           setPopupCategoryParentId(val);
-                          if (val !== 'MAIN') {
-                            const parent = categoriesList.find(c => (c.id || c.type) === val);
-                            if (parent) {
-                              setPopupCategoryType(parent.type);
-                            }
-                          }
                         }}
                         className="w-full bg-[#0a0e14] border border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-medium focus:outline-none cursor-pointer"
                       >
@@ -1763,24 +1776,34 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       </p>
                     </div>
 
-                    {/* Financial Classification (Only if Main category) */}
+                    {/* Debt / Liability Toggle (Only if Main category) */}
                     {popupCategoryParentId === 'MAIN' && (
-                      <div>
-                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                          Account Type (Asset / Liability)
+                      <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={popupCategoryIsLiability}
+                            onChange={(e) => setPopupCategoryIsLiability(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
+                          />
+                          <div className="flex-1">
+                            <div className="text-xs font-semibold text-white flex items-center gap-2">
+                              <span>This is a Debt / Liability category</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                                popupCategoryIsLiability 
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              }`}>
+                                {popupCategoryIsLiability ? 'Liability / Owed' : 'Asset / Wealth'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {popupCategoryIsLiability
+                                ? 'Account balances in this category (like Credit Cards or Loans) will subtract from your Total Funds & Net Worth.'
+                                : 'Account balances in this category (like Banks, Cash, Investments, Receivables) add positively to your Net Worth.'}
+                            </p>
+                          </div>
                         </label>
-                        <select
-                          value={popupCategoryType}
-                          onChange={(e) => setPopupCategoryType(e.target.value as AccountType)}
-                          className="w-full bg-[#0a0e14] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-medium focus:outline-none cursor-pointer"
-                        >
-                          <option value="BANK">Bank Accounts (Asset)</option>
-                          <option value="CASH">Cash & Wallets (Asset)</option>
-                          <option value="CREDIT_CARD">Credit Cards (Liability)</option>
-                          <option value="INVESTMENT">Investments & Wealth (Asset)</option>
-                          <option value="LOAN">Loans & Borrowings (Liability)</option>
-                          <option value="OTHER">Other Accounts</option>
-                        </select>
                       </div>
                     )}
 
@@ -1818,15 +1841,23 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     {/* Compact Details Grid */}
                     <div className="p-3 bg-[#0a0e14] rounded-2xl border border-slate-800 space-y-2.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Classification:</span>
+                        <span className="text-slate-400">Position:</span>
                         <span className="font-semibold text-white">
                           {parentCategory ? `Subcategory of ${getCategoryTitle(parentCategory)}` : 'Main Category'}
                         </span>
                       </div>
                       <div className="h-[1px] bg-slate-800/80" />
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Financial Type:</span>
-                        <span className="font-mono text-amber-300 font-semibold">{selectedCategoryForPopup.type}</span>
+                        <span className="text-slate-400">Category Nature:</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold border ${
+                          selectedCategoryForPopup.type === 'CREDIT_CARD' || selectedCategoryForPopup.type === 'LOAN'
+                            ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {selectedCategoryForPopup.type === 'CREDIT_CARD' || selectedCategoryForPopup.type === 'LOAN'
+                            ? 'Debt / Liability'
+                            : 'Asset / Wealth'}
+                        </span>
                       </div>
                       <div className="h-[1px] bg-slate-800/80" />
                       <div className="flex items-center justify-between text-xs">
@@ -1854,7 +1885,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     onClick={() => {
                       setPopupCategoryName(getCategoryTitle(selectedCategoryForPopup));
                       setPopupCategoryParentId(selectedCategoryForPopup.parentId || 'MAIN');
-                      setPopupCategoryType(selectedCategoryForPopup.type);
+                      setPopupCategoryIsLiability(selectedCategoryForPopup.type === 'CREDIT_CARD' || selectedCategoryForPopup.type === 'LOAN');
                       setPopupCategoryIconName(selectedCategoryForPopup.iconName || getDefaultIconNameForType(selectedCategoryForPopup.type));
                       setPopupCategoryColor(selectedCategoryForPopup.color || '#0284c7');
                       setIsEditingCategoryInPopup(false);
@@ -1920,22 +1951,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 />
               </div>
 
-              {/* Category Classification: Main category OR an existing category */}
+              {/* Category Level: Main category OR an existing category */}
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                  Category Classification *
+                  Category Level / Parent *
                 </label>
                 <select
                   value={newCatParentId}
                   onChange={(e) => {
                     const val = e.target.value;
                     setNewCatParentId(val);
-                    if (val !== 'MAIN') {
-                      const parent = categoriesList.find(c => (c.id || c.type) === val);
-                      if (parent) {
-                        setNewCatType(parent.type);
-                      }
-                    }
                   }}
                   className="w-full bg-[#0a0e14] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-medium focus:outline-none cursor-pointer"
                 >
@@ -1959,24 +1984,34 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 </p>
               </div>
 
-              {/* Base Financial Classification (If Main category) */}
+              {/* Debt / Liability Toggle (If Main category) */}
               {newCatParentId === 'MAIN' && (
-                <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                    Financial Classification *
+                <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newCatIsLiability}
+                      onChange={(e) => setNewCatIsLiability(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
+                    />
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-white flex items-center gap-2">
+                        <span>This is a Debt / Liability category</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                          newCatIsLiability 
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          {newCatIsLiability ? 'Liability / Owed' : 'Asset / Wealth'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {newCatIsLiability
+                          ? 'Balances in this category (e.g. Credit Cards, Loans, Payables) subtract from your Total Funds & Net Worth.'
+                          : 'Balances in this category (e.g. Bank accounts, Cash, Investments, Receivables) add positively to your Net Worth.'}
+                      </p>
+                    </div>
                   </label>
-                  <select
-                    value={newCatType}
-                    onChange={(e) => setNewCatType(e.target.value as AccountType)}
-                    className="w-full bg-[#0a0e14] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-medium focus:outline-none cursor-pointer"
-                  >
-                    <option value="BANK">Bank Accounts (Asset)</option>
-                    <option value="CASH">Cash & Wallets (Asset)</option>
-                    <option value="CREDIT_CARD">Credit Cards (Liability)</option>
-                    <option value="INVESTMENT">Investments & Wealth (Asset)</option>
-                    <option value="LOAN">Loans & Borrowings (Liability)</option>
-                    <option value="OTHER">Other Accounts</option>
-                  </select>
                 </div>
               )}
 

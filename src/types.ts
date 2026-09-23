@@ -104,4 +104,12 @@ export interface Entity {
   dueDate?: string;
 }
 
-export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'reports' | 'ai';
+export interface ExerciseLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string; // exercise desc
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'reports' | 'ai' | 'exercise';

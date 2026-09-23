@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Landmark, Wallet, CreditCard, PiggyBank } from 'lucide-react';
+import { X, Check, Trash2 } from 'lucide-react';
 import type { Account, AccountType } from '../../types';
 import { BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
 
@@ -19,7 +19,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   initialData
 }) => {
   const [name, setName] = useState('');
-  const [type, setType] = useState<AccountType>('BANK');
+  const [isLiability, setIsLiability] = useState(false);
   const [balance, setBalance] = useState('');
   const [institution, setInstitution] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -41,7 +41,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   useEffect(() => {
     if (initialData) {
       setName(initialData.name);
-      setType(initialData.type);
+      setIsLiability(initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN');
       setBalance(String(initialData.balance));
       setInstitution(initialData.institution || '');
       setAccountNumber(initialData.accountNumber || '');
@@ -49,7 +49,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setIcon(initialData.icon || resolveBankLogoId(initialData.icon, initialData.name, initialData.institution));
     } else {
       setName('');
-      setType('BANK');
+      setIsLiability(false);
       setBalance('0');
       setInstitution('');
       setAccountNumber('');
@@ -64,12 +64,25 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    // Preserve initial type if matching liability nature, otherwise derive
+    let resolvedType: AccountType = 'BANK';
+    if (initialData?.type) {
+      const origIsLiab = initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN';
+      if (origIsLiab === isLiability) {
+        resolvedType = initialData.type;
+      } else {
+        resolvedType = isLiability ? 'LOAN' : 'BANK';
+      }
+    } else {
+      resolvedType = isLiability ? 'LOAN' : 'BANK';
+    }
+
     setIsSaving(true);
     try {
       await onSave({
         id: initialData?.id ? initialData.id : undefined,
         name: name.trim(),
-        type,
+        type: resolvedType,
         balance: parseFloat(balance) || 0,
         institution: institution.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
@@ -125,37 +138,45 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                Account Type
-              </label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as AccountType)}
-                className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-              >
-                <option value="BANK">Bank Account</option>
-                <option value="CASH">Cash & Wallet</option>
-                <option value="CREDIT_CARD">Credit Card</option>
-                <option value="INVESTMENT">Investment / Mutual Fund</option>
-                <option value="LOAN">Loan</option>
-                <option value="OTHER">Other</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              Current Balance (₹)
+            </label>
+            <input
+              type="number"
+              step="any"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+            />
+          </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                Current Balance (₹)
-              </label>
+          <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
-                type="number"
-                step="any"
-                value={balance}
-                onChange={(e) => setBalance(e.target.value)}
-                className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                type="checkbox"
+                checked={isLiability}
+                onChange={(e) => setIsLiability(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
               />
-            </div>
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-white flex items-center gap-2">
+                  <span>This is a Debt / Liability account</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                    isLiability 
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  }`}>
+                    {isLiability ? 'Liability' : 'Asset'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {isLiability 
+                    ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
+                    : 'Balances in this account add positively to your Total Funds & Net Worth.'}
+                </p>
+              </div>
+            </label>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

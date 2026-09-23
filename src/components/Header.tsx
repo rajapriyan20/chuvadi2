@@ -13,6 +13,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
+import { WhatsAppLogo } from './common/WhatsAppLogo';
 import { formatCurrency } from '../utils/formatters';
 import type { User } from 'firebase/auth';
 
@@ -58,11 +59,11 @@ export const Header: React.FC<HeaderProps> = ({
               href="https://wa.me/919600001118"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center p-1 sm:p-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition active:scale-95 shadow-sm"
+              className="inline-flex items-center justify-center p-1 sm:p-1.5 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 transition active:scale-95 shadow-sm"
               title="Chat on WhatsApp (+91 9600001118)"
               aria-label="Chat on WhatsApp (+91 9600001118)"
             >
-              <MessageCircle size={13} className="text-emerald-400 fill-emerald-400/20" />
+              <WhatsAppLogo size={14} />
             </a>
           </div>
 
@@ -84,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="bg-[#0d1218]/95 backdrop-blur-md border-b border-amber-950/20 px-3 sm:px-6 lg:px-8 py-2.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
           {/* Hamburger Menu Trigger & Logo */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               id="header-side-menu-trigger-btn"
               onClick={onToggleSideMenu}

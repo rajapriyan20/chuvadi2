@@ -6,6 +6,7 @@ import {
   subscribeToVehicleLogs, 
   subscribeToTodos, 
   subscribeToEntities,
+  subscribeToExerciseLogs,
   saveTransactionAtomic,
   deleteTransactionAtomic,
   saveAccount,
@@ -18,6 +19,8 @@ import {
   deleteTodo,
   saveEntity,
   deleteEntity,
+  saveExerciseLog,
+  deleteExerciseLog,
   seedStarterData,
   clearLocalCache,
   loginWithGoogle,
@@ -47,6 +50,7 @@ import { GarageTab } from './components/tabs/GarageTab';
 import { TodosTab } from './components/tabs/TodosTab';
 import { ReportsTab } from './components/tabs/ReportsTab';
 import { AiAssistantTab } from './components/tabs/AiAssistantTab';
+import { ExerciseLogView } from './components/exercise/ExerciseLogView';
 
 import { getDaysRemaining } from './utils/formatters';
 import type { 
@@ -56,7 +60,8 @@ import type {
   Vehicle, 
   VehicleLog, 
   TodoNote, 
-  Entity 
+  Entity,
+  ExerciseLog
 } from './types';
 
 export function App() {
@@ -75,6 +80,7 @@ export function App() {
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLog[]>([]);
   const [todos, setTodos] = useState<TodoNote[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
 
   // Modals Visibility & Editing State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
@@ -109,6 +115,7 @@ export function App() {
     const unsubLogs = subscribeToVehicleLogs(setVehicleLogs);
     const unsubTodos = subscribeToTodos(setTodos);
     const unsubEntities = subscribeToEntities(setEntities);
+    const unsubExercise = subscribeToExerciseLogs(setExerciseLogs);
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -123,6 +130,7 @@ export function App() {
       unsubLogs();
       unsubTodos();
       unsubEntities();
+      unsubExercise();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -355,6 +363,18 @@ export function App() {
             onToggleTodoItem={handleToggleTodoItem}
             onTogglePin={handleTogglePin}
             onDeleteTodo={deleteTodo}
+          />
+        )}
+
+        {activeTab === 'exercise' && (
+          <ExerciseLogView
+            logs={exerciseLogs}
+            onSaveLog={async (log) => {
+              await saveExerciseLog(log);
+            }}
+            onDeleteLog={async (id) => {
+              await deleteExerciseLog(id);
+            }}
           />
         )}
 

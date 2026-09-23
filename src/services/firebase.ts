@@ -29,7 +29,7 @@ import {
   onAuthStateChanged,
   User 
 } from 'firebase/auth';
-import type { Account, Transaction, Vehicle, VehicleLog, TodoNote, Entity } from '../types';
+import type { Account, Transaction, Vehicle, VehicleLog, TodoNote, Entity, ExerciseLog } from '../types';
 
 const firebaseConfig = {
   apiKey: "AIzaSyB75TCDYTXViVv8b8JUy0ioZO_-e-CONFA",
@@ -507,6 +507,60 @@ export async function deleteEntity(id: string): Promise<void> {
   const local = getCached<Entity[]>('entities', []);
   setCached('entities', local.filter(e => e.id !== id));
 }
+
+/**
+ * Exercise Logs CRUD Operations
+ */
+export async function saveExerciseLog(log: Omit<ExerciseLog, 'id'> & { id?: string }): Promise<string> {
+  const id = log.id || doc(collection(db, 'exercise_logs')).id;
+  const payload: ExerciseLog = {
+    ...log,
+    id,
+    createdAt: log.createdAt || Date.now(),
+    updatedAt: Date.now()
+  };
+
+  try {
+    await setDoc(doc(db, 'exercise_logs', id), payload, { merge: true });
+  } catch (err) {
+    console.warn('Firestore exercise_log write failed:', err);
+  }
+
+  const local = getCached<ExerciseLog[]>('exercise_logs', []);
+  const idx = local.findIndex(e => e.id === id);
+  if (idx >= 0) local[idx] = payload;
+  else local.unshift(payload);
+  // Keep sorted by date descending
+  local.sort((a, b) => b.date.localeCompare(a.date));
+  setCached('exercise_logs', local);
+  return id;
+}
+
+export async function deleteExerciseLog(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'exercise_logs', id));
+  } catch (err) {
+    console.warn('Firestore exercise_log delete failed:', err);
+  }
+  const local = getCached<ExerciseLog[]>('exercise_logs', []);
+  setCached('exercise_logs', local.filter(e => e.id !== id));
+}
+
+export function subscribeToExerciseLogs(onUpdate: (logs: ExerciseLog[]) => void) {
+  const cached = getCached<ExerciseLog[]>('exercise_logs', []);
+  if (cached.length > 0) onUpdate(cached);
+
+  const q = query(collection(db, 'exercise_logs'), orderBy('date', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as ExerciseLog));
+    setCached('exercise_logs', data);
+    onUpdate(data);
+  }, (err) => {
+    console.warn('Exercise logs snapshot error:', err);
+    onUpdate(getCached<ExerciseLog[]>('exercise_logs', []));
+  });
+}
+
 
 // ==========================================
 // REAL-TIME FIRESTORE LISTENERS
