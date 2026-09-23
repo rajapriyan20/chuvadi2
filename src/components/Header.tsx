@@ -1,20 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Plus, 
   Sparkles, 
   Download, 
   Settings as SettingsIcon, 
-  Wifi, 
-  WifiOff, 
   LogIn, 
   LogOut, 
   User as UserIcon,
   Menu,
-  MessageCircle
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
-import { formatCurrency } from '../utils/formatters';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -46,6 +44,35 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSideMenu,
   unreadNotificationsCount = 0
 }) => {
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [showStatusTooltip, setShowStatusTooltip] = useState(false);
+
+  const handleLogoutClick = async () => {
+    const userEmail = user?.email || 'your account';
+    if (window.confirm(`Sign out from ${userEmail}?`)) {
+      setIsSigningOut(true);
+      try {
+        await onLogout();
+      } catch (err) {
+        console.error('Logout error:', err);
+      } finally {
+        setIsSigningOut(false);
+      }
+    }
+  };
+
+  const handleLoginClick = async () => {
+    setIsSigningIn(true);
+    try {
+      await onLogin();
+    } catch (err) {
+      console.error('Login error:', err);
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 transition-colors">
       {/* Top Credit & WhatsApp Announcement Bar */}
@@ -67,15 +94,26 @@ export const Header: React.FC<HeaderProps> = ({
             </a>
           </div>
 
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span className="hidden sm:inline">Personal Financial OS</span>
-            {/* Online indicator */}
-            <div className="flex items-center gap-1.5">
-              <div 
-                className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 shadow-sm shadow-emerald-500/50' : 'bg-rose-500 animate-ping'}`} 
-                title={isOnline ? 'Online - Live Cloud Sync' : 'Offline - Running on Local Storage Cache'}
-              />
-              <span className="text-[10px] hidden md:inline">{isOnline ? 'Synced' : 'Offline'}</span>
+          {/* Sync & Online Status Indicator with descriptive label */}
+          <div 
+            className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer select-none"
+            onClick={() => setShowStatusTooltip(prev => !prev)}
+            title={isOnline ? 'Cloud database is connected and syncing live.' : 'Offline: Changes are saved locally and will sync when reconnected.'}
+          >
+            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-800">
+              <span className="relative flex h-2 w-2">
+                {isOnline ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                )}
+              </span>
+              <span className="text-[10px] font-medium text-slate-300">
+                {isOnline ? 'Cloud Live' : 'Offline'}
+              </span>
             </div>
           </div>
         </div>
@@ -98,113 +136,91 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-[#0d1218]" />
               )}
             </button>
-            <ChuvadiLogo size={38} showText={true} />
-          </div>
 
-        {/* Quick Net Worth Display (Desktop & Tablet) */}
-        <div className="hidden md:flex items-center gap-6 px-4 py-1.5 bg-[#161c24]/90 rounded-2xl border border-slate-800/80 shadow-inner">
-          <div>
-            <div className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
-              Net Balance
-            </div>
-            <div className="text-base font-bold text-amber-200 font-mono leading-tight">
-              {formatCurrency(totalNetWorth)}
-            </div>
-          </div>
-          <div className="h-7 w-[1px] bg-slate-700/60" />
-          <div>
-            <div className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
-              This Month Exp.
-            </div>
-            <div className="text-base font-bold text-rose-400 font-mono leading-tight">
-              {formatCurrency(monthlyExpense)}
+            <div className="flex items-center gap-2.5">
+              <ChuvadiLogo size={32} />
+              <div className="hidden xs:block">
+                <span className="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
+                  Chuvadi
+                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
+                    Life OS
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2">
-          {/* AI Voice / Smart Assistant Trigger */}
-          <button
-            id="header-ai-trigger-btn"
-            onClick={onOpenAi}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600/20 to-amber-600/20 hover:from-emerald-600/30 hover:to-amber-600/30 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 text-xs font-semibold transition shadow-sm active:scale-95"
-            title="Chuvadi AI: Voice Logger & Receipt Scanner"
-          >
-            <Sparkles size={16} className="text-amber-400 animate-pulse" />
-            <span className="hidden sm:inline">AI Dictate</span>
-          </button>
+          {/* Action Buttons & Profile Controls */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Quick Record Button */}
+            <button
+              id="header-quick-add-btn"
+              onClick={onOpenQuickAdd}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition active:scale-95"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span className="hidden xs:inline">Record</span>
+            </button>
 
-          {/* Quick Record Button */}
-          <button
-            id="header-quick-add-btn"
-            onClick={onOpenQuickAdd}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition active:scale-95"
-          >
-            <Plus size={16} strokeWidth={2.5} />
-            <span className="hidden xs:inline">Record</span>
-          </button>
+            {/* Export Data */}
+            <button
+              id="header-export-btn"
+              onClick={onOpenExport}
+              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
+              title="Export CSV / JSON Backup"
+            >
+              <Download size={16} />
+            </button>
 
-          {/* Export Data */}
-          <button
-            id="header-export-btn"
-            onClick={onOpenExport}
-            className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
-            title="Export CSV / JSON Backup"
-          >
-            <Download size={16} />
-          </button>
+            {/* Settings */}
+            <button
+              id="header-settings-btn"
+              onClick={onOpenSettings}
+              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
+              title="Application Settings"
+            >
+              <SettingsIcon size={16} />
+            </button>
 
-          {/* Settings */}
-          <button
-            id="header-settings-btn"
-            onClick={onOpenSettings}
-            className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
-            title="Application Settings"
-          >
-            <SettingsIcon size={16} />
-          </button>
-
-          {/* Auth State Button */}
-          {user ? (
-            <div className="flex items-center gap-2 pl-1">
+            {/* Auth State Button */}
+            {user ? (
               <button
-                onClick={onLogout}
-                className="flex items-center gap-1 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700/60"
+                id="header-logout-btn"
+                onClick={handleLogoutClick}
+                disabled={isSigningOut}
+                className="flex items-center gap-1.5 p-1.5 pr-2.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs border border-slate-700/60 transition active:scale-95 group"
                 title={`Signed in as ${user.email || 'User'}. Click to sign out.`}
               >
                 {user.photoURL ? (
                   <img 
                     src={user.photoURL} 
                     alt="User" 
-                    className="w-5 h-5 rounded-full object-cover" 
+                    className="w-5 h-5 rounded-full object-cover border border-slate-600 group-hover:border-rose-400" 
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <UserIcon size={14} />
+                  <UserIcon size={14} className="text-amber-400 group-hover:text-rose-400" />
                 )}
-                <LogOut size={13} className="text-slate-400" />
+                <span className="text-[11px] font-medium hidden sm:inline max-w-[90px] truncate">
+                  {user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'Account'}
+                </span>
+                <LogOut size={13} className="text-slate-400 group-hover:text-rose-400 transition" />
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={onLogin}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition font-medium"
-              title="Sign In with Google for Cloud Sync"
-            >
-              <LogIn size={14} className="text-amber-400" />
-              <span className="hidden sm:inline">Sign In</span>
-            </button>
-          )}
-
-          {/* Online/Offline Status Indicator */}
-          <div 
-            className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-400 shadow-sm shadow-emerald-500/50' : 'bg-rose-500 animate-ping'}`} 
-            title={isOnline ? 'Online - Live Cloud Sync' : 'Offline - Running on Local Storage Cache'}
-          />
+            ) : (
+              <button
+                id="header-login-btn"
+                onClick={handleLoginClick}
+                disabled={isSigningIn}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition font-medium active:scale-95"
+                title="Sign In with Google for Cloud Sync"
+              >
+                <LogIn size={14} className="text-amber-400" />
+                <span className="hidden sm:inline">Sign In</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  </header>
+    </header>
   );
 };

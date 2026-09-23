@@ -165,44 +165,44 @@ export const ExerciseLogView: React.FC<ExerciseLogViewProps> = ({
       </div>
 
       {/* Metrics Summary Strip */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="p-3 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
             <Activity size={18} />
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">
+          <div className="min-w-0 flex-1 flex sm:block items-center justify-between sm:justify-start">
+            <div className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400">
               Total Logs
             </div>
-            <div className="text-base sm:text-xl font-bold text-slate-100 font-mono">
+            <div className="text-lg sm:text-xl font-bold text-slate-100 font-mono">
               {stats.totalCount}
             </div>
           </div>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
+        <div className="p-3 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
             <Flame size={18} />
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">
+          <div className="min-w-0 flex-1 flex sm:block items-center justify-between sm:justify-start">
+            <div className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400">
               Active Days
             </div>
-            <div className="text-base sm:text-xl font-bold text-amber-300 font-mono">
+            <div className="text-lg sm:text-xl font-bold text-amber-300 font-mono">
               {stats.uniqueDays}
             </div>
           </div>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
+        <div className="p-3 sm:p-4 rounded-2xl bg-[#121820] border border-slate-800 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
             <Clock size={18} />
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">
+          <div className="min-w-0 flex-1 flex sm:block items-center justify-between sm:justify-start">
+            <div className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400">
               This Month
             </div>
-            <div className="text-base sm:text-xl font-bold text-sky-300 font-mono">
+            <div className="text-lg sm:text-xl font-bold text-sky-300 font-mono">
               {stats.thisMonthCount}
             </div>
           </div>
