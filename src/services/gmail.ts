@@ -2,10 +2,14 @@
  * Gmail Expense Parser & API Service
  * Interacts with Gmail REST API (users/me/messages) to fetch expense / bank alert emails
  * from the last 30 days, parses amounts and descriptions, and runs user-defined rules.
+ * 
+ * Supports both Google Identity Services (GIS token client) and Firebase Auth fallback,
+ * with full support for GitHub Pages / custom domain deployments.
  */
 
-import { auth } from './firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import appletConfig from '../../firebase-applet-config.json';
 import type { 
   Account, 
   GmailFilterRule, 
@@ -19,37 +23,201 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly'
 ];
 
-// In-memory token cache as required by workspace guidelines
-let cachedGmailAccessToken: string | null = null;
+// Session / memory token cache
+const SESSION_TOKEN_KEY = 'chuvadi_gmail_token_session';
+const CUSTOM_CLIENT_ID_KEY = 'chuvadi_custom_oauth_client_id';
+
+let inMemoryToken: string | null = null;
 
 export function getCachedGmailToken(): string | null {
-  return cachedGmailAccessToken;
+  if (inMemoryToken) return inMemoryToken;
+  try {
+    const fromSession = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    if (fromSession) {
+      inMemoryToken = fromSession;
+      return fromSession;
+    }
+  } catch (e) {
+    // sessionStorage might be restricted
+  }
+  return null;
 }
 
 export function setCachedGmailToken(token: string | null): void {
-  cachedGmailAccessToken = token;
+  inMemoryToken = token;
+  try {
+    if (token) {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function getCustomOAuthClientId(): string {
+  try {
+    return localStorage.getItem(CUSTOM_CLIENT_ID_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+export function setCustomOAuthClientId(clientId: string): void {
+  try {
+    if (clientId.trim()) {
+      localStorage.setItem(CUSTOM_CLIENT_ID_KEY, clientId.trim());
+    } else {
+      localStorage.removeItem(CUSTOM_CLIENT_ID_KEY);
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function getEffectiveOAuthClientId(): string {
+  const custom = getCustomOAuthClientId();
+  if (custom) return custom;
+  return appletConfig.oAuthClientId || '299310706424-2edjsgf6icadqpflse34pdmfkm3a4oai.apps.googleusercontent.com';
 }
 
 /**
- * Prompt user to connect Google Account with Gmail.readonly scope and retrieve OAuth Access Token
+ * Wait up to 1.5s for Google Identity Services script to be available on window.google
  */
-export async function authenticateGmail(): Promise<string> {
+async function waitForGoogleIdentity(): Promise<boolean> {
+  const win = window as any;
+  if (win.google?.accounts?.oauth2) return true;
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (win.google?.accounts?.oauth2) return true;
+  }
+  return false;
+}
+
+/**
+ * Authenticate via Google Identity Services (GIS) Token Client
+ * This is Google's official, direct client-side OAuth 2.0 flow for web applications.
+ */
+function authenticateWithGIS(clientId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const win = window as any;
+    if (!win.google?.accounts?.oauth2) {
+      return reject(new Error('Google Identity Services client library is not loaded.'));
+    }
+
+    try {
+      const tokenClient = win.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: GMAIL_SCOPES.join(' '),
+        callback: (resp: any) => {
+          if (resp.error) {
+            const errDesc = resp.error_description || resp.error;
+            reject(new Error(errDesc));
+          } else if (resp.access_token) {
+            resolve(resp.access_token);
+          } else {
+            reject(new Error('No access token received from Google Identity Services.'));
+          }
+        },
+        error_callback: (err: any) => {
+          reject(new Error(err?.message || err?.type || 'Google Identity authorization popup failed.'));
+        }
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (err: any) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Authenticate via Firebase Auth initialized with the provisioned applet config
+ */
+async function authenticateWithFirebaseAuth(): Promise<string> {
+  const existingApp = getApps().find(a => a.name === 'oauthApp');
+  const oauthApp = existingApp || initializeApp(appletConfig, 'oauthApp');
+  const oauthAuth = getAuth(oauthApp);
+
   const provider = new GoogleAuthProvider();
   GMAIL_SCOPES.forEach(scope => provider.addScope(scope));
-  // Prompt user for consent to ensure refresh/scope granting
   provider.setCustomParameters({
     prompt: 'consent',
     access_type: 'offline'
   });
 
-  const result = await signInWithPopup(auth, provider);
+  const result = await signInWithPopup(oauthAuth, provider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
-    throw new Error('Could not retrieve access token for Gmail API.');
+    throw new Error('Could not retrieve access token from Firebase credential.');
   }
 
-  cachedGmailAccessToken = credential.accessToken;
   return credential.accessToken;
+}
+
+/**
+ * Primary authenticate entry point.
+ * Attempts GIS first; falls back to Firebase Auth; provides friendly actionable errors.
+ */
+export async function authenticateGmail(): Promise<string> {
+  const clientId = getEffectiveOAuthClientId();
+  const hasGIS = await waitForGoogleIdentity();
+
+  // Strategy 1: Google Identity Services (preferred for custom domains and standard OAuth)
+  if (hasGIS && clientId) {
+    try {
+      const token = await authenticateWithGIS(clientId);
+      setCachedGmailToken(token);
+      return token;
+    } catch (gisError: any) {
+      console.warn('GIS authorization failed, trying Firebase Auth fallback:', gisError);
+      
+      const errMsg = String(gisError?.message || gisError || '');
+      // If error is clearly origin_mismatch or user_cancel, don't silently hide it
+      if (errMsg.includes('origin_mismatch') || errMsg.includes('idpiframe_initialization_failed')) {
+        throw new Error(
+          `Google OAuth Origin Mismatch: The current origin "${window.location.origin}" is not authorized for OAuth Client ID "${clientId.slice(0, 20)}...". Please add "${window.location.origin}" to Authorized JavaScript Origins in Google Cloud Console, or configure your custom Client ID.`
+        );
+      }
+      if (errMsg.includes('user_cancel') || errMsg.includes('popup_closed_by_user')) {
+        throw new Error('Sign-in cancelled by user.');
+      }
+    }
+  }
+
+  // Strategy 2: Firebase Auth with applet project
+  try {
+    const token = await authenticateWithFirebaseAuth();
+    setCachedGmailToken(token);
+    return token;
+  } catch (fbError: any) {
+    console.error('Firebase Auth failed:', fbError);
+    const code = fbError?.code || '';
+    const origin = window.location.origin;
+
+    if (code === 'auth/configuration-not-found') {
+      throw new Error(
+        `Firebase Error: Google Sign-In is not enabled for the Firebase project. Please configure your custom Google OAuth Client ID in settings or enable Google Provider in Firebase Console.`
+      );
+    }
+
+    if (code === 'auth/unauthorized-domain') {
+      throw new Error(
+        `Unauthorized Domain: "${window.location.hostname}" is not authorized in Firebase. Please add "${window.location.hostname}" to Authorized Domains in Firebase Console > Authentication > Settings, or use a Google Cloud OAuth Client ID.`
+      );
+    }
+
+    if (code === 'auth/popup-closed-by-user') {
+      throw new Error('Sign-in popup was closed before completing authentication.');
+    }
+
+    if (code === 'auth/popup-blocked') {
+      throw new Error('Popup blocked by browser. Please allow popups for this site to sign in with Google.');
+    }
+
+    throw new Error(fbError?.message || 'Failed to authenticate with Google.');
+  }
 }
 
 // Default filter rules (main Gmail query)
@@ -243,7 +411,6 @@ function extractAmountFromText(text: string): number | undefined {
 }
 
 function extractMerchantFromText(subject: string, body: string): string {
-  // Look for "at <Merchant>", "to <Merchant>", "VPA <merchant>", "Info: <Merchant>"
   const fullText = `${subject} ${body}`;
   const patterns = [
     /(?:at|to|info:?|towards)\s+([A-Za-z0-9\s&'-]{3,35})(?:\s+on|\s+using|\s+via|\.|\,|$)/i,
@@ -262,7 +429,6 @@ function extractMerchantFromText(subject: string, body: string): string {
     }
   }
 
-  // Fallback to subject line trimmed
   const cleanSubject = subject
     .replace(/^Re:\s*/i, '')
     .replace(/^Fwd:\s*/i, '')
@@ -300,7 +466,6 @@ export function applyFieldSuggestionRules(
 
     if (text.includes(kw)) {
       if (rule.targetType === 'ACCOUNT' && !suggestedAccountId) {
-        // Check if account exists
         const exists = accounts.some(a => a.id === rule.targetValue);
         if (exists) {
           suggestedAccountId = rule.targetValue;
@@ -311,7 +476,7 @@ export function applyFieldSuggestionRules(
     }
   }
 
-  // If no category detected, run general keyword matching
+  // Fallback category detection
   if (!suggestedCategory) {
     if (/swiggy|zomato|restaurant|cafe|coffee|biryani|dining|burger|pizza|kitchen|food/i.test(text)) {
       suggestedCategory = 'Food & Dining';
@@ -332,7 +497,7 @@ export function applyFieldSuggestionRules(
     }
   }
 
-  // Fallback account if still undefined
+  // Fallback account
   if (!suggestedAccountId && accounts.length > 0) {
     if (text.includes('credit card') || text.includes('creditcard')) {
       const card = accounts.find(a => a.type === 'CREDIT_CARD');
@@ -347,9 +512,6 @@ export function applyFieldSuggestionRules(
   return { suggestedAccountId, suggestedCategory };
 }
 
-/**
- * Decode base64url encoded Gmail message bodies
- */
 function decodeBase64Url(base64Url: string): string {
   try {
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -364,14 +526,10 @@ function decodeBase64Url(base64Url: string): string {
   }
 }
 
-/**
- * Extract plain text body from a Gmail payload structure
- */
 function extractBodyFromPayload(payload: any): string {
   if (!payload) return '';
   if (payload.body && payload.body.data) {
     const raw = decodeBase64Url(payload.body.data);
-    // Strip HTML tags if HTML
     return raw.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
   }
 
@@ -381,7 +539,6 @@ function extractBodyFromPayload(payload: any): string {
         return decodeBase64Url(part.body.data).replace(/\s+/g, ' ').trim();
       }
     }
-    // Fallback to text/html
     for (const part of payload.parts) {
       if (part.mimeType === 'text/html' && part.body?.data) {
         const raw = decodeBase64Url(part.body.data);
@@ -413,8 +570,6 @@ export async function fetchExpenseEmailsFromGmail(
       return { emails: existingCached, error: 'No active Gmail filter rules found. Please enable or add at least one filter query in the Rules tab.' };
     }
 
-    // Build combined Gmail search query with 30 day constraint
-    // Gmail supports 'newer_than:30d' or 'after:YYYY/MM/DD'
     const combinedFilterQueries = activeRules.map(r => `(${r.query.trim()})`).join(' OR ');
     const fullQuery = `newer_than:30d (${combinedFilterQueries})`;
 
@@ -429,8 +584,8 @@ export async function fetchExpenseEmailsFromGmail(
 
     if (!listRes.ok) {
       if (listRes.status === 401) {
-        cachedGmailAccessToken = null;
-        return { emails: existingCached, error: 'Gmail authentication expired. Please click "Connect Gmail" to sign in again.' };
+        setCachedGmailToken(null);
+        return { emails: existingCached, error: 'Gmail authorization expired. Please click "Connect Gmail Account" to reconnect.' };
       }
       const errText = await listRes.text();
       return { emails: existingCached, error: `Failed to fetch messages from Gmail: ${listRes.status} ${errText}` };
@@ -443,13 +598,11 @@ export async function fetchExpenseEmailsFromGmail(
       return { emails: existingCached, error: 'No matching emails found in your Gmail inbox for the last 30 days with the active filter rules.' };
     }
 
-    // Create a lookup of previously handled items to preserve status (ADDED or IGNORED)
     const existingStatusMap = new Map<string, { status: 'PENDING' | 'ADDED' | 'IGNORED'; addedTxnId?: string }>();
     for (const e of existingCached) {
       existingStatusMap.set(e.id, { status: e.status, addedTxnId: e.addedTxnId });
     }
 
-    // Fetch details for up to 30 recent messages
     const messagePromises = messages.slice(0, 30).map(async (msg: { id: string; threadId: string }) => {
       try {
         const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, {
@@ -522,10 +675,8 @@ export async function fetchExpenseEmailsFromGmail(
       });
     }
 
-    // Sort by date descending
     parsedEmails.sort((a, b) => b.timestamp - a.timestamp);
 
-    // Merge with any cached emails that weren't in the newest batch
     const newIds = new Set(parsedEmails.map(e => e.id));
     for (const old of existingCached) {
       if (!newIds.has(old.id)) {

@@ -14,11 +14,21 @@ import {
   AlertCircle,
   ExternalLink,
   ShieldCheck,
-  Filter
+  Filter,
+  Settings as SettingsIcon,
+  Copy,
+  Key,
+  Globe
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import type { Account, GmailExpenseEmail, Transaction } from '../../types';
-import { authenticateGmail } from '../../services/gmail';
+import { 
+  authenticateGmail, 
+  getEffectiveOAuthClientId, 
+  getCustomOAuthClientId, 
+  setCustomOAuthClientId,
+  setCachedGmailToken
+} from '../../services/gmail';
 
 interface ReviewTabProps {
   accounts: Account[];
@@ -48,6 +58,15 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Settings & troubleshooting modal
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [customClientIdInput, setCustomClientIdInput] = useState(getCustomOAuthClientId());
+  const [manualTokenInput, setManualTokenInput] = useState('');
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
   const handleConnectGmail = async () => {
     setIsAuthenticating(true);
     setAuthError(null);
@@ -60,6 +79,33 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
     } finally {
       setIsAuthenticating(false);
     }
+  };
+
+  const handleDisconnect = () => {
+    setCachedGmailToken(null);
+    window.location.reload();
+  };
+
+  const handleSaveCustomClientId = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCustomOAuthClientId(customClientIdInput.trim());
+    setShowConfigModal(false);
+    setAuthError(null);
+  };
+
+  const handleApplyManualToken = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualTokenInput.trim()) return;
+    setCachedGmailToken(manualTokenInput.trim());
+    setShowConfigModal(false);
+    setAuthError(null);
+    onRefreshEmails();
+  };
+
+  const handleCopyOrigin = () => {
+    navigator.clipboard.writeText(currentOrigin);
+    setCopiedOrigin(true);
+    setTimeout(() => setCopiedOrigin(false), 2000);
   };
 
   const filteredEmails = emails.filter(e => {
@@ -84,6 +130,11 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
               {pendingCount} to review
             </span>
+            {hasToken && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <Check size={10} /> Connected
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-xl">
             Review parsed transactions from bank alerts and orders from the last 30 days. Edit any field and click <strong>Add Transaction</strong> or <strong>Mark as Ignore</strong>.
@@ -101,15 +152,32 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
               <span>{isAuthenticating ? 'Connecting...' : 'Connect Gmail Account'}</span>
             </button>
           ) : (
-            <button
-              onClick={() => onRefreshEmails()}
-              disabled={isLoading}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition active:scale-95 border border-slate-700"
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin text-amber-400' : 'text-slate-400'} />
-              <span>{isLoading ? 'Scanning Gmail...' : 'Scan 30 Days'}</span>
-            </button>
+            <>
+              <button
+                onClick={() => onRefreshEmails()}
+                disabled={isLoading}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition active:scale-95 border border-slate-700"
+              >
+                <RefreshCw size={14} className={isLoading ? 'animate-spin text-amber-400' : 'text-slate-400'} />
+                <span>{isLoading ? 'Scanning Gmail...' : 'Scan 30 Days'}</span>
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-300 text-xs transition border border-slate-800"
+                title="Disconnect Gmail session"
+              >
+                Disconnect
+              </button>
+            </>
           )}
+
+          <button
+            onClick={() => setShowConfigModal(true)}
+            className="p-2 rounded-xl bg-[#161c26] hover:bg-slate-800 text-slate-400 hover:text-white transition border border-slate-800"
+            title="OAuth Settings & Domain Whitelisting Guide"
+          >
+            <SettingsIcon size={15} />
+          </button>
 
           <button
             onClick={onSwitchToRules}
@@ -122,13 +190,33 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
       </div>
 
       {authError && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-2 text-rose-300 text-xs">
-          <AlertCircle size={15} className="shrink-0" />
-          <span>{authError}</span>
+        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2 text-rose-300 text-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" />
+            <div className="space-y-1">
+              <div className="font-bold text-rose-200">Gmail Connection Issue</div>
+              <p className="text-[11px] leading-relaxed text-rose-300/90">{authError}</p>
+            </div>
+          </div>
+          <div className="pl-6 flex items-center gap-2 flex-wrap pt-1">
+            <button
+              onClick={() => setShowConfigModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-bold text-[11px] border border-rose-500/30 flex items-center gap-1.5"
+            >
+              <SettingsIcon size={12} />
+              <span>Configure Domain & OAuth Settings</span>
+            </button>
+            <button
+              onClick={handleConnectGmail}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px]"
+            >
+              Retry Connection
+            </button>
+          </div>
         </div>
       )}
 
-      {error && (
+      {error && !authError && (
         <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between gap-2 text-amber-200 text-xs">
           <div className="flex items-center gap-2">
             <AlertCircle size={15} className="shrink-0 text-amber-400" />
@@ -398,6 +486,119 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
               >
                 Add Transaction
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OAuth & Domain Configuration Modal */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#121820] w-full max-w-xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <Globe size={18} />
+                <span>Google OAuth & Domain Whitelist Guide</span>
+              </div>
+              <button
+                onClick={() => setShowConfigModal(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto text-xs text-slate-300">
+              {/* Domain Whitelisting Box */}
+              <div className="p-4 bg-[#0a0e14] rounded-2xl border border-slate-800 space-y-2">
+                <div className="font-bold text-white flex items-center justify-between">
+                  <span>Your Current Hosting Origin / Domain</span>
+                  <button
+                    onClick={handleCopyOrigin}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition"
+                  >
+                    {copiedOrigin ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedOrigin ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <code className="text-amber-300 font-mono text-[11px] block p-2 bg-[#141b24] rounded-xl border border-slate-800 select-all">
+                  {currentOrigin}
+                </code>
+                <p className="text-[11px] text-slate-400">
+                  If hosting on GitHub Pages (<code>{currentHostname}</code>), add this origin to <strong>Authorized JavaScript Origins</strong> in your Google Cloud Console OAuth 2.0 Client credentials.
+                </p>
+              </div>
+
+              {/* Option 1: Custom Google Cloud OAuth Client ID */}
+              <form onSubmit={handleSaveCustomClientId} className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <Key size={14} className="text-amber-400" />
+                  <span>Google Cloud OAuth Client ID</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  The client ID used for client-side Google Identity Services. Leave blank to use the default applet client.
+                </p>
+                <input
+                  type="text"
+                  placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
+                  value={customClientIdInput}
+                  onChange={(e) => setCustomClientIdInput(e.target.value)}
+                  className="w-full bg-[#0a0e14] border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomClientIdInput('');
+                      setCustomOAuthClientId('');
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-white underline"
+                  >
+                    Reset to Default
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400"
+                  >
+                    Save Client ID
+                  </button>
+                </div>
+              </form>
+
+              {/* Option 2: Direct Bearer Token for Testing */}
+              <form onSubmit={handleApplyManualToken} className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-emerald-400" />
+                  <span>Direct OAuth Token (Quick Test / Bypass)</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Paste a temporary Google OAuth access token (e.g. from Google OAuth Playground) to immediately test email scanning without popup authentication.
+                </p>
+                <input
+                  type="password"
+                  placeholder="Paste access token (ya29....)"
+                  value={manualTokenInput}
+                  onChange={(e) => setManualTokenInput(e.target.value)}
+                  className="w-full bg-[#0a0e14] border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+                />
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs hover:bg-emerald-400"
+                  >
+                    Apply Token
+                  </button>
+                </div>
+              </form>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setShowConfigModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700 transition"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
