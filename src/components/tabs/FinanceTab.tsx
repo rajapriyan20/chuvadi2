@@ -6,11 +6,13 @@ import {
   ArrowDownLeft, 
   ArrowRightLeft, 
   Layers,
-  Receipt
+  Receipt,
+  Inbox
 } from 'lucide-react';
 import { formatCurrency, formatDate, DEFAULT_CATEGORIES } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType } from '../../types';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
+import { InboxReviewTab } from '../finance/InboxReviewTab';
 
 interface FinanceTabProps {
   accounts: Account[];
@@ -25,6 +27,7 @@ interface FinanceTabProps {
   onOpenNewTxn: () => void;
   onOpenNewEntity: () => void;
   onDeleteEntity: (id: string) => Promise<void>;
+  onOpenNewTxnWithDefaults?: (defaults: Partial<Transaction>, emailId?: string) => void;
 }
 
 export const FinanceTab: React.FC<FinanceTabProps> = ({
@@ -39,10 +42,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onSelectTxn,
   onOpenNewTxn,
   onOpenNewEntity: _onOpenNewEntity,
-  onDeleteEntity: _onDeleteEntity
+  onDeleteEntity: _onDeleteEntity,
+  onOpenNewTxnWithDefaults
 }) => {
-  // Chart of Accounts is shown first by default, then Transactions
-  const [subTab, setSubTab] = useState<'coa' | 'transactions'>('coa');
+  // Chart of Accounts is shown first by default, then Transactions, then Inbox / Review
+  const [subTab, setSubTab] = useState<'coa' | 'transactions' | 'inbox'>('coa');
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -99,6 +103,18 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <Receipt size={14} />
             <span>Transactions</span>
           </button>
+          <button
+            id="finance-subtab-inbox-btn"
+            onClick={() => setSubTab('inbox')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
+              subTab === 'inbox'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <Inbox size={14} />
+            <span>Inbox / Review</span>
+          </button>
         </div>
 
         <div className="text-xs text-slate-400">
@@ -107,6 +123,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           )}
           {subTab === 'transactions' && (
             <span>Ledger History & Search</span>
+          )}
+          {subTab === 'inbox' && (
+            <span>Gmail Expense Extraction & Rule Filters</span>
           )}
         </div>
       </div>
@@ -252,6 +271,18 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         </div>
       </div>
     </div>
+  )}
+
+  {/* View 3: Inbox / Review Tab */}
+  {subTab === 'inbox' && (
+    <InboxReviewTab
+      accounts={accounts}
+      onOpenNewTxnWithDefaults={(defaults, emailId) => {
+        if (onOpenNewTxnWithDefaults) {
+          onOpenNewTxnWithDefaults(defaults, emailId);
+        }
+      }}
+    />
   )}
 </div>
 );

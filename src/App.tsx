@@ -31,6 +31,7 @@ import type { User } from 'firebase/auth';
 
 import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
+import { markEmailAsAdded } from './services/gmail';
 
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
@@ -85,6 +86,7 @@ export function App() {
   // Modals Visibility & Editing State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
+  const [pendingEmailImportId, setPendingEmailImportId] = useState<string | null>(null);
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -182,7 +184,12 @@ export function App() {
 
   // Transaction Handlers (ATOMIC FIRESTORE TRANSACTIONS)
   const handleSaveTransaction = async (txn: Omit<Transaction, 'id'> & { id?: string }) => {
-    await saveTransactionAtomic(txn);
+    const savedId = await saveTransactionAtomic(txn);
+
+    if (pendingEmailImportId) {
+      markEmailAsAdded(pendingEmailImportId, savedId);
+      setPendingEmailImportId(null);
+    }
 
     // If transaction had a vehicle link & odometer update, sync vehicle's current odometer
     if (txn.vehicleId && txn.odometer) {
@@ -326,6 +333,23 @@ export function App() {
             }}
             onOpenNewEntity={() => setIsEntityModalOpen(true)}
             onDeleteEntity={deleteEntity}
+            onOpenNewTxnWithDefaults={(defaults, emailId) => {
+              if (emailId) setPendingEmailImportId(emailId);
+              else setPendingEmailImportId(null);
+              setEditingTxn({
+                id: '',
+                type: defaults.type || 'EXPENSE',
+                amount: defaults.amount || 0,
+                description: defaults.description || '',
+                category: defaults.category || 'Food & Dining',
+                fromAccountId: defaults.fromAccountId || (accounts[0]?.id || null),
+                toAccountId: defaults.toAccountId || null,
+                date: defaults.date || new Date().toISOString().split('T')[0],
+                timestamp: Date.now(),
+                notes: defaults.notes || ''
+              });
+              setIsTxnModalOpen(true);
+            }}
           />
         )}
 

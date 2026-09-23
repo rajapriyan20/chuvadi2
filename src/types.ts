@@ -112,4 +112,46 @@ export interface ExerciseLog {
   updatedAt?: number;
 }
 
+// Gmail Expense Inbox & Parser Rules
+export interface GmailFilterRule {
+  id: string;
+  name: string;
+  query: string; // e.g. from:alerts@hdfcbank.net OR from:alerts@hdfcbank.bank.in
+  enabled: boolean;
+  createdAt: number;
+}
+
+export type FieldSuggestionRuleType = 'ACCOUNT' | 'CATEGORY';
+
+export interface FieldSuggestionRule {
+  id: string;
+  keyword: string; // Substring to match in email subject or body (e.g. "HDFC Bank Credit Card ending 5304", "biryani", "swiggy", "uber")
+  targetType: FieldSuggestionRuleType; // 'ACCOUNT' or 'CATEGORY'
+  targetValue: string; // accountId if 'ACCOUNT', or category title/name if 'CATEGORY'
+  label?: string; // friendly description e.g. "Match ending 5304 -> HDFC Millennia Card"
+  enabled: boolean;
+  createdAt: number;
+}
+
+export interface GmailExpenseEmail {
+  id: string; // Gmail message ID
+  threadId: string;
+  subject: string;
+  from: string;
+  date: string; // ISO or YYYY-MM-DD
+  snippet: string;
+  bodyText: string;
+  timestamp: number;
+  // Suggested extracted expense entry
+  suggestedAmount?: number;
+  suggestedDate?: string;
+  suggestedDescription?: string;
+  suggestedCategory?: string;
+  suggestedAccountId?: string;
+  suggestedType?: TransactionType;
+  // Status
+  status: 'PENDING' | 'ADDED' | 'IGNORED';
+  addedTxnId?: string;
+}
+
 export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'reports' | 'ai' | 'exercise';

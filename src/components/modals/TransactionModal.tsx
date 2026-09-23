@@ -96,7 +96,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setIsSaving(true);
     try {
       await onSave({
-        id: initialData?.id,
+        id: initialData?.id ? initialData.id : undefined,
         type,
         amount: numAmt,
         description: description.trim() || `${category} Record`,
