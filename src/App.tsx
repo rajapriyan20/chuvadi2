@@ -31,7 +31,8 @@ import type { User } from 'firebase/auth';
 
 import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
-import { markEmailAsAdded } from './services/gmail';
+import { AuthScreen } from './components/common/AuthScreen';
+import { markEmailAsAdded, setCachedGmailToken } from './services/gmail';
 
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
@@ -61,8 +62,8 @@ import type {
   Vehicle, 
   VehicleLog, 
   TodoNote, 
-  Entity,
-  ExerciseLog
+  Entity, 
+  ExerciseLog 
 } from './types';
 
 export function App() {
@@ -72,6 +73,10 @@ export function App() {
 
   // Auth & Network State
   const [user, setUser] = useState<User | null>(null);
+  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
+  const [guestMode, setGuestMode] = useState<boolean>(() => {
+    return sessionStorage.getItem('chuvadi_guest_mode') === 'true';
+  });
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
   // Domain State from Firebase & Local Mirror
@@ -110,7 +115,15 @@ export function App() {
 
   // Subscribe to real-time Cloud Firestore collections & Auth
   useEffect(() => {
-    const unsubAuth = subscribeAuth(setUser);
+    const unsubAuth = subscribeAuth((currentUser) => {
+      setUser(currentUser);
+      setAuthInitialized(true);
+      if (currentUser) {
+        setGuestMode(false);
+        sessionStorage.removeItem('chuvadi_guest_mode');
+      }
+    });
+
     const unsubAccounts = subscribeToAccounts(setAccounts);
     const unsubTxns = subscribeToTransactions(setTransactions);
     const unsubVehicles = subscribeToVehicles(setVehicles);
@@ -247,6 +260,46 @@ export function App() {
     setIsServiceLogModalOpen(true);
   };
 
+  const handleLogout = async () => {
+    try {
+      setCachedGmailToken(null);
+      await logoutUser();
+      setUser(null);
+      setGuestMode(false);
+      sessionStorage.removeItem('chuvadi_guest_mode');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const handleContinueAsGuest = () => {
+    setGuestMode(true);
+    sessionStorage.setItem('chuvadi_guest_mode', 'true');
+  };
+
+  // 1. Loading screen while Firebase Auth initializes
+  if (!authInitialized) {
+    return (
+      <div className="min-h-screen bg-[#0a0d12] flex flex-col items-center justify-center p-4">
+        <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mb-3" />
+        <span className="text-xs text-slate-400 font-medium tracking-wide">Loading Chuvadi Life OS...</span>
+      </div>
+    );
+  }
+
+  // 2. If user is NOT logged in and has not entered Guest Mode, show the dedicated Welcome & Sign-In Screen!
+  if (!user && !guestMode) {
+    return (
+      <AuthScreen 
+        onLogin={async () => {
+          await loginWithGoogle();
+        }} 
+        onContinueAsGuest={handleContinueAsGuest} 
+      />
+    );
+  }
+
+  // 3. Main Authenticated App Screen
   return (
     <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
       {/* Top Application Header with Chuvadi Logo, Credit Bar and Net Worth */}
@@ -263,7 +316,7 @@ export function App() {
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onLogin={loginWithGoogle}
-        onLogout={logoutUser}
+        onLogout={handleLogout}
         onToggleSideMenu={() => setIsSideMenuOpen(prev => !prev)}
         unreadNotificationsCount={renewalsCount + pendingTodosCount}
       />
@@ -319,12 +372,8 @@ export function App() {
               setEditingAccount(acc);
               setIsAccountModalOpen(true);
             }}
-            onSaveAccount={async (acc) => {
-              await saveAccount(acc);
-            }}
-            onDeleteAccount={async (id) => {
-              await deleteAccount(id);
-            }}
+            onSaveAccount={async (acc) => { await saveAccount(acc); }}
+            onDeleteAccount={deleteAccount}
             onOpenPassbook={handleOpenPassbook}
             onSelectTxn={handleSelectTxn}
             onOpenNewTxn={() => {
@@ -335,19 +384,7 @@ export function App() {
             onDeleteEntity={deleteEntity}
             onOpenNewTxnWithDefaults={(defaults, emailId) => {
               if (emailId) setPendingEmailImportId(emailId);
-              else setPendingEmailImportId(null);
-              setEditingTxn({
-                id: '',
-                type: defaults.type || 'EXPENSE',
-                amount: defaults.amount || 0,
-                description: defaults.description || '',
-                category: defaults.category || 'Food & Dining',
-                fromAccountId: defaults.fromAccountId || (accounts[0]?.id || null),
-                toAccountId: defaults.toAccountId || null,
-                date: defaults.date || new Date().toISOString().split('T')[0],
-                timestamp: Date.now(),
-                notes: defaults.notes || ''
-              });
+              setEditingTxn(defaults as any);
               setIsTxnModalOpen(true);
             }}
           />
@@ -384,28 +421,24 @@ export function App() {
               setEditingTodo(todo);
               setIsTodoModalOpen(true);
             }}
+            onDeleteTodo={deleteTodo}
             onToggleTodoItem={handleToggleTodoItem}
             onTogglePin={handleTogglePin}
-            onDeleteTodo={deleteTodo}
           />
         )}
 
         {activeTab === 'exercise' && (
           <ExerciseLogView
             logs={exerciseLogs}
-            onSaveLog={async (log) => {
-              await saveExerciseLog(log);
-            }}
-            onDeleteLog={async (id) => {
-              await deleteExerciseLog(id);
-            }}
+            onSaveLog={async (log) => { await saveExerciseLog(log); }}
+            onDeleteLog={deleteExerciseLog}
           />
         )}
 
         {activeTab === 'reports' && (
           <ReportsTab
-            transactions={transactions}
             accounts={accounts}
+            transactions={transactions}
             vehicles={vehicles}
           />
         )}
@@ -416,27 +449,31 @@ export function App() {
             vehicles={vehicles}
             transactions={transactions}
             todos={todos}
-            onSaveParsedTransaction={handleSaveTransaction}
+            onSaveParsedTransaction={async (t) => { await handleSaveTransaction(t); }}
           />
         )}
       </main>
 
-      {/* MODALS */}
-      {/* 1. Transaction Modal */}
+      {/* ========================================================= */}
+      {/* GLOBAL MODALS                                             */}
+      {/* ========================================================= */}
+
+      {/* 1. Transaction Create / Edit Modal */}
       <TransactionModal
         isOpen={isTxnModalOpen}
         onClose={() => {
           setIsTxnModalOpen(false);
           setEditingTxn(null);
+          setPendingEmailImportId(null);
         }}
         onSave={handleSaveTransaction}
         onDelete={handleDeleteTransaction}
-        initialData={editingTxn}
         accounts={accounts}
         vehicles={vehicles}
+        initialData={editingTxn}
       />
 
-      {/* 2. Account Modal */}
+      {/* 2. Account Create / Edit Modal */}
       <AccountModal
         isOpen={isAccountModalOpen}
         onClose={() => {
@@ -444,11 +481,10 @@ export function App() {
           setEditingAccount(null);
         }}
         onSave={async (acc) => { await saveAccount(acc); }}
-        onDelete={deleteAccount}
         initialData={editingAccount}
       />
 
-      {/* 3. Passbook Modal */}
+      {/* 3. Account Passbook Modal */}
       <PassbookModal
         isOpen={isPassbookOpen}
         onClose={() => {
@@ -460,7 +496,7 @@ export function App() {
         onSelectTxn={handleSelectTxn}
       />
 
-      {/* 4. Vehicle Modal */}
+      {/* 4. Vehicle Create / Edit Modal */}
       <VehicleModal
         isOpen={isVehicleModalOpen}
         onClose={() => {
@@ -468,11 +504,10 @@ export function App() {
           setEditingVehicle(null);
         }}
         onSave={async (veh) => { await saveVehicle(veh); }}
-        onDelete={deleteVehicle}
         initialData={editingVehicle}
       />
 
-      {/* 5. Service Log Modal */}
+      {/* 5. Service / Fuel Log Modal */}
       <ServiceLogModal
         isOpen={isServiceLogModalOpen}
         onClose={() => {
@@ -482,17 +517,16 @@ export function App() {
         }}
         onSave={async (log) => {
           await saveVehicleLog(log);
-          if (log.vehicleId && log.odometer) {
-            const veh = vehicles.find(v => v.id === log.vehicleId);
-            if (veh && log.odometer > veh.currentOdometer) {
-              await saveVehicle({ ...veh, currentOdometer: log.odometer });
-            }
+
+          // Update vehicle current odometer if this log is higher
+          const vehicle = vehicles.find(v => v.id === log.vehicleId);
+          if (vehicle && log.odometer && log.odometer > vehicle.currentOdometer) {
+            await saveVehicle({ ...vehicle, currentOdometer: log.odometer });
           }
         }}
-        onDelete={deleteVehicleLog}
         vehicles={vehicles}
-        initialVehicleId={logInitialVehicleId}
         initialData={editingServiceLog}
+        initialVehicleId={logInitialVehicleId}
       />
 
       {/* 6. Todo Note Modal */}
