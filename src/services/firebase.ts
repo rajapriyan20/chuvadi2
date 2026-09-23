@@ -30,14 +30,15 @@ import {
   User 
 } from 'firebase/auth';
 import type { Account, Transaction, Vehicle, VehicleLog, TodoNote, Entity, ExerciseLog } from '../types';
+import appletConfig from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB75TCDYTXViVv8b8JUy0ioZO_-e-CONFA",
-  authDomain: "chuvadi-d5fc1.firebaseapp.com",
-  projectId: "chuvadi-d5fc1",
-  storageBucket: "chuvadi-d5fc1.firebasestorage.app",
-  messagingSenderId: "673744947945",
-  appId: "1:673744947945:web:f38fb01b77bf34c55a7e78"
+  apiKey: appletConfig.apiKey,
+  authDomain: appletConfig.authDomain,
+  projectId: appletConfig.projectId, // gen-lang-client-0292204589
+  storageBucket: appletConfig.storageBucket,
+  messagingSenderId: appletConfig.messagingSenderId,
+  appId: appletConfig.appId
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
