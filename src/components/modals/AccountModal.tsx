@@ -99,7 +99,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
   const handleDelete = async () => {
     if (!initialData || !onDelete) return;
-    if (!window.confirm(`Delete account "${initialData.name}"? Transactions associated will remain.`)) return;
     setIsSaving(true);
     try {
       await onDelete(initialData.id);

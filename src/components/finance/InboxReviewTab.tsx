@@ -30,11 +30,64 @@ import { RulesTab } from './RulesTab';
 interface InboxReviewTabProps {
   accounts: Account[];
   onOpenNewTxnWithDefaults: (suggestedData: Partial<Transaction>, emailId?: string) => void;
+  isGuestMode?: boolean;
 }
+
+const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
+  {
+    id: 'demo-mail-1',
+    threadId: 'demo-thread-1',
+    subject: 'Order Delivered: Swiggy #8921',
+    from: 'no-reply@swiggy.in',
+    date: new Date().toISOString().split('T')[0],
+    snippet: 'Your order #8921 from Paradise Biryani was delivered. Paid ₹540 via UPI.',
+    bodyText: 'Your order #8921 from Paradise Biryani was delivered. Paid ₹540 via UPI.',
+    timestamp: Date.now(),
+    suggestedAmount: 540,
+    suggestedDate: new Date().toISOString().split('T')[0],
+    suggestedDescription: 'Swiggy - Paradise Biryani #8921',
+    suggestedCategory: 'Food & Dining',
+    suggestedType: 'EXPENSE',
+    status: 'PENDING'
+  },
+  {
+    id: 'demo-mail-2',
+    threadId: 'demo-thread-2',
+    subject: 'Transaction Alert: Shell Fuel Station',
+    from: 'alerts@hdfcbank.net',
+    date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+    snippet: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI.',
+    bodyText: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI.',
+    timestamp: Date.now() - 86400000 * 2,
+    suggestedAmount: 1650,
+    suggestedDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+    suggestedDescription: 'Shell Fuel Station Velachery',
+    suggestedCategory: 'Fuel',
+    suggestedType: 'EXPENSE',
+    status: 'PENDING'
+  },
+  {
+    id: 'demo-mail-3',
+    threadId: 'demo-thread-3',
+    subject: 'Amazon.in: Order Confirmation',
+    from: 'auto-confirm@amazon.in',
+    date: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0],
+    snippet: 'Your order of Motorcycle Chain Lube & Cleaner Kit has shipped. Total: ₹899.',
+    bodyText: 'Your order of Motorcycle Chain Lube & Cleaner Kit has shipped. Total: ₹899.',
+    timestamp: Date.now() - 86400000 * 4,
+    suggestedAmount: 899,
+    suggestedDate: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0],
+    suggestedDescription: 'Amazon India - Motorcycle Chain Lube & Cleaner',
+    suggestedCategory: 'Maintenance',
+    suggestedType: 'EXPENSE',
+    status: 'PENDING'
+  }
+];
 
 export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   accounts,
-  onOpenNewTxnWithDefaults
+  onOpenNewTxnWithDefaults,
+  isGuestMode = false
 }) => {
   // Nested sub-tab state: 'review' (default) or 'rules'
   const [activeSubTab, setActiveSubTab] = useState<'review' | 'rules'>('review');
@@ -54,8 +107,16 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
 
     setFilterRules(loadedFilters);
     setFieldRules(loadedFields);
-    setEmails(cachedMails);
-  }, [accounts]);
+
+    if (cachedMails.length > 0) {
+      setEmails(cachedMails);
+    } else if (isGuestMode) {
+      setEmails(DEMO_GMAIL_EXPENSES);
+      saveCachedEmails(DEMO_GMAIL_EXPENSES);
+    } else {
+      setEmails([]);
+    }
+  }, [accounts, isGuestMode]);
 
   // Handler for saving filter rules
   const handleSaveFilterRules = (updatedRules: GmailFilterRule[]) => {
@@ -71,6 +132,16 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
 
   // Refresh / Scan emails from Gmail
   const handleScanGmail = async () => {
+    if (isGuestMode) {
+      setIsLoading(true);
+      setTimeout(() => {
+        setEmails(DEMO_GMAIL_EXPENSES);
+        saveCachedEmails(DEMO_GMAIL_EXPENSES);
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+
     const token = getCachedGmailToken();
     if (!token) {
       setErrorMessage('Gmail is not connected. Please click "Connect Gmail Account" to authorize.');
@@ -185,6 +256,7 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
           onAddTransactionFromEmail={handleAddTransactionFromEmail}
           onIgnoreEmail={handleIgnoreEmail}
           onSwitchToRules={() => setActiveSubTab('rules')}
+          isGuestMode={isGuestMode}
         />
       )}
 

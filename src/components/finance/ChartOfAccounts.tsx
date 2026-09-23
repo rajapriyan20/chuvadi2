@@ -490,10 +490,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const handleDeleteAccountFromPopup = async () => {
     if (!selectedAccountForPopup || !onDeleteAccount) return;
     if (hasTransactions) {
-      alert(`Cannot delete account: ${selectedAccountTxns.length} transaction entries exist in this account.`);
-      return;
-    }
-    if (!window.confirm(`Delete account "${selectedAccountForPopup.name}"?`)) {
       return;
     }
     setIsDeletingAccountPopup(true);
@@ -638,10 +634,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const handleDeleteCategoryFromPopup = () => {
     if (!selectedCategoryForPopup || hasCategoryAccounts) return;
     const catKey = selectedCategoryForPopup.id || selectedCategoryForPopup.type;
-    const catName = getCategoryTitle(selectedCategoryForPopup);
-    if (!window.confirm(`Delete category "${catName}"?`)) {
-      return;
-    }
     setIsDeletingCategoryPopup(true);
     try {
       const updatedList = categoriesList.filter(c => (c.id || c.type) !== catKey);

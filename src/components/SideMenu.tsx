@@ -14,7 +14,11 @@ import {
   Receipt,
   ExternalLink,
   ChevronRight,
-  Dumbbell
+  Dumbbell,
+  LogOut,
+  ArrowLeft,
+  LogIn,
+  Eye
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
@@ -27,6 +31,9 @@ interface SideMenuProps {
   onSelectTab: (tab: ActiveTab) => void;
   renewalsCount?: number;
   pendingTodosCount?: number;
+  isGuestMode?: boolean;
+  onExitGuestMode?: () => void;
+  onLogin?: () => void;
   onOpenQuickAdd?: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
@@ -39,6 +46,9 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   onSelectTab,
   renewalsCount = 0,
   pendingTodosCount = 0,
+  isGuestMode = false,
+  onExitGuestMode,
+  onLogin,
   onOpenQuickAdd,
   onOpenExport,
   onOpenSettings
@@ -253,6 +263,48 @@ export const SideMenu: React.FC<SideMenuProps> = ({
               </button>
             )}
           </div>
+
+          {/* Guest Mode Controls */}
+          {isGuestMode ? (
+            <div className="space-y-2 pt-1 border-t border-slate-800/80">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
+                <div className="font-bold flex items-center gap-1.5 mb-0.5">
+                  <Eye size={12} />
+                  <span>Guest Demo Mode</span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Changes exist only in this browser session. Sign in to save permanently.
+                </p>
+              </div>
+
+              {onLogin && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onLogin();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 shadow-md shadow-amber-500/20"
+                >
+                  <LogIn size={13} strokeWidth={2.5} />
+                  <span>Sign In with Google</span>
+                </button>
+              )}
+
+              {onExitGuestMode && (
+                <button
+                  id="sidemenu-exit-guest-btn"
+                  onClick={() => {
+                    onClose();
+                    onExitGuestMode();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition active:scale-95 shadow-sm"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Exit Demo Mode</span>
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       </aside>
     </>

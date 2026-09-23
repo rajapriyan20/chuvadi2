@@ -67,9 +67,21 @@ export function setCached<T>(key: string, val: T): void {
 }
 
 // Authentication Helpers
-export async function loginWithGoogle(): Promise<User> {
-  const result = await signInWithPopup(auth, googleProvider);
-  return result.user;
+export async function loginWithGoogle(): Promise<User | null> {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (err: any) {
+    if (
+      err?.code === 'auth/popup-closed-by-user' ||
+      err?.code === 'auth/cancelled-popup-request' ||
+      err?.code === 'auth/user-cancelled'
+    ) {
+      // User voluntarily closed the popup or cancelled sign-in
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function loginAnonymously(): Promise<User> {
@@ -792,7 +804,7 @@ export const saveTodo = saveTodoNote;
 export const deleteTodo = deleteTodoNote;
 export const seedStarterData = seedSampleData;
 
-export function clearLocalCache(): void {
+export function clearLocalCache(reload: boolean = false): void {
   try {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -802,7 +814,9 @@ export function clearLocalCache(): void {
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
-    window.location.reload();
+    if (reload) {
+      window.location.reload();
+    }
   } catch (e) {
     console.error('Error clearing cache:', e);
   }

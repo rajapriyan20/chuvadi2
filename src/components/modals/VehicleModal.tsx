@@ -78,7 +78,6 @@ export const VehicleModal: React.FC<VehicleModalProps> = ({
 
   const handleDelete = async () => {
     if (!initialData || !onDelete) return;
-    if (!window.confirm(`Delete vehicle "${initialData.name}"?`)) return;
     setIsSaving(true);
     try {
       await onDelete(initialData.id);

@@ -121,7 +121,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   const handleDelete = async () => {
     if (!initialData || !onDelete) return;
-    if (!window.confirm('Are you sure you want to delete this transaction? Balances will be restored.')) return;
     setIsSaving(true);
     try {
       await onDelete(initialData);

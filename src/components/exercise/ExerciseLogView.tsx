@@ -78,15 +78,13 @@ export const ExerciseLogView: React.FC<ExerciseLogViewProps> = ({
 
   // Handle Delete Confirmation
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this exercise log?')) {
-      setDeletingId(id);
-      try {
-        await onDeleteLog(id);
-      } catch (err) {
-        console.error('Failed to delete exercise log:', err);
-      } finally {
-        setDeletingId(null);
-      }
+    setDeletingId(id);
+    try {
+      await onDeleteLog(id);
+    } catch (err) {
+      console.error('Failed to delete exercise log:', err);
+    } finally {
+      setDeletingId(null);
     }
   };
 

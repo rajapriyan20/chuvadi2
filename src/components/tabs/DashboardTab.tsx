@@ -11,7 +11,10 @@ import {
   ArrowRightLeft,
   ChevronRight,
   ShieldAlert,
-  Wallet
+  Wallet,
+  Sparkles,
+  LogIn,
+  ArrowLeft
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysRemaining } from '../../utils/formatters';
 import type { Account, Transaction, Vehicle, TodoNote, ActiveTab } from '../../types';
@@ -29,6 +32,9 @@ interface DashboardTabProps {
   onSelectTxn: (txn: Transaction) => void;
   onSelectTab: (tab: ActiveTab) => void;
   onToggleTodoItem: (noteId: string, itemId: string) => void;
+  isGuestMode?: boolean;
+  onLogin?: () => void;
+  onExitGuestMode?: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -43,7 +49,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onOpenPassbook,
   onSelectTxn,
   onSelectTab,
-  onToggleTodoItem
+  onToggleTodoItem,
+  isGuestMode = false,
+  onLogin,
+  onExitGuestMode
 }) => {
   // Identify critical renewals expiring in <= 30 days
   const criticalRenewals = vehicles.flatMap((v) => {
@@ -68,6 +77,45 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6 pb-20 md:pb-8">
+      {/* Guest Mode Informational Banner */}
+      {isGuestMode && (
+        <div className="p-3.5 sm:p-4 bg-gradient-to-r from-amber-500/10 via-[#151c26] to-transparent border border-amber-500/25 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-200">
+                Exploring in Guest Demo Mode
+              </div>
+              <div className="text-[11px] text-slate-400">
+                You have full access to test ledger balances, garage logs, fitness tracking, and checklists. Data stays in this browser session.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {onLogin && (
+              <button
+                onClick={onLogin}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 shadow-sm shadow-amber-500/20 cursor-pointer"
+              >
+                <LogIn size={13} strokeWidth={2.5} />
+                <span>Sign In with Google</span>
+              </button>
+            )}
+            {onExitGuestMode && (
+              <button
+                onClick={onExitGuestMode}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-slate-700 transition active:scale-95 cursor-pointer"
+              >
+                <ArrowLeft size={13} />
+                <span>Exit Demo</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Financial Overview Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Net Worth */}

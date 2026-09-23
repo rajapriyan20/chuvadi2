@@ -40,6 +40,7 @@ interface ReviewTabProps {
   onAddTransactionFromEmail: (email: GmailExpenseEmail) => void;
   onIgnoreEmail: (emailId: string) => void;
   onSwitchToRules: () => void;
+  isGuestMode?: boolean;
 }
 
 export const ReviewTab: React.FC<ReviewTabProps> = ({
@@ -51,7 +52,8 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   onRefreshEmails,
   onAddTransactionFromEmail,
   onIgnoreEmail,
-  onSwitchToRules
+  onSwitchToRules,
+  isGuestMode = false
 }) => {
   const [filterStatus, setFilterStatus] = useState<'PENDING' | 'ADDED' | 'IGNORED' | 'ALL'>('PENDING');
   const [selectedEmailForPreview, setSelectedEmailForPreview] = useState<GmailExpenseEmail | null>(null);
@@ -130,19 +132,34 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
               {pendingCount} to review
             </span>
-            {hasToken && (
+            {isGuestMode ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                Demo Preview Mode
+              </span>
+            ) : hasToken ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                 <Check size={10} /> Connected
               </span>
-            )}
+            ) : null}
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-xl">
-            Review parsed transactions from bank alerts and orders from the last 30 days. Edit any field and click <strong>Add Transaction</strong> or <strong>Mark as Ignore</strong>.
+            {isGuestMode
+              ? "Review simulated expense receipts (Food delivery, Fuel, Shopping). Click 'Add Transaction' to see how email parsing populates directly into your ledger."
+              : "Review parsed transactions from bank alerts and orders from the last 30 days. Edit any field and click Add Transaction or Mark as Ignore."}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {!hasToken ? (
+          {isGuestMode ? (
+            <button
+              onClick={() => onRefreshEmails()}
+              disabled={isLoading}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"
+            >
+              <RefreshCw size={14} className={isLoading ? 'animate-spin text-slate-950' : 'text-slate-950'} />
+              <span>{isLoading ? 'Refreshing demo emails...' : 'Reset Demo Emails'}</span>
+            </button>
+          ) : !hasToken ? (
             <button
               onClick={handleConnectGmail}
               disabled={isAuthenticating}

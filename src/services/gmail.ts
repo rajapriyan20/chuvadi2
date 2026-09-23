@@ -192,9 +192,14 @@ export async function authenticateGmail(): Promise<string> {
     setCachedGmailToken(token);
     return token;
   } catch (fbError: any) {
-    console.error('Firebase Auth failed:', fbError);
     const code = fbError?.code || '';
     const origin = window.location.origin;
+
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      throw new Error('Sign-in popup was closed before completing authentication.');
+    }
+
+    console.warn('Firebase Auth token retrieval failed:', fbError);
 
     if (code === 'auth/configuration-not-found') {
       throw new Error(

@@ -28,6 +28,7 @@ interface FinanceTabProps {
   onOpenNewEntity: () => void;
   onDeleteEntity: (id: string) => Promise<void>;
   onOpenNewTxnWithDefaults?: (defaults: Partial<Transaction>, emailId?: string) => void;
+  isGuestMode?: boolean;
 }
 
 export const FinanceTab: React.FC<FinanceTabProps> = ({
@@ -43,7 +44,8 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onOpenNewTxn,
   onOpenNewEntity: _onOpenNewEntity,
   onDeleteEntity: _onDeleteEntity,
-  onOpenNewTxnWithDefaults
+  onOpenNewTxnWithDefaults,
+  isGuestMode = false
 }) => {
   // Chart of Accounts is shown first by default, then Transactions, then Inbox / Review
   const [subTab, setSubTab] = useState<'coa' | 'transactions' | 'inbox'>('coa');
@@ -277,6 +279,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   {subTab === 'inbox' && (
     <InboxReviewTab
       accounts={accounts}
+      isGuestMode={isGuestMode}
       onOpenNewTxnWithDefaults={(defaults, emailId) => {
         if (onOpenNewTxnWithDefaults) {
           onOpenNewTxnWithDefaults(defaults, emailId);

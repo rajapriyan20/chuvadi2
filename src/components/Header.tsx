@@ -9,7 +9,9 @@ import {
   User as UserIcon,
   Menu,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  ArrowLeft
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
@@ -20,12 +22,14 @@ interface HeaderProps {
   monthlyExpense: number;
   user: User | null;
   isOnline: boolean;
+  isGuestMode?: boolean;
   onOpenQuickAdd: () => void;
   onOpenAi: () => void;
   onOpenExport: () => void;
   onOpenSettings: () => void;
   onLogin: () => void;
   onLogout: () => void;
+  onExitGuestMode?: () => void;
   onToggleSideMenu: () => void;
   unreadNotificationsCount?: number;
 }
@@ -35,30 +39,34 @@ export const Header: React.FC<HeaderProps> = ({
   monthlyExpense,
   user,
   isOnline,
+  isGuestMode = false,
   onOpenQuickAdd,
   onOpenAi,
   onOpenExport,
   onOpenSettings,
   onLogin,
   onLogout,
+  onExitGuestMode,
   onToggleSideMenu,
   unreadNotificationsCount = 0
 }) => {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [showStatusTooltip, setShowStatusTooltip] = useState(false);
 
   const handleLogoutClick = async () => {
-    const userEmail = user?.email || 'your account';
-    if (window.confirm(`Sign out from ${userEmail}?`)) {
-      setIsSigningOut(true);
-      try {
-        await onLogout();
-      } catch (err) {
-        console.error('Logout error:', err);
-      } finally {
-        setIsSigningOut(false);
-      }
+    setIsSigningOut(true);
+    try {
+      await onLogout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const handleExitGuestClick = () => {
+    if (onExitGuestMode) {
+      onExitGuestMode();
     }
   };
 
@@ -66,8 +74,14 @@ export const Header: React.FC<HeaderProps> = ({
     setIsSigningIn(true);
     try {
       await onLogin();
-    } catch (err) {
-      console.error('Login error:', err);
+    } catch (err: any) {
+      if (
+        err?.code !== 'auth/popup-closed-by-user' &&
+        err?.code !== 'auth/cancelled-popup-request' &&
+        err?.code !== 'auth/user-cancelled'
+      ) {
+        console.warn('Sign-in error:', err);
+      }
     } finally {
       setIsSigningIn(false);
     }
@@ -94,27 +108,36 @@ export const Header: React.FC<HeaderProps> = ({
             </a>
           </div>
 
-          {/* Sync & Online Status Indicator with descriptive label */}
-          <div 
-            className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer select-none"
-            onClick={() => setShowStatusTooltip(prev => !prev)}
-            title={isOnline ? 'Cloud database is connected and syncing live.' : 'Offline: Changes are saved locally and will sync when reconnected.'}
-          >
-            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-800">
-              <span className="relative flex h-2 w-2">
-                {isOnline ? (
-                  <>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </>
-                ) : (
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                )}
-              </span>
-              <span className="text-[10px] font-medium text-slate-300">
-                {isOnline ? 'Cloud Live' : 'Offline'}
-              </span>
-            </div>
+          {/* Sync & Online Status Indicator */}
+          <div className="flex items-center gap-2 text-[11px] text-slate-400 select-none">
+            {isGuestMode ? (
+              <div 
+                className="flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/25 text-amber-300 font-medium"
+                title="You are in Guest Mode with sample demo data. No changes are saved to the cloud."
+              >
+                <Eye size={11} className="text-amber-400" />
+                <span className="text-[10px]">Guest Demo (Offline)</span>
+              </div>
+            ) : (
+              <div 
+                className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-800"
+                title={isOnline ? 'Cloud database is connected and syncing live.' : 'Offline: Changes are saved locally.'}
+              >
+                <span className="relative flex h-2 w-2">
+                  {isOnline ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </>
+                  ) : (
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  )}
+                </span>
+                <span className="text-[10px] font-medium text-slate-300">
+                  {isOnline ? 'Cloud Live' : 'Offline'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -143,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
                   Chuvadi
                   <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
-                    Life OS
+                    {isGuestMode ? 'Guest Demo' : 'Life OS'}
                   </span>
                 </span>
               </div>
@@ -183,7 +206,30 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {/* Auth State Button */}
-            {user ? (
+            {isGuestMode ? (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  id="header-exit-guest-btn"
+                  onClick={handleExitGuestClick}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium transition active:scale-95 shadow-sm"
+                  title="Exit Guest Mode and return to Welcome screen"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Exit Demo</span>
+                </button>
+
+                <button
+                  id="header-login-btn"
+                  onClick={handleLoginClick}
+                  disabled={isSigningIn}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 shadow-md shadow-amber-500/20"
+                  title="Sign In with Google for Cloud Sync"
+                >
+                  <LogIn size={13} strokeWidth={2.5} />
+                  <span>Sign In</span>
+                </button>
+              </div>
+            ) : user ? (
               <button
                 id="header-logout-btn"
                 onClick={handleLogoutClick}
@@ -211,11 +257,11 @@ export const Header: React.FC<HeaderProps> = ({
                 id="header-login-btn"
                 onClick={handleLoginClick}
                 disabled={isSigningIn}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition font-medium active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition active:scale-95 shadow-sm"
                 title="Sign In with Google for Cloud Sync"
               >
-                <LogIn size={14} className="text-amber-400" />
-                <span className="hidden sm:inline">Sign In</span>
+                <LogIn size={14} strokeWidth={2.5} />
+                <span>Sign In</span>
               </button>
             )}
           </div>

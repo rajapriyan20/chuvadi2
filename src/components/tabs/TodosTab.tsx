@@ -185,12 +185,9 @@ export const TodosTab: React.FC<TodosTabProps> = ({
                           <Edit3 size={14} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`Delete checklist "${note.title}"?`)) {
-                              onDeleteTodo(note.id);
-                            }
-                          }}
+                          onClick={() => onDeleteTodo(note.id)}
                           className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-700/50"
+                          title="Delete checklist"
                         >
                           <Trash2 size={14} />
                         </button>

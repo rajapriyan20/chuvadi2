@@ -33,6 +33,15 @@ import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
 import { markEmailAsAdded, setCachedGmailToken } from './services/gmail';
+import {
+  DEMO_ACCOUNTS,
+  DEMO_TRANSACTIONS,
+  DEMO_VEHICLES,
+  DEMO_VEHICLE_LOGS,
+  DEMO_TODOS,
+  DEMO_ENTITIES,
+  DEMO_EXERCISE_LOGS
+} from './data/demoData';
 
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
@@ -79,7 +88,7 @@ export function App() {
   });
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
-  // Domain State from Firebase & Local Mirror
+  // Domain State (Isolated: Demo data in Guest Mode, Firestore data in Auth Mode)
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -113,16 +122,35 @@ export function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Subscribe to real-time Cloud Firestore collections & Auth
+  // Listen to Auth State
   useEffect(() => {
     const unsubAuth = subscribeAuth((currentUser) => {
       setUser(currentUser);
       setAuthInitialized(true);
       if (currentUser) {
+        // Authenticated! Disable guest mode
         setGuestMode(false);
         sessionStorage.removeItem('chuvadi_guest_mode');
       }
     });
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      unsubAuth();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Sync with Firestore ONLY WHEN Authenticated (No Firestore connection or data leak in Guest Mode!)
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
 
     const unsubAccounts = subscribeToAccounts(setAccounts);
     const unsubTxns = subscribeToTransactions(setTransactions);
@@ -132,13 +160,7 @@ export function App() {
     const unsubEntities = subscribeToEntities(setEntities);
     const unsubExercise = subscribeToExerciseLogs(setExerciseLogs);
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
     return () => {
-      unsubAuth();
       unsubAccounts();
       unsubTxns();
       unsubVehicles();
@@ -146,10 +168,21 @@ export function App() {
       unsubTodos();
       unsubEntities();
       unsubExercise();
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [user]);
+
+  // Populate Demo data ONLY WHEN in Guest Mode
+  useEffect(() => {
+    if (guestMode && !user) {
+      setAccounts(JSON.parse(JSON.stringify(DEMO_ACCOUNTS)));
+      setTransactions(JSON.parse(JSON.stringify(DEMO_TRANSACTIONS)));
+      setVehicles(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
+      setVehicleLogs(JSON.parse(JSON.stringify(DEMO_VEHICLE_LOGS)));
+      setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
+      setEntities(JSON.parse(JSON.stringify(DEMO_ENTITIES)));
+      setExerciseLogs(JSON.parse(JSON.stringify(DEMO_EXERCISE_LOGS)));
+    }
+  }, [guestMode, user]);
 
   // Compute Net Worth
   const totalNetWorth = useMemo(() => {
@@ -195,8 +228,62 @@ export function App() {
     }, 0);
   }, [todos]);
 
-  // Transaction Handlers (ATOMIC FIRESTORE TRANSACTIONS)
+  // Transaction Handlers (ATOMIC FIRESTORE TRANSACTIONS when logged in, local-state when Guest)
   const handleSaveTransaction = async (txn: Omit<Transaction, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = txn.id || 'demo-txn-' + Date.now();
+      const newAmt = Number(txn.amount) || 0;
+      const existing = transactions.find(t => t.id === id);
+      const oldAmt = existing ? Number(existing.amount) || 0 : 0;
+
+      const payload: Transaction = {
+        ...txn,
+        id,
+        timestamp: txn.timestamp || Date.now(),
+        amount: newAmt
+      };
+
+      setTransactions(prev => {
+        const idx = prev.findIndex(t => t.id === id);
+        return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
+      });
+
+      // Update account balances locally in Guest Mode
+      setAccounts(prev => prev.map(acc => {
+        let bal = acc.balance;
+        if (existing) {
+          if (existing.type === 'EXPENSE' && existing.fromAccountId === acc.id) bal += oldAmt;
+          if (existing.type === 'INCOME' && existing.toAccountId === acc.id) bal -= oldAmt;
+          if (existing.type === 'TRANSFER') {
+            if (existing.fromAccountId === acc.id) bal += oldAmt;
+            if (existing.toAccountId === acc.id) bal -= oldAmt;
+          }
+        }
+        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal -= newAmt;
+        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal += newAmt;
+        if (txn.type === 'TRANSFER') {
+          if (txn.fromAccountId === acc.id) bal -= newAmt;
+          if (txn.toAccountId === acc.id) bal += newAmt;
+        }
+        return { ...acc, balance: bal, updatedAt: Date.now() };
+      }));
+
+      // Update vehicle odometer if higher
+      if (txn.vehicleId && txn.odometer) {
+        setVehicles(prev => prev.map(v => 
+          v.id === txn.vehicleId && txn.odometer! > v.currentOdometer
+            ? { ...v, currentOdometer: txn.odometer! }
+            : v
+        ));
+      }
+
+      if (pendingEmailImportId) {
+        markEmailAsAdded(pendingEmailImportId, id);
+        setPendingEmailImportId(null);
+      }
+      return;
+    }
+
     const savedId = await saveTransactionAtomic(txn);
 
     if (pendingEmailImportId) {
@@ -214,10 +301,122 @@ export function App() {
   };
 
   const handleDeleteTransaction = async (txn: Transaction) => {
+    if (guestMode && !user) {
+      setTransactions(prev => prev.filter(t => t.id !== txn.id));
+      const amt = Number(txn.amount) || 0;
+      setAccounts(prev => prev.map(acc => {
+        let bal = acc.balance;
+        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal += amt;
+        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal -= amt;
+        if (txn.type === 'TRANSFER') {
+          if (txn.fromAccountId === acc.id) bal += amt;
+          if (txn.toAccountId === acc.id) bal += amt;
+        }
+        return { ...acc, balance: bal, updatedAt: Date.now() };
+      }));
+      return;
+    }
+
     await deleteTransactionAtomic(txn);
   };
 
-  // Todo Note Toggle Item Handler
+  // Account Operations
+  const handleSaveAccount = async (acc: Omit<Account, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = acc.id || 'demo-acc-' + Date.now();
+      const payload: Account = { ...acc, id, updatedAt: Date.now() };
+      setAccounts(prev => {
+        const idx = prev.findIndex(a => a.id === id);
+        return idx >= 0 ? prev.map(a => a.id === id ? payload : a) : [...prev, payload];
+      });
+      return;
+    }
+    await saveAccount(acc);
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    if (guestMode && !user) {
+      setAccounts(prev => prev.filter(a => a.id !== id));
+      return;
+    }
+    await deleteAccount(id);
+  };
+
+  // Vehicle Operations
+  const handleSaveVehicle = async (veh: Omit<Vehicle, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = veh.id || 'demo-veh-' + Date.now();
+      const payload: Vehicle = { ...veh, id, currentOdometer: Number(veh.currentOdometer) || 0 };
+      setVehicles(prev => {
+        const idx = prev.findIndex(v => v.id === id);
+        return idx >= 0 ? prev.map(v => v.id === id ? payload : v) : [...prev, payload];
+      });
+      return;
+    }
+    await saveVehicle(veh);
+  };
+
+  const handleDeleteVehicle = async (id: string) => {
+    if (guestMode && !user) {
+      setVehicles(prev => prev.filter(v => v.id !== id));
+      return;
+    }
+    await deleteVehicle(id);
+  };
+
+  // Vehicle Logs
+  const handleSaveVehicleLog = async (log: Omit<VehicleLog, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = log.id || 'demo-log-' + Date.now();
+      const payload: VehicleLog = {
+        ...log,
+        id,
+        timestamp: log.timestamp || Date.now(),
+        cost: Number(log.cost) || 0,
+        odometer: Number(log.odometer) || 0
+      };
+      setVehicleLogs(prev => {
+        const idx = prev.findIndex(l => l.id === id);
+        return idx >= 0 ? prev.map(l => l.id === id ? payload : l) : [payload, ...prev];
+      });
+      if (payload.vehicleId && payload.odometer) {
+        setVehicles(prev => prev.map(v => 
+          v.id === payload.vehicleId && payload.odometer > v.currentOdometer 
+            ? { ...v, currentOdometer: payload.odometer } 
+            : v
+        ));
+      }
+      return;
+    }
+    await saveVehicleLog(log);
+    const vehicle = vehicles.find(v => v.id === log.vehicleId);
+    if (vehicle && log.odometer && log.odometer > vehicle.currentOdometer) {
+      await saveVehicle({ ...vehicle, currentOdometer: log.odometer });
+    }
+  };
+
+  // Todo Note Handlers
+  const handleSaveTodo = async (todo: Omit<TodoNote, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = todo.id || 'demo-todo-' + Date.now();
+      const payload: TodoNote = { ...todo, id, updatedAt: Date.now() };
+      setTodos(prev => {
+        const idx = prev.findIndex(t => t.id === id);
+        return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
+      });
+      return;
+    }
+    await saveTodo(todo);
+  };
+
+  const handleDeleteTodo = async (id: string) => {
+    if (guestMode && !user) {
+      setTodos(prev => prev.filter(t => t.id !== id));
+      return;
+    }
+    await deleteTodo(id);
+  };
+
   const handleToggleTodoItem = async (noteId: string, itemId: string) => {
     const note = todos.find(t => t.id === noteId);
     if (!note) return;
@@ -225,6 +424,11 @@ export function App() {
     const updatedItems = note.items.map(it => 
       it.id === itemId ? { ...it, completed: !it.completed } : it
     );
+
+    if (guestMode && !user) {
+      setTodos(prev => prev.map(t => t.id === noteId ? { ...t, items: updatedItems, updatedAt: Date.now() } : t));
+      return;
+    }
 
     await saveTodo({
       ...note,
@@ -234,11 +438,59 @@ export function App() {
   };
 
   const handleTogglePin = async (todo: TodoNote) => {
+    if (guestMode && !user) {
+      setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, pinned: !t.pinned, updatedAt: Date.now() } : t));
+      return;
+    }
     await saveTodo({
       ...todo,
       pinned: !todo.pinned,
       updatedAt: Date.now()
     });
+  };
+
+  // Entity Handlers
+  const handleSaveEntity = async (entity: Omit<Entity, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = entity.id || 'demo-ent-' + Date.now();
+      const payload: Entity = { ...entity, id, amount: Number(entity.amount) || 0 };
+      setEntities(prev => {
+        const idx = prev.findIndex(e => e.id === id);
+        return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
+      });
+      return;
+    }
+    await saveEntity(entity);
+  };
+
+  const handleDeleteEntity = async (id: string) => {
+    if (guestMode && !user) {
+      setEntities(prev => prev.filter(e => e.id !== id));
+      return;
+    }
+    await deleteEntity(id);
+  };
+
+  // Exercise Log Handlers
+  const handleSaveExerciseLog = async (log: Omit<ExerciseLog, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = log.id || 'demo-ex-' + Date.now();
+      const payload: ExerciseLog = { ...log, id, updatedAt: Date.now() };
+      setExerciseLogs(prev => {
+        const idx = prev.findIndex(e => e.id === id);
+        return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
+      });
+      return;
+    }
+    await saveExerciseLog(log);
+  };
+
+  const handleDeleteExerciseLog = async (id: string) => {
+    if (guestMode && !user) {
+      setExerciseLogs(prev => prev.filter(e => e.id !== id));
+      return;
+    }
+    await deleteExerciseLog(id);
   };
 
   // Open Passbook for specific account
@@ -260,19 +512,49 @@ export function App() {
     setIsServiceLogModalOpen(true);
   };
 
+  // Logout from Authenticated Account
   const handleLogout = async () => {
     try {
       setCachedGmailToken(null);
       await logoutUser();
+      clearLocalCache();
       setUser(null);
       setGuestMode(false);
       sessionStorage.removeItem('chuvadi_guest_mode');
+      setAccounts([]);
+      setTransactions([]);
+      setVehicles([]);
+      setVehicleLogs([]);
+      setTodos([]);
+      setEntities([]);
+      setExerciseLogs([]);
     } catch (err) {
       console.error('Logout error:', err);
     }
   };
 
-  const handleContinueAsGuest = () => {
+  // Exit from Guest Preview Mode
+  const handleExitGuestMode = () => {
+    setGuestMode(false);
+    sessionStorage.removeItem('chuvadi_guest_mode');
+    setUser(null);
+    setAccounts([]);
+    setTransactions([]);
+    setVehicles([]);
+    setVehicleLogs([]);
+    setTodos([]);
+    setEntities([]);
+    setExerciseLogs([]);
+  };
+
+  // Continue to Guest Mode from Login Screen
+  const handleContinueAsGuest = async () => {
+    if (user) {
+      try {
+        await logoutUser();
+      } catch (e) {}
+      setUser(null);
+    }
     setGuestMode(true);
     sessionStorage.setItem('chuvadi_guest_mode', 'true');
   };
@@ -299,15 +581,18 @@ export function App() {
     );
   }
 
-  // 3. Main Authenticated App Screen
+  const isCurrentGuest = Boolean(guestMode && !user);
+
+  // 3. Main Authenticated / Guest App Screen
   return (
     <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
-      {/* Top Application Header with Chuvadi Logo, Credit Bar and Net Worth */}
+      {/* Top Application Header */}
       <Header
         totalNetWorth={totalNetWorth}
         monthlyExpense={monthlyExpense}
         user={user}
         isOnline={isOnline}
+        isGuestMode={isCurrentGuest}
         onOpenQuickAdd={() => {
           setEditingTxn(null);
           setIsTxnModalOpen(true);
@@ -317,6 +602,7 @@ export function App() {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onLogin={loginWithGoogle}
         onLogout={handleLogout}
+        onExitGuestMode={handleExitGuestMode}
         onToggleSideMenu={() => setIsSideMenuOpen(prev => !prev)}
         unreadNotificationsCount={renewalsCount + pendingTodosCount}
       />
@@ -329,6 +615,9 @@ export function App() {
         onSelectTab={setActiveTab}
         renewalsCount={renewalsCount}
         pendingTodosCount={pendingTodosCount}
+        isGuestMode={isCurrentGuest}
+        onExitGuestMode={handleExitGuestMode}
+        onLogin={loginWithGoogle}
         onOpenQuickAdd={() => {
           setEditingTxn(null);
           setIsTxnModalOpen(true);
@@ -356,6 +645,9 @@ export function App() {
             onSelectTxn={handleSelectTxn}
             onSelectTab={setActiveTab}
             onToggleTodoItem={handleToggleTodoItem}
+            isGuestMode={isCurrentGuest}
+            onLogin={loginWithGoogle}
+            onExitGuestMode={handleExitGuestMode}
           />
         )}
 
@@ -372,8 +664,8 @@ export function App() {
               setEditingAccount(acc);
               setIsAccountModalOpen(true);
             }}
-            onSaveAccount={async (acc) => { await saveAccount(acc); }}
-            onDeleteAccount={deleteAccount}
+            onSaveAccount={handleSaveAccount}
+            onDeleteAccount={handleDeleteAccount}
             onOpenPassbook={handleOpenPassbook}
             onSelectTxn={handleSelectTxn}
             onOpenNewTxn={() => {
@@ -381,12 +673,13 @@ export function App() {
               setIsTxnModalOpen(true);
             }}
             onOpenNewEntity={() => setIsEntityModalOpen(true)}
-            onDeleteEntity={deleteEntity}
+            onDeleteEntity={handleDeleteEntity}
             onOpenNewTxnWithDefaults={(defaults, emailId) => {
               if (emailId) setPendingEmailImportId(emailId);
               setEditingTxn(defaults as any);
               setIsTxnModalOpen(true);
             }}
+            isGuestMode={isCurrentGuest}
           />
         )}
 
@@ -421,7 +714,7 @@ export function App() {
               setEditingTodo(todo);
               setIsTodoModalOpen(true);
             }}
-            onDeleteTodo={deleteTodo}
+            onDeleteTodo={handleDeleteTodo}
             onToggleTodoItem={handleToggleTodoItem}
             onTogglePin={handleTogglePin}
           />
@@ -430,8 +723,8 @@ export function App() {
         {activeTab === 'exercise' && (
           <ExerciseLogView
             logs={exerciseLogs}
-            onSaveLog={async (log) => { await saveExerciseLog(log); }}
-            onDeleteLog={deleteExerciseLog}
+            onSaveLog={handleSaveExerciseLog}
+            onDeleteLog={handleDeleteExerciseLog}
           />
         )}
 
@@ -480,7 +773,7 @@ export function App() {
           setIsAccountModalOpen(false);
           setEditingAccount(null);
         }}
-        onSave={async (acc) => { await saveAccount(acc); }}
+        onSave={handleSaveAccount}
         initialData={editingAccount}
       />
 
@@ -503,7 +796,7 @@ export function App() {
           setIsVehicleModalOpen(false);
           setEditingVehicle(null);
         }}
-        onSave={async (veh) => { await saveVehicle(veh); }}
+        onSave={handleSaveVehicle}
         initialData={editingVehicle}
       />
 
@@ -515,15 +808,7 @@ export function App() {
           setEditingServiceLog(null);
           setLogInitialVehicleId(undefined);
         }}
-        onSave={async (log) => {
-          await saveVehicleLog(log);
-
-          // Update vehicle current odometer if this log is higher
-          const vehicle = vehicles.find(v => v.id === log.vehicleId);
-          if (vehicle && log.odometer && log.odometer > vehicle.currentOdometer) {
-            await saveVehicle({ ...vehicle, currentOdometer: log.odometer });
-          }
-        }}
+        onSave={handleSaveVehicleLog}
         vehicles={vehicles}
         initialData={editingServiceLog}
         initialVehicleId={logInitialVehicleId}
@@ -536,8 +821,8 @@ export function App() {
           setIsTodoModalOpen(false);
           setEditingTodo(null);
         }}
-        onSave={async (todo) => { await saveTodo(todo); }}
-        onDelete={deleteTodo}
+        onSave={handleSaveTodo}
+        onDelete={handleDeleteTodo}
         initialData={editingTodo}
       />
 
@@ -545,7 +830,7 @@ export function App() {
       <EntityModal
         isOpen={isEntityModalOpen}
         onClose={() => setIsEntityModalOpen(false)}
-        onSave={async (entity) => { await saveEntity(entity); }}
+        onSave={handleSaveEntity}
       />
 
       {/* 8. Export & Backup Modal */}
@@ -559,12 +844,12 @@ export function App() {
         todos={todos}
         entities={entities}
         onImportData={async (data) => {
-          if (data.accounts) for (const a of data.accounts) await saveAccount(a);
-          if (data.transactions) for (const t of data.transactions) await saveTransactionAtomic(t);
-          if (data.vehicles) for (const v of data.vehicles) await saveVehicle(v);
-          if (data.vehicleLogs) for (const l of data.vehicleLogs) await saveVehicleLog(l);
-          if (data.todos) for (const td of data.todos) await saveTodo(td);
-          if (data.entities) for (const e of data.entities) await saveEntity(e);
+          if (data.accounts) for (const a of data.accounts) await handleSaveAccount(a);
+          if (data.transactions) for (const t of data.transactions) await handleSaveTransaction(t);
+          if (data.vehicles) for (const v of data.vehicles) await handleSaveVehicle(v);
+          if (data.vehicleLogs) for (const l of data.vehicleLogs) await handleSaveVehicleLog(l);
+          if (data.todos) for (const td of data.todos) await handleSaveTodo(td);
+          if (data.entities) for (const e of data.entities) await handleSaveEntity(e);
         }}
       />
 
@@ -572,7 +857,23 @@ export function App() {
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        onSeedData={seedStarterData}
+        isGuestMode={isCurrentGuest}
+        onLogin={loginWithGoogle}
+        onExitGuestMode={handleExitGuestMode}
+        onSeedData={async () => {
+          if (guestMode && !user) {
+            // Reset to pure demo starter data
+            setAccounts(JSON.parse(JSON.stringify(DEMO_ACCOUNTS)));
+            setTransactions(JSON.parse(JSON.stringify(DEMO_TRANSACTIONS)));
+            setVehicles(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
+            setVehicleLogs(JSON.parse(JSON.stringify(DEMO_VEHICLE_LOGS)));
+            setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
+            setEntities(JSON.parse(JSON.stringify(DEMO_ENTITIES)));
+            setExerciseLogs(JSON.parse(JSON.stringify(DEMO_EXERCISE_LOGS)));
+          } else {
+            await seedStarterData();
+          }
+        }}
         onClearCache={clearLocalCache}
       />
     </div>

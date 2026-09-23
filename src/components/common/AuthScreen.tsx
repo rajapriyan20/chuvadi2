@@ -15,7 +15,7 @@ import { ChuvadiLogo } from '../ChuvadiLogo';
 import { WhatsAppLogo } from './WhatsAppLogo';
 
 interface AuthScreenProps {
-  onLogin: () => Promise<void>;
+  onLogin: () => Promise<any>;
   onContinueAsGuest?: () => void;
 }
 
@@ -29,11 +29,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
     try {
       await onLogin();
     } catch (err: any) {
-      console.error('Sign-in error:', err);
-      // If user simply closed popup, don't show a loud error
-      if (err?.code !== 'auth/popup-closed-by-user') {
-        setError(err?.message || 'Failed to sign in. Please check your network or try again.');
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        err?.code === 'auth/user-cancelled'
+      ) {
+        // User closed or dismissed the popup voluntarily
+        return;
       }
+      if (err?.code === 'auth/popup-blocked') {
+        setError('The sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+        return;
+      }
+      console.warn('Sign-in attempt failed:', err);
+      setError(err?.message || 'Failed to sign in. Please check your network or try again.');
     } finally {
       setIsLoading(false);
     }

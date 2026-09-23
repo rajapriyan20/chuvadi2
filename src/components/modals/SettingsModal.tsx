@@ -8,7 +8,11 @@ import {
   CheckCircle2,
   ShieldCheck,
   Smartphone,
-  Download
+  Download,
+  LogIn,
+  ArrowLeft,
+  Eye,
+  Check
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { InstallAppModal } from './InstallAppModal';
@@ -19,17 +23,43 @@ interface SettingsModalProps {
   onClose: () => void;
   onSeedData: () => Promise<void>;
   onClearCache: () => void;
+  isGuestMode?: boolean;
+  onLogin?: () => void;
+  onExitGuestMode?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onSeedData,
-  onClearCache
+  onClearCache,
+  isGuestMode = false,
+  onLogin,
+  onExitGuestMode
 }) => {
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [seedSuccess, setSeedSuccess] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [cacheReset, setCacheReset] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleSeed = async () => {
+    setIsSeeding(true);
+    try {
+      await onSeedData();
+      setSeedSuccess(true);
+      setTimeout(() => setSeedSuccess(false), 3000);
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const handleResetCache = () => {
+    onClearCache();
+    setCacheReset(true);
+    setTimeout(() => setCacheReset(false), 3000);
+  };
 
   return (
     <>
@@ -83,35 +113,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             {/* Unified Project Database Info */}
-            <div className="p-3.5 bg-[#141b24] rounded-2xl border border-emerald-500/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-                  <Database size={15} />
-                  <span>Unified Cloud Project</span>
+            {isGuestMode ? (
+              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <Eye size={15} />
+                    <span>Guest Demo Session</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    In-Memory Sandbox
+                  </span>
                 </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <CheckCircle2 size={10} /> Active
-                </span>
+                <div className="text-[11px] text-slate-300 space-y-1 bg-[#0a0e14] p-2.5 rounded-xl border border-slate-800 font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Environment:</span>
+                    <span className="text-amber-300 font-bold">Offline / Preview</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Database:</span>
+                    <span className="text-slate-400">Demo State</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Cloud Sync:</span>
+                    <span className="text-rose-400">Not Synced</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  You are currently exploring Chuvadi with sample records. Sign in with Google to enable permanent Firestore database sync.
+                </p>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {onLogin && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onLogin();
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition active:scale-95 shadow-md shadow-amber-500/20"
+                    >
+                      <LogIn size={13} strokeWidth={2.5} />
+                      <span>Sign In with Google</span>
+                    </button>
+                  )}
+                  {onExitGuestMode && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onExitGuestMode();
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition active:scale-95"
+                    >
+                      <ArrowLeft size={13} />
+                      <span>Exit Demo</span>
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="text-[11px] text-slate-300 space-y-1 bg-[#0a0e14] p-2.5 rounded-xl border border-slate-800 font-mono">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Project ID:</span>
-                  <span className="text-amber-300 font-bold">{appletConfig.projectId}</span>
+            ) : (
+              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-emerald-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <Database size={15} />
+                    <span>Unified Cloud Project</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 size={10} /> Active
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Database:</span>
-                  <span className="text-emerald-300">Firestore (Live)</span>
+                <div className="text-[11px] text-slate-300 space-y-1 bg-[#0a0e14] p-2.5 rounded-xl border border-slate-800 font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Project ID:</span>
+                    <span className="text-amber-300 font-bold">{appletConfig.projectId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Database:</span>
+                    <span className="text-emerald-300">Firestore (Live)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Auth & Gmail:</span>
+                    <span className="text-sky-300">Connected</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Auth & Gmail:</span>
-                  <span className="text-sky-300">Connected</span>
+                <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 pt-1">
+                  <ShieldCheck size={13} />
+                  <span>Database, Authentication, and Gmail OAuth are unified in one project.</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 pt-1">
-                <ShieldCheck size={13} />
-                <span>Database, Authentication, and Gmail OAuth are unified in one project.</span>
-              </div>
-            </div>
+            )}
 
             {/* Gemini AI Status */}
             <div className="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-2">
@@ -127,29 +215,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Data Maintenance Actions */}
             <div className="space-y-2 pt-1">
               <button
-                onClick={async () => {
-                  if (window.confirm('Populate starter accounts, vehicles, and sample checklists?')) {
-                    await onSeedData();
-                    onClose();
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition"
+                onClick={handleSeed}
+                disabled={isSeeding}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer"
               >
-                <RefreshCw size={14} />
-                <span>Populate Starter / Demo Data</span>
+                <RefreshCw size={14} className={isSeeding ? 'animate-spin' : ''} />
+                <span>
+                  {isSeeding
+                    ? 'Populating starter records...'
+                    : seedSuccess
+                    ? 'Starter records populated!'
+                    : 'Populate Starter / Demo Data'}
+                </span>
+                {seedSuccess && <Check size={14} className="text-emerald-400" />}
               </button>
 
               <button
-                onClick={() => {
-                  if (window.confirm('Clear cached local state? Cloud data in Firestore will not be affected.')) {
-                    onClearCache();
-                    onClose();
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition"
+                onClick={handleResetCache}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer"
               >
                 <Trash2 size={14} />
-                <span>Reset Local Offline Storage Cache</span>
+                <span>{cacheReset ? 'Local storage cache cleared!' : 'Reset Local Offline Storage Cache'}</span>
+                {cacheReset && <Check size={14} className="text-emerald-400" />}
               </button>
             </div>
           </div>
