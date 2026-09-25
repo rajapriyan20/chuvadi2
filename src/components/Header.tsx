@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
+import { PWAInstallButton } from './common/PWAInstallButton';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -194,6 +195,9 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Download size={16} />
             </button>
+
+            {/* PWA Install Button */}
+            <PWAInstallButton variant="compact" />
 
             {/* Settings */}
             <button

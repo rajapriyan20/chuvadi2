@@ -58,20 +58,7 @@ export const ChuvadiLogo: React.FC<ChuvadiLogoProps> = ({
               <stop offset="100%" stopColor="#6b5321" />
             </linearGradient>
 
-            {/* Leaf Gradients */}
-            <radialGradient id="chuvadiLeafGrad" cx="45%" cy="50%" r="60%">
-              <stop offset="0%" stopColor="#4ade80" />
-              <stop offset="40%" stopColor="#16a34a" />
-              <stop offset="85%" stopColor="#14532d" />
-              <stop offset="100%" stopColor="#052e16" />
-            </radialGradient>
-            <linearGradient id="chuvadiGoldEdge" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#fef08a" />
-              <stop offset="50%" stopColor="#eab308" />
-              <stop offset="100%" stopColor="#854d0e" />
-            </linearGradient>
-
-            {/* Cord & Bead Gradients */}
+    {/* Cord & Bead Gradients */}
             <linearGradient id="chuvadiCordGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#8d6e63" />
               <stop offset="50%" stopColor="#5d4037" />
@@ -182,41 +169,6 @@ export const ChuvadiLogo: React.FC<ChuvadiLogoProps> = ({
             <circle cx="438" cy="62" r="14" fill="url(#chuvadiNibGrad)" stroke="#2b200b" strokeWidth="2.5" />
             <ellipse cx="438" cy="62" rx="9" ry="14" fill="none" stroke="#523d14" strokeWidth="1.5" />
             <circle cx="448" cy="52" r="7" fill="url(#chuvadiStylusGrad)" stroke="#2b200b" strokeWidth="2" />
-          </g>
-
-          {/* Vibrant Green Leaf with Gold Border (Bottom Right) */}
-          <g>
-            <path d="M 250 478 
-                     C 285 460, 310 405, 345 340 
-                     C 385 268, 440 252, 492 258 
-                     C 502 330, 482 420, 415 470 
-                     C 365 508, 305 498, 250 478 Z" 
-                  fill="url(#chuvadiGoldEdge)" 
-                  stroke="#713f12" 
-                  strokeWidth="2" />
-                  
-            <path d="M 256 474 
-                     C 290 456, 313 403, 348 343 
-                     C 385 275, 436 260, 486 264 
-                     C 494 328, 476 414, 412 462 
-                     C 365 498, 308 490, 256 474 Z" 
-                  fill="url(#chuvadiLeafGrad)" />
-                  
-            <path d="M 256 474 
-                     C 310 440, 370 375, 486 264" 
-                  fill="none" 
-                  stroke="url(#chuvadiGoldEdge)" 
-                  strokeWidth="4.5" 
-                  strokeLinecap="round" />
-                  
-            <path d="M 315 425 C 335 410, 375 420, 420 448" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M 345 390 C 375 380, 420 395, 455 418" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M 378 350 C 410 340, 450 350, 476 368" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.2" strokeLinecap="round" />
-            <path d="M 415 310 C 440 300, 465 305, 482 320" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.2" strokeLinecap="round" />
-
-            <path d="M 320 422 C 305 400, 290 380, 312 360" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.2" strokeLinecap="round" />
-            <path d="M 355 380 C 340 350, 330 330, 350 310" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.2" strokeLinecap="round" />
-            <path d="M 390 338 C 380 315, 375 295, 400 278" fill="none" stroke="url(#chuvadiGoldEdge)" strokeWidth="2.2" strokeLinecap="round" />
           </g>
         </svg>
       </div>

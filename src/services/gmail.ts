@@ -24,17 +24,27 @@ export const GMAIL_SCOPES = [
 ];
 
 // Session / memory token cache
-const SESSION_TOKEN_KEY = 'chuvadi_gmail_token_session';
+const SESSION_TOKEN_PREFIX = 'chuvadi_gmail_token_session_';
 const CUSTOM_CLIENT_ID_KEY = 'chuvadi_custom_oauth_client_id';
+export const PRIMARY_GMAIL_USER = 'rajapriyan20@gmail.com';
 
 let inMemoryToken: string | null = null;
+let inMemoryTokenUser: string | null = null;
 
-export function getCachedGmailToken(): string | null {
-  if (inMemoryToken) return inMemoryToken;
+export function getUserScopeKey(userIdentifier?: string | null): string {
+  if (!userIdentifier) return 'guest';
+  const clean = userIdentifier.toLowerCase().trim();
+  return clean.replace(/[^a-z0-9_]/g, '_');
+}
+
+export function getCachedGmailToken(userIdentifier?: string | null): string | null {
+  const scope = getUserScopeKey(userIdentifier);
+  if (inMemoryToken && inMemoryTokenUser === scope) return inMemoryToken;
   try {
-    const fromSession = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const fromSession = sessionStorage.getItem(`${SESSION_TOKEN_PREFIX}${scope}`);
     if (fromSession) {
       inMemoryToken = fromSession;
+      inMemoryTokenUser = scope;
       return fromSession;
     }
   } catch (e) {
@@ -43,14 +53,34 @@ export function getCachedGmailToken(): string | null {
   return null;
 }
 
-export function setCachedGmailToken(token: string | null): void {
+export function setCachedGmailToken(token: string | null, userIdentifier?: string | null): void {
+  const scope = getUserScopeKey(userIdentifier);
   inMemoryToken = token;
+  inMemoryTokenUser = token ? scope : null;
   try {
+    const key = `${SESSION_TOKEN_PREFIX}${scope}`;
     if (token) {
-      sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+      sessionStorage.setItem(key, token);
     } else {
-      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      sessionStorage.removeItem(key);
     }
+  } catch (e) {
+    // ignore
+  }
+}
+
+export function clearGmailSession(): void {
+  inMemoryToken = null;
+  inMemoryTokenUser = null;
+  try {
+    // Remove any session token keys
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith(SESSION_TOKEN_PREFIX)) {
+        sessionStorage.removeItem(k);
+      }
+    }
+    sessionStorage.removeItem('chuvadi_gmail_token_session');
   } catch (e) {
     // ignore
   }
@@ -160,7 +190,7 @@ async function authenticateWithFirebaseAuth(): Promise<string> {
  * Primary authenticate entry point.
  * Attempts GIS first; falls back to Firebase Auth; provides friendly actionable errors.
  */
-export async function authenticateGmail(): Promise<string> {
+export async function authenticateGmail(userIdentifier?: string | null): Promise<string> {
   const clientId = getEffectiveOAuthClientId();
   const hasGIS = await waitForGoogleIdentity();
 
@@ -168,7 +198,7 @@ export async function authenticateGmail(): Promise<string> {
   if (hasGIS && clientId) {
     try {
       const token = await authenticateWithGIS(clientId);
-      setCachedGmailToken(token);
+      setCachedGmailToken(token, userIdentifier);
       return token;
     } catch (gisError: any) {
       console.warn('GIS authorization failed, trying Firebase Auth fallback:', gisError);
@@ -189,7 +219,7 @@ export async function authenticateGmail(): Promise<string> {
   // Strategy 2: Firebase Auth with applet project
   try {
     const token = await authenticateWithFirebaseAuth();
-    setCachedGmailToken(token);
+    setCachedGmailToken(token, userIdentifier);
     return token;
   } catch (fbError: any) {
     const code = fbError?.code || '';
@@ -257,14 +287,35 @@ export const DEFAULT_GMAIL_FILTER_RULES: GmailFilterRule[] = [
   }
 ];
 
-// Local storage keys
+// Local storage keys & user-scoping
 const LS_GMAIL_FILTER_RULES = 'chuvadi_gmail_filter_rules_v1';
 const LS_FIELD_SUGGESTION_RULES = 'chuvadi_field_suggestion_rules_v1';
 const LS_GMAIL_EMAILS_CACHE = 'chuvadi_gmail_emails_cache_v1';
 
-export function loadGmailFilterRules(): GmailFilterRule[] {
+export function getEmailsCacheKey(userIdentifier?: string | null): string {
+  const scope = getUserScopeKey(userIdentifier);
+  return `chuvadi_gmail_emails_${scope}`;
+}
+
+export function getFilterRulesKey(userIdentifier?: string | null): string {
+  const scope = getUserScopeKey(userIdentifier);
+  return `chuvadi_gmail_filter_rules_${scope}`;
+}
+
+export function getFieldRulesKey(userIdentifier?: string | null): string {
+  const scope = getUserScopeKey(userIdentifier);
+  return `chuvadi_gmail_field_rules_${scope}`;
+}
+
+export function loadGmailFilterRules(userIdentifier?: string | null): GmailFilterRule[] {
   try {
-    const raw = localStorage.getItem(LS_GMAIL_FILTER_RULES);
+    const isPrimary = userIdentifier?.toLowerCase().trim() === PRIMARY_GMAIL_USER;
+    const scopedKey = getFilterRulesKey(userIdentifier);
+    let raw = localStorage.getItem(scopedKey);
+    if (!raw && isPrimary) {
+      raw = localStorage.getItem(LS_GMAIL_FILTER_RULES);
+      if (raw) localStorage.setItem(scopedKey, raw);
+    }
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Error loading Gmail filter rules:', e);
@@ -272,17 +323,24 @@ export function loadGmailFilterRules(): GmailFilterRule[] {
   return DEFAULT_GMAIL_FILTER_RULES;
 }
 
-export function saveGmailFilterRules(rules: GmailFilterRule[]): void {
+export function saveGmailFilterRules(rules: GmailFilterRule[], userIdentifier?: string | null): void {
   try {
-    localStorage.setItem(LS_GMAIL_FILTER_RULES, JSON.stringify(rules));
+    const scopedKey = getFilterRulesKey(userIdentifier);
+    localStorage.setItem(scopedKey, JSON.stringify(rules));
   } catch (e) {
     console.error('Error saving Gmail filter rules:', e);
   }
 }
 
-export function loadFieldSuggestionRules(accounts: Account[] = []): FieldSuggestionRule[] {
+export function loadFieldSuggestionRules(accounts: Account[] = [], userIdentifier?: string | null): FieldSuggestionRule[] {
   try {
-    const raw = localStorage.getItem(LS_FIELD_SUGGESTION_RULES);
+    const isPrimary = userIdentifier?.toLowerCase().trim() === PRIMARY_GMAIL_USER;
+    const scopedKey = getFieldRulesKey(userIdentifier);
+    let raw = localStorage.getItem(scopedKey);
+    if (!raw && isPrimary) {
+      raw = localStorage.getItem(LS_FIELD_SUGGESTION_RULES);
+      if (raw) localStorage.setItem(scopedKey, raw);
+    }
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Error loading field suggestion rules:', e);
@@ -355,17 +413,31 @@ export function loadFieldSuggestionRules(accounts: Account[] = []): FieldSuggest
   return defaults;
 }
 
-export function saveFieldSuggestionRules(rules: FieldSuggestionRule[]): void {
+export function saveFieldSuggestionRules(rules: FieldSuggestionRule[], userIdentifier?: string | null): void {
   try {
-    localStorage.setItem(LS_FIELD_SUGGESTION_RULES, JSON.stringify(rules));
+    const scopedKey = getFieldRulesKey(userIdentifier);
+    localStorage.setItem(scopedKey, JSON.stringify(rules));
   } catch (e) {
     console.error('Error saving field suggestion rules:', e);
   }
 }
 
-export function loadCachedEmails(): GmailExpenseEmail[] {
+export function loadCachedEmails(userIdentifier?: string | null): GmailExpenseEmail[] {
   try {
-    const raw = localStorage.getItem(LS_GMAIL_EMAILS_CACHE);
+    const isPrimary = userIdentifier?.toLowerCase().trim() === PRIMARY_GMAIL_USER;
+    const scopedKey = getEmailsCacheKey(userIdentifier);
+    let raw = localStorage.getItem(scopedKey);
+
+    // If primary user rajapriyan20@gmail.com and hasn't yet been copied from legacy key, migrate it
+    if (!raw && isPrimary) {
+      const legacyRaw = localStorage.getItem(LS_GMAIL_EMAILS_CACHE);
+      if (legacyRaw) {
+        localStorage.setItem(scopedKey, legacyRaw);
+        raw = legacyRaw;
+      }
+    }
+
+    // For other users or guests, return only their isolated scoped cache
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Error loading cached emails:', e);
@@ -373,18 +445,19 @@ export function loadCachedEmails(): GmailExpenseEmail[] {
   return [];
 }
 
-export function saveCachedEmails(emails: GmailExpenseEmail[]): void {
+export function saveCachedEmails(emails: GmailExpenseEmail[], userIdentifier?: string | null): void {
   try {
-    localStorage.setItem(LS_GMAIL_EMAILS_CACHE, JSON.stringify(emails));
+    const scopedKey = getEmailsCacheKey(userIdentifier);
+    localStorage.setItem(scopedKey, JSON.stringify(emails));
   } catch (e) {
     console.error('Error caching emails:', e);
   }
 }
 
-export function markEmailAsAdded(emailId: string, txnId?: string): void {
-  const cached = loadCachedEmails();
+export function markEmailAsAdded(emailId: string, txnId?: string, userIdentifier?: string | null): void {
+  const cached = loadCachedEmails(userIdentifier);
   const updated = cached.map(e => e.id === emailId ? { ...e, status: 'ADDED' as const, addedTxnId: txnId } : e);
-  saveCachedEmails(updated);
+  saveCachedEmails(updated, userIdentifier);
 }
 
 /**

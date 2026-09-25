@@ -36,6 +36,7 @@ interface ReviewTabProps {
   isLoading: boolean;
   error?: string;
   hasToken: boolean;
+  userKey?: string | null;
   onRefreshEmails: () => Promise<void>;
   onAddTransactionFromEmail: (email: GmailExpenseEmail) => void;
   onIgnoreEmail: (emailId: string) => void;
@@ -49,6 +50,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   isLoading,
   error,
   hasToken,
+  userKey,
   onRefreshEmails,
   onAddTransactionFromEmail,
   onIgnoreEmail,
@@ -73,7 +75,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      await authenticateGmail();
+      await authenticateGmail(userKey);
       await onRefreshEmails();
     } catch (err: any) {
       console.error('Connect Gmail failed:', err);
@@ -84,7 +86,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   };
 
   const handleDisconnect = () => {
-    setCachedGmailToken(null);
+    setCachedGmailToken(null, userKey);
     window.location.reload();
   };
 
@@ -98,7 +100,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   const handleApplyManualToken = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualTokenInput.trim()) return;
-    setCachedGmailToken(manualTokenInput.trim());
+    setCachedGmailToken(manualTokenInput.trim(), userKey);
     setShowConfigModal(false);
     setAuthError(null);
     onRefreshEmails();

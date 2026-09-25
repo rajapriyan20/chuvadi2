@@ -14,6 +14,7 @@ import type {
   FieldSuggestionRule, 
   GmailExpenseEmail 
 } from '../../types';
+import type { User } from 'firebase/auth';
 import { 
   loadGmailFilterRules, 
   saveGmailFilterRules, 
@@ -31,6 +32,7 @@ interface InboxReviewTabProps {
   accounts: Account[];
   onOpenNewTxnWithDefaults: (suggestedData: Partial<Transaction>, emailId?: string) => void;
   isGuestMode?: boolean;
+  user?: User | null;
 }
 
 const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
@@ -87,10 +89,14 @@ const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
 export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   accounts,
   onOpenNewTxnWithDefaults,
-  isGuestMode = false
+  isGuestMode = false,
+  user
 }) => {
   // Nested sub-tab state: 'review' (default) or 'rules'
   const [activeSubTab, setActiveSubTab] = useState<'review' | 'rules'>('review');
+
+  // Compute active user identifier key
+  const userKey = user?.email || user?.uid || (isGuestMode ? 'guest' : null);
 
   // Rules and emails state
   const [filterRules, setFilterRules] = useState<GmailFilterRule[]>([]);
@@ -99,11 +105,11 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
-  // Initialize rules and cached emails
+  // Initialize rules and cached emails for THIS specific user
   useEffect(() => {
-    const loadedFilters = loadGmailFilterRules();
-    const loadedFields = loadFieldSuggestionRules(accounts);
-    const cachedMails = loadCachedEmails();
+    const loadedFilters = loadGmailFilterRules(userKey);
+    const loadedFields = loadFieldSuggestionRules(accounts, userKey);
+    const cachedMails = loadCachedEmails(userKey);
 
     setFilterRules(loadedFilters);
     setFieldRules(loadedFields);
@@ -112,22 +118,23 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
       setEmails(cachedMails);
     } else if (isGuestMode) {
       setEmails(DEMO_GMAIL_EXPENSES);
-      saveCachedEmails(DEMO_GMAIL_EXPENSES);
+      saveCachedEmails(DEMO_GMAIL_EXPENSES, userKey);
     } else {
+      // Clean isolated state for newly logged-in user!
       setEmails([]);
     }
-  }, [accounts, isGuestMode]);
+  }, [accounts, isGuestMode, userKey]);
 
   // Handler for saving filter rules
   const handleSaveFilterRules = (updatedRules: GmailFilterRule[]) => {
     setFilterRules(updatedRules);
-    saveGmailFilterRules(updatedRules);
+    saveGmailFilterRules(updatedRules, userKey);
   };
 
   // Handler for saving field rules
   const handleSaveFieldRules = (updatedRules: FieldSuggestionRule[]) => {
     setFieldRules(updatedRules);
-    saveFieldSuggestionRules(updatedRules);
+    saveFieldSuggestionRules(updatedRules, userKey);
   };
 
   // Refresh / Scan emails from Gmail
@@ -136,13 +143,13 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
       setIsLoading(true);
       setTimeout(() => {
         setEmails(DEMO_GMAIL_EXPENSES);
-        saveCachedEmails(DEMO_GMAIL_EXPENSES);
+        saveCachedEmails(DEMO_GMAIL_EXPENSES, userKey);
         setIsLoading(false);
       }, 500);
       return;
     }
 
-    const token = getCachedGmailToken();
+    const token = getCachedGmailToken(userKey);
     if (!token) {
       setErrorMessage('Gmail is not connected. Please click "Connect Gmail Account" to authorize.');
       return;
@@ -161,6 +168,7 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
       );
 
       setEmails(result.emails);
+      saveCachedEmails(result.emails, userKey);
       if (result.error) {
         setErrorMessage(result.error);
       }
@@ -190,7 +198,7 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   const handleIgnoreEmail = (emailId: string) => {
     const updated = emails.map(e => e.id === emailId ? { ...e, status: 'IGNORED' as const } : e);
     setEmails(updated);
-    saveCachedEmails(updated);
+    saveCachedEmails(updated, userKey);
   };
 
   const pendingCount = emails.filter(e => e.status === 'PENDING').length;
@@ -251,7 +259,8 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
           emails={emails}
           isLoading={isLoading}
           error={errorMessage}
-          hasToken={!!getCachedGmailToken()}
+          hasToken={!!getCachedGmailToken(userKey)}
+          userKey={userKey}
           onRefreshEmails={handleScanGmail}
           onAddTransactionFromEmail={handleAddTransactionFromEmail}
           onIgnoreEmail={handleIgnoreEmail}

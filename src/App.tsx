@@ -47,7 +47,7 @@ import type { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
-import { markEmailAsAdded, setCachedGmailToken } from './services/gmail';
+import { markEmailAsAdded, setCachedGmailToken, clearGmailSession } from './services/gmail';
 import {
   DEMO_ACCOUNTS,
   DEMO_TRANSACTIONS,
@@ -330,7 +330,7 @@ export function App() {
       }
 
       if (pendingEmailImportId) {
-        markEmailAsAdded(pendingEmailImportId, id);
+        markEmailAsAdded(pendingEmailImportId, id, 'guest');
         setPendingEmailImportId(null);
       }
       return;
@@ -339,7 +339,7 @@ export function App() {
     const savedId = await saveTransactionAtomic(txn);
 
     if (pendingEmailImportId) {
-      markEmailAsAdded(pendingEmailImportId, savedId);
+      markEmailAsAdded(pendingEmailImportId, savedId, user?.email || user?.uid || (guestMode ? 'guest' : null));
       setPendingEmailImportId(null);
     }
 
@@ -689,6 +689,7 @@ export function App() {
       setCalendarEvents([]);
       setMenstrualLogs([]);
       setMenstrualPeriods([]);
+      clearGmailSession();
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -698,6 +699,7 @@ export function App() {
   const handleExitGuestMode = () => {
     setGuestMode(false);
     sessionStorage.removeItem('chuvadi_guest_mode');
+    clearGmailSession();
     setUser(null);
     setAccounts([]);
     setTransactions([]);
@@ -875,6 +877,7 @@ export function App() {
               setIsTxnModalOpen(true);
             }}
             isGuestMode={isCurrentGuest}
+            user={user}
           />
         )}
 

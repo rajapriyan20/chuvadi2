@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
+import { PWAInstallButton } from './common/PWAInstallButton';
 import type { ActiveTab } from '../types';
 
 interface SideMenuProps {
@@ -235,6 +236,9 @@ export const SideMenu: React.FC<SideMenuProps> = ({
 
         {/* Quick Utility Bottom Section - ALWAYS visible & pinned without scrolling */}
         <div className="p-2.5 sm:p-3 border-t border-slate-800/80 bg-[#10151d] space-y-1.5 sm:space-y-2 shrink-0 mt-auto shadow-2xl">
+          {/* PWA In-App Install Option */}
+          <PWAInstallButton variant="full" />
+
           {onOpenQuickAdd && (
             <button
               onClick={() => {

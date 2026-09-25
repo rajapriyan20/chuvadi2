@@ -155,21 +155,27 @@ export interface GmailExpenseEmail {
 }
 
 // Calendar Types
-export type CalendarEventType = 'FINANCE' | 'VEHICLE' | 'EXERCISE' | 'MENSTRUAL' | 'CUSTOM' | 'REMINDER';
+export type CalendarEventType = 'FINANCE' | 'VEHICLE' | 'EXERCISE' | 'MENSTRUAL' | 'CUSTOM' | 'REMINDER' | 'BIRTHDAY';
 
 export interface CalendarEvent {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD or annual recurring date
   endDate?: string;
   time?: string; // HH:mm
   type: CalendarEventType;
-  category?: string; // e.g. 'Personal', 'Bill', 'Workout', 'Period', 'Car Service'
-  color?: string; // e.g. 'amber', 'rose', 'emerald', 'sky', 'indigo', 'violet'
+  category?: string; // e.g. 'Personal', 'Bill', 'Workout', 'Period', 'Car Service', 'Birthday'
+  color?: string; // e.g. 'amber', 'rose', 'emerald', 'sky', 'indigo', 'violet', 'pink'
   notes?: string;
   isAllDay?: boolean;
   completed?: boolean;
   linkedId?: string;
+  // Birthday specific fields (year is optional as requested)
+  personName?: string;
+  birthMonth?: number; // 1-12
+  birthDay?: number; // 1-31
+  birthYear?: number; // Optional! (e.g. 1995 or left undefined)
+  relationship?: string; // e.g. 'Family', 'Friend', 'Colleague', 'Loved One'
   createdAt?: number;
   updatedAt?: number;
 }

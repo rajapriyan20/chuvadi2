@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate, DEFAULT_CATEGORIES } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType } from '../../types';
+import type { User } from 'firebase/auth';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
 import { InboxReviewTab } from '../finance/InboxReviewTab';
 
@@ -29,6 +30,7 @@ interface FinanceTabProps {
   onDeleteEntity: (id: string) => Promise<void>;
   onOpenNewTxnWithDefaults?: (defaults: Partial<Transaction>, emailId?: string) => void;
   isGuestMode?: boolean;
+  user?: User | null;
 }
 
 export const FinanceTab: React.FC<FinanceTabProps> = ({
@@ -45,7 +47,8 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onOpenNewEntity: _onOpenNewEntity,
   onDeleteEntity: _onDeleteEntity,
   onOpenNewTxnWithDefaults,
-  isGuestMode = false
+  isGuestMode = false,
+  user
 }) => {
   // Chart of Accounts is shown first by default, then Transactions, then Inbox / Review
   const [subTab, setSubTab] = useState<'coa' | 'transactions' | 'inbox'>('coa');
@@ -280,6 +283,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
     <InboxReviewTab
       accounts={accounts}
       isGuestMode={isGuestMode}
+      user={user}
       onOpenNewTxnWithDefaults={(defaults, emailId) => {
         if (onOpenNewTxnWithDefaults) {
           onOpenNewTxnWithDefaults(defaults, emailId);
