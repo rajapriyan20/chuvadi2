@@ -1,24 +1,26 @@
 // Chuvadi Progressive Web App Service Worker
-const CACHE_NAME = 'chuvadi-cache-v2';
-const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.png',
-  '/chuvadi-logo.svg',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png',
-  '/pwa-maskable-512x512.png',
-  '/apple-touch-icon.png'
+const CACHE_NAME = 'chuvadi-cache-v3';
+
+const PRECACHE_FILES = [
+  '',
+  'index.html',
+  'manifest.json',
+  'favicon.png',
+  'chuvadi-logo.svg',
+  'pwa-192x192.png',
+  'pwa-512x512.png',
+  'pwa-maskable-512x512.png',
+  'apple-touch-icon.png'
 ];
 
-// Install Event - Pre-cache core assets & activate immediately
+// Install Event - Pre-cache core assets relative to scope & activate immediately
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      const urlsToCache = PRECACHE_FILES.map((file) => new URL(file, self.registration.scope).href);
       return Promise.allSettled(
-        PRECACHE_ASSETS.map((url) =>
+        urlsToCache.map((url) =>
           fetch(url, { cache: 'reload' })
             .then((res) => {
               if (res.ok) return cache.put(url, res);
@@ -70,7 +72,16 @@ self.addEventListener('fetch', (event) => {
   // Handle navigation requests (SPA fallback)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/index.html') || caches.match('/'))
+      fetch(request).catch(async () => {
+        const scopeUrl = self.registration.scope;
+        const indexPath = new URL('index.html', scopeUrl).href;
+        return (
+          (await caches.match(indexPath)) ||
+          (await caches.match(scopeUrl)) ||
+          (await caches.match('/index.html')) ||
+          (await caches.match('/'))
+        );
+      })
     );
     return;
   }
@@ -103,7 +114,8 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // Fallback if offline
           if (request.destination === 'image') {
-            return caches.match('/chuvadi-logo.svg');
+            const logoUrl = new URL('chuvadi-logo.svg', self.registration.scope).href;
+            return caches.match(logoUrl) || caches.match('/chuvadi-logo.svg');
           }
         });
     })
