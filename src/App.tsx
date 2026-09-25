@@ -7,6 +7,10 @@ import {
   subscribeToTodos, 
   subscribeToEntities,
   subscribeToExerciseLogs,
+  subscribeToCalendarEvents,
+  subscribeToMenstrualLogs,
+  subscribeToMenstrualPeriods,
+  subscribeToMenstrualSettings,
   saveTransactionAtomic,
   deleteTransactionAtomic,
   saveAccount,
@@ -21,6 +25,17 @@ import {
   deleteEntity,
   saveExerciseLog,
   deleteExerciseLog,
+  saveCalendarEvent,
+  deleteCalendarEvent,
+  saveMenstrualLog,
+  deleteMenstrualLog,
+  saveMenstrualPeriod,
+  deleteMenstrualPeriod,
+  saveMenstrualSettings,
+  seedUserStarterData,
+  clearUserData,
+  syncOrMigratePrimaryUserData,
+  isPrimaryUser,
   seedStarterData,
   clearLocalCache,
   loginWithGoogle,
@@ -40,7 +55,11 @@ import {
   DEMO_VEHICLE_LOGS,
   DEMO_TODOS,
   DEMO_ENTITIES,
-  DEMO_EXERCISE_LOGS
+  DEMO_EXERCISE_LOGS,
+  DEMO_CALENDAR_EVENTS,
+  DEMO_MENSTRUAL_SETTINGS,
+  DEMO_MENSTRUAL_PERIODS,
+  DEMO_MENSTRUAL_LOGS
 } from './data/demoData';
 
 // Modals
@@ -62,6 +81,8 @@ import { TodosTab } from './components/tabs/TodosTab';
 import { ReportsTab } from './components/tabs/ReportsTab';
 import { AiAssistantTab } from './components/tabs/AiAssistantTab';
 import { ExerciseLogView } from './components/exercise/ExerciseLogView';
+import { CalendarTab } from './components/tabs/CalendarTab';
+import { MenstrualTrackerTab } from './components/tabs/MenstrualTrackerTab';
 
 import { getDaysRemaining } from './utils/formatters';
 import type { 
@@ -72,7 +93,11 @@ import type {
   VehicleLog, 
   TodoNote, 
   Entity, 
-  ExerciseLog 
+  ExerciseLog,
+  CalendarEvent,
+  MenstrualLog,
+  MenstrualPeriodRecord,
+  MenstrualCycleSettings
 } from './types';
 
 export function App() {
@@ -88,7 +113,7 @@ export function App() {
   });
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
-  // Domain State (Isolated: Demo data in Guest Mode, Firestore data in Auth Mode)
+  // Domain State (Isolated: Demo data in Guest Mode, User-scoped Firestore in Auth Mode)
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -96,6 +121,16 @@ export function App() {
   const [todos, setTodos] = useState<TodoNote[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [menstrualLogs, setMenstrualLogs] = useState<MenstrualLog[]>([]);
+  const [menstrualPeriods, setMenstrualPeriods] = useState<MenstrualPeriodRecord[]>([]);
+  const [menstrualSettings, setMenstrualSettings] = useState<MenstrualCycleSettings>({
+    averageCycleLength: 28,
+    averagePeriodDuration: 5,
+    lutealPhaseLength: 14,
+    privacyMode: false
+  });
+  const [nonPrimaryBannerDismissed, setNonPrimaryBannerDismissed] = useState<boolean>(false);
 
   // Modals Visibility & Editing State
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
@@ -146,19 +181,28 @@ export function App() {
     };
   }, []);
 
-  // Sync with Firestore ONLY WHEN Authenticated (No Firestore connection or data leak in Guest Mode!)
+  // Sync with Firestore ONLY WHEN Authenticated (Scoped per user!)
   useEffect(() => {
     if (!user) {
       return;
     }
 
-    const unsubAccounts = subscribeToAccounts(setAccounts);
-    const unsubTxns = subscribeToTransactions(setTransactions);
-    const unsubVehicles = subscribeToVehicles(setVehicles);
-    const unsubLogs = subscribeToVehicleLogs(setVehicleLogs);
-    const unsubTodos = subscribeToTodos(setTodos);
-    const unsubEntities = subscribeToEntities(setEntities);
-    const unsubExercise = subscribeToExerciseLogs(setExerciseLogs);
+    // If primary user rajapriyan20@gmail.com, migrate legacy root collections if not yet migrated
+    if (isPrimaryUser(user)) {
+      syncOrMigratePrimaryUserData(user);
+    }
+
+    const unsubAccounts = subscribeToAccounts(user, setAccounts);
+    const unsubTxns = subscribeToTransactions(user, setTransactions);
+    const unsubVehicles = subscribeToVehicles(user, setVehicles);
+    const unsubLogs = subscribeToVehicleLogs(user, setVehicleLogs);
+    const unsubTodos = subscribeToTodos(user, setTodos);
+    const unsubEntities = subscribeToEntities(user, setEntities);
+    const unsubExercise = subscribeToExerciseLogs(user, setExerciseLogs);
+    const unsubCalendar = subscribeToCalendarEvents(user, setCalendarEvents);
+    const unsubMenstrualLogs = subscribeToMenstrualLogs(user, setMenstrualLogs);
+    const unsubMenstrualPeriods = subscribeToMenstrualPeriods(user, setMenstrualPeriods);
+    const unsubMenstrualSettings = subscribeToMenstrualSettings(user, setMenstrualSettings);
 
     return () => {
       unsubAccounts();
@@ -168,6 +212,10 @@ export function App() {
       unsubTodos();
       unsubEntities();
       unsubExercise();
+      unsubCalendar();
+      unsubMenstrualLogs();
+      unsubMenstrualPeriods();
+      unsubMenstrualSettings();
     };
   }, [user]);
 
@@ -181,6 +229,10 @@ export function App() {
       setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
       setEntities(JSON.parse(JSON.stringify(DEMO_ENTITIES)));
       setExerciseLogs(JSON.parse(JSON.stringify(DEMO_EXERCISE_LOGS)));
+      setCalendarEvents(JSON.parse(JSON.stringify(DEMO_CALENDAR_EVENTS)));
+      setMenstrualLogs(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_LOGS)));
+      setMenstrualPeriods(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_PERIODS)));
+      setMenstrualSettings(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_SETTINGS)));
     }
   }, [guestMode, user]);
 
@@ -482,7 +534,7 @@ export function App() {
       });
       return;
     }
-    await saveExerciseLog(log);
+    await saveExerciseLog(log, user);
   };
 
   const handleDeleteExerciseLog = async (id: string) => {
@@ -490,7 +542,113 @@ export function App() {
       setExerciseLogs(prev => prev.filter(e => e.id !== id));
       return;
     }
-    await deleteExerciseLog(id);
+    await deleteExerciseLog(id, user);
+  };
+
+  // Calendar Event Handlers
+  const handleSaveCalendarEvent = async (event: Omit<CalendarEvent, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = event.id || 'demo-cal-' + Date.now();
+      const payload: CalendarEvent = { ...event, id, updatedAt: Date.now() };
+      setCalendarEvents(prev => {
+        const idx = prev.findIndex(c => c.id === id);
+        return idx >= 0 ? prev.map(c => c.id === id ? payload : c) : [...prev, payload];
+      });
+      return;
+    }
+    await saveCalendarEvent(event, user);
+  };
+
+  const handleDeleteCalendarEvent = async (id: string) => {
+    if (guestMode && !user) {
+      setCalendarEvents(prev => prev.filter(c => c.id !== id));
+      return;
+    }
+    await deleteCalendarEvent(id, user);
+  };
+
+  // Menstrual Tracker Handlers
+  const handleSaveMenstrualLog = async (log: Omit<MenstrualLog, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = log.id || 'demo-mlog-' + Date.now();
+      const payload: MenstrualLog = { ...log, id, updatedAt: Date.now() };
+      setMenstrualLogs(prev => {
+        const idx = prev.findIndex(m => m.id === id);
+        return idx >= 0 ? prev.map(m => m.id === id ? payload : m) : [payload, ...prev];
+      });
+      return;
+    }
+    await saveMenstrualLog(log, user);
+  };
+
+  const handleDeleteMenstrualLog = async (id: string) => {
+    if (guestMode && !user) {
+      setMenstrualLogs(prev => prev.filter(m => m.id !== id));
+      return;
+    }
+    await deleteMenstrualLog(id, user);
+  };
+
+  const handleSaveMenstrualPeriod = async (period: Omit<MenstrualPeriodRecord, 'id'> & { id?: string }) => {
+    if (guestMode && !user) {
+      const id = period.id || 'demo-period-' + Date.now();
+      const payload: MenstrualPeriodRecord = { ...period, id };
+      setMenstrualPeriods(prev => {
+        const idx = prev.findIndex(p => p.id === id);
+        return idx >= 0 ? prev.map(p => p.id === id ? payload : p) : [payload, ...prev];
+      });
+      return;
+    }
+    await saveMenstrualPeriod(period, user);
+  };
+
+  const handleDeleteMenstrualPeriod = async (id: string) => {
+    if (guestMode && !user) {
+      setMenstrualPeriods(prev => prev.filter(p => p.id !== id));
+      return;
+    }
+    await deleteMenstrualPeriod(id, user);
+  };
+
+  const handleSaveMenstrualSettings = async (newSettings: MenstrualCycleSettings) => {
+    setMenstrualSettings(newSettings);
+    if (guestMode && !user) return;
+    await saveMenstrualSettings(newSettings, user);
+  };
+
+  // Seed or Clear for Active User
+  const handleSeedForActiveUser = async () => {
+    if (guestMode && !user) {
+      setAccounts(JSON.parse(JSON.stringify(DEMO_ACCOUNTS)));
+      setTransactions(JSON.parse(JSON.stringify(DEMO_TRANSACTIONS)));
+      setVehicles(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
+      setVehicleLogs(JSON.parse(JSON.stringify(DEMO_VEHICLE_LOGS)));
+      setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
+      setEntities(JSON.parse(JSON.stringify(DEMO_ENTITIES)));
+      setExerciseLogs(JSON.parse(JSON.stringify(DEMO_EXERCISE_LOGS)));
+      setCalendarEvents(JSON.parse(JSON.stringify(DEMO_CALENDAR_EVENTS)));
+      setMenstrualLogs(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_LOGS)));
+      setMenstrualPeriods(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_PERIODS)));
+      setMenstrualSettings(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_SETTINGS)));
+    } else if (user) {
+      await seedUserStarterData(user);
+    }
+  };
+
+  const handleClearActiveUser = async () => {
+    if (user) {
+      await clearUserData(user);
+      setAccounts([]);
+      setTransactions([]);
+      setVehicles([]);
+      setVehicleLogs([]);
+      setTodos([]);
+      setEntities([]);
+      setExerciseLogs([]);
+      setCalendarEvents([]);
+      setMenstrualLogs([]);
+      setMenstrualPeriods([]);
+    }
   };
 
   // Open Passbook for specific account
@@ -528,6 +686,9 @@ export function App() {
       setTodos([]);
       setEntities([]);
       setExerciseLogs([]);
+      setCalendarEvents([]);
+      setMenstrualLogs([]);
+      setMenstrualPeriods([]);
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -545,6 +706,9 @@ export function App() {
     setTodos([]);
     setEntities([]);
     setExerciseLogs([]);
+    setCalendarEvents([]);
+    setMenstrualLogs([]);
+    setMenstrualPeriods([]);
   };
 
   // Continue to Guest Mode from Login Screen
@@ -628,6 +792,37 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+        {/* Isolated User Workspace Notice for Non-Primary Users with Empty Data */}
+        {user && !isPrimaryUser(user) && !nonPrimaryBannerDismissed && accounts.length === 0 && transactions.length === 0 && (
+          <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-sky-950/40 via-[#131b26] to-slate-900 border border-sky-500/30 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                <span>Private Workspace • {user.email}</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                You are in your own private, isolated workspace. All data is blank by default. You can start recording fresh or load demo data to explore the features.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  handleSeedForActiveUser();
+                  setNonPrimaryBannerDismissed(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-sm"
+              >
+                Load Demo Data
+              </button>
+              <button
+                onClick={() => setNonPrimaryBannerDismissed(true)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition"
+              >
+                Start Blank
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'dashboard' && (
           <DashboardTab
             totalNetWorth={totalNetWorth}
@@ -717,6 +912,38 @@ export function App() {
             onDeleteTodo={handleDeleteTodo}
             onToggleTodoItem={handleToggleTodoItem}
             onTogglePin={handleTogglePin}
+          />
+        )}
+
+        {activeTab === 'calendar' && (
+          <CalendarTab
+            transactions={transactions}
+            vehicles={vehicles}
+            vehicleLogs={vehicleLogs}
+            exerciseLogs={exerciseLogs}
+            calendarEvents={calendarEvents}
+            menstrualLogs={menstrualLogs}
+            menstrualPeriods={menstrualPeriods}
+            entities={entities}
+            onSaveCalendarEvent={handleSaveCalendarEvent}
+            onDeleteCalendarEvent={handleDeleteCalendarEvent}
+            onOpenQuickAddTxn={(defaultDate) => {
+              setEditingTxn(defaultDate ? ({ date: defaultDate } as any) : null);
+              setIsTxnModalOpen(true);
+            }}
+          />
+        )}
+
+        {activeTab === 'menstrual' && (
+          <MenstrualTrackerTab
+            logs={menstrualLogs}
+            periods={menstrualPeriods}
+            settings={menstrualSettings}
+            onSaveLog={handleSaveMenstrualLog}
+            onDeleteLog={handleDeleteMenstrualLog}
+            onSavePeriod={handleSaveMenstrualPeriod}
+            onDeletePeriod={handleDeleteMenstrualPeriod}
+            onSaveSettings={handleSaveMenstrualSettings}
           />
         )}
 
@@ -857,23 +1084,12 @@ export function App() {
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        user={user}
         isGuestMode={isCurrentGuest}
         onLogin={loginWithGoogle}
         onExitGuestMode={handleExitGuestMode}
-        onSeedData={async () => {
-          if (guestMode && !user) {
-            // Reset to pure demo starter data
-            setAccounts(JSON.parse(JSON.stringify(DEMO_ACCOUNTS)));
-            setTransactions(JSON.parse(JSON.stringify(DEMO_TRANSACTIONS)));
-            setVehicles(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
-            setVehicleLogs(JSON.parse(JSON.stringify(DEMO_VEHICLE_LOGS)));
-            setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
-            setEntities(JSON.parse(JSON.stringify(DEMO_ENTITIES)));
-            setExerciseLogs(JSON.parse(JSON.stringify(DEMO_EXERCISE_LOGS)));
-          } else {
-            await seedStarterData();
-          }
-        }}
+        onSeedData={handleSeedForActiveUser}
+        onClearUserData={handleClearActiveUser}
         onClearCache={clearLocalCache}
       />
     </div>

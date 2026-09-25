@@ -1,0 +1,205 @@
+{
+  "entities": {
+    "account": {
+      "title": "Account",
+      "description": "Financial accounts such as bank, cash, credit cards",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "balance": { "type": "number" },
+        "institution": { "type": "string" },
+        "color": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "type", "balance"]
+    },
+    "transaction": {
+      "title": "Transaction",
+      "description": "Income, expense, or transfer ledger records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "fromAccountId": { "type": "string" },
+        "toAccountId": { "type": "string" },
+        "vehicleId": { "type": "string" }
+      },
+      "required": ["id", "type", "amount", "date", "description", "category"]
+    },
+    "vehicle": {
+      "title": "Vehicle",
+      "description": "Vehicles owned by user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "vehicleNumber": { "type": "string" },
+        "type": { "type": "string" },
+        "currentOdometer": { "type": "number" },
+        "fuelType": { "type": "string" }
+      },
+      "required": ["id", "name", "vehicleNumber", "type"]
+    },
+    "vehicle_log": {
+      "title": "Vehicle Log",
+      "description": "Fuel, service, insurance and PUC records for vehicles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "cost": { "type": "number" },
+        "odometer": { "type": "number" }
+      },
+      "required": ["id", "vehicleId", "date", "type", "title", "cost"]
+    },
+    "todo": {
+      "title": "Todo Note",
+      "description": "Checklists and personal task notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "color": { "type": "string" },
+        "pinned": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title"]
+    },
+    "entity": {
+      "title": "Entity",
+      "description": "Receivables and payables",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" }
+      },
+      "required": ["id", "name", "type", "amount"]
+    },
+    "exercise_log": {
+      "title": "Exercise Log",
+      "description": "Daily workout logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "date", "description"]
+    },
+    "calendar_event": {
+      "title": "Calendar Event",
+      "description": "Custom calendar appointments and reminders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string" },
+        "category": { "type": "string" },
+        "color": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "title", "date"]
+    },
+    "menstrual_log": {
+      "title": "Menstrual Log",
+      "description": "Daily cycle flow, symptoms, mood, and wellness logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "isPeriodDay": { "type": "boolean" },
+        "flow": { "type": "string" },
+        "cramps": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "date", "isPeriodDay"]
+    },
+    "menstrual_period": {
+      "title": "Menstrual Period Record",
+      "description": "Recorded period start and end dates with cycle metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "cycleLength": { "type": "number" },
+        "durationDays": { "type": "number" }
+      },
+      "required": ["id", "startDate"]
+    },
+    "menstrual_setting": {
+      "title": "Menstrual Settings",
+      "description": "Personal cycle parameters and reminders",
+      "type": "object",
+      "properties": {
+        "averageCycleLength": { "type": "number" },
+        "averagePeriodDuration": { "type": "number" },
+        "lutealPhaseLength": { "type": "number" }
+      },
+      "required": ["averageCycleLength", "averagePeriodDuration"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/accounts/{accountId}": {
+      "schema": "account",
+      "description": "User specific financial accounts"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "transaction",
+      "description": "User specific transactions"
+    },
+    "/users/{userId}/vehicles/{vehicleId}": {
+      "schema": "vehicle",
+      "description": "User specific vehicles"
+    },
+    "/users/{userId}/vehicle_logs/{logId}": {
+      "schema": "vehicle_log",
+      "description": "User specific vehicle logs"
+    },
+    "/users/{userId}/todos/{todoId}": {
+      "schema": "todo",
+      "description": "User specific todo notes"
+    },
+    "/users/{userId}/receivables_payables/{entityId}": {
+      "schema": "entity",
+      "description": "User specific receivables and payables"
+    },
+    "/users/{userId}/exercise_logs/{logId}": {
+      "schema": "exercise_log",
+      "description": "User specific exercise logs"
+    },
+    "/users/{userId}/calendar_events/{eventId}": {
+      "schema": "calendar_event",
+      "description": "User specific calendar events"
+    },
+    "/users/{userId}/menstrual_logs/{logId}": {
+      "schema": "menstrual_log",
+      "description": "User specific menstrual cycle logs"
+    },
+    "/users/{userId}/menstrual_periods/{periodId}": {
+      "schema": "menstrual_period",
+      "description": "User specific period cycle history"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "menstrual_setting",
+      "description": "User settings and cycle parameters"
+    }
+  }
+}

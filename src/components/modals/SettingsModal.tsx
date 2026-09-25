@@ -23,6 +23,8 @@ interface SettingsModalProps {
   onClose: () => void;
   onSeedData: () => Promise<void>;
   onClearCache: () => void;
+  onClearUserData?: () => Promise<void>;
+  user?: any;
   isGuestMode?: boolean;
   onLogin?: () => void;
   onExitGuestMode?: () => void;
@@ -33,6 +35,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSeedData,
   onClearCache,
+  onClearUserData,
+  user,
   isGuestMode = false,
   onLogin,
   onExitGuestMode
@@ -41,6 +45,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [cacheReset, setCacheReset] = useState(false);
+  const [clearingUser, setClearingUser] = useState(false);
+  const [clearedSuccess, setClearedSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -52,6 +58,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setTimeout(() => setSeedSuccess(false), 3000);
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleClearUser = async () => {
+    if (!onClearUserData) return;
+    if (confirm('Clear all your records to start with a completely blank workspace?')) {
+      setClearingUser(true);
+      try {
+        await onClearUserData();
+        setClearedSuccess(true);
+        setTimeout(() => setClearedSuccess(false), 3000);
+      } finally {
+        setClearingUser(false);
+      }
     }
   };
 
@@ -181,17 +201,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-300 space-y-1 bg-[#0a0e14] p-2.5 rounded-xl border border-slate-800 font-mono">
+                  {user?.email && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Signed In As:</span>
+                      <span className="text-amber-300 font-bold truncate max-w-[200px]">{user.email}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Workspace:</span>
+                    <span className={user?.email?.toLowerCase() === 'rajapriyan20@gmail.com' ? 'text-amber-400 font-bold' : 'text-sky-400'}>
+                      {user?.email?.toLowerCase() === 'rajapriyan20@gmail.com' ? 'Primary Workspace' : 'Private Isolated Space'}
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Project ID:</span>
-                    <span className="text-amber-300 font-bold">{appletConfig.projectId}</span>
+                    <span className="text-slate-300 font-bold">{appletConfig.projectId}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Database:</span>
                     <span className="text-emerald-300">Firestore (Live)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Auth & Gmail:</span>
-                    <span className="text-sky-300">Connected</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 pt-1">
@@ -229,6 +257,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </span>
                 {seedSuccess && <Check size={14} className="text-emerald-400" />}
               </button>
+
+              {onClearUserData && !isGuestMode && (
+                <button
+                  onClick={handleClearUser}
+                  disabled={clearingUser}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
+                >
+                  <Trash2 size={14} className={clearingUser ? 'animate-spin' : ''} />
+                  <span>
+                    {clearingUser
+                      ? 'Clearing workspace...'
+                      : clearedSuccess
+                      ? 'Workspace cleared to blank!'
+                      : 'Reset Workspace to Blank'}
+                  </span>
+                  {clearedSuccess && <Check size={14} className="text-emerald-400" />}
+                </button>
+              )}
 
               <button
                 onClick={handleResetCache}

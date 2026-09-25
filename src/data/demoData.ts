@@ -1,4 +1,16 @@
-import { Account, Transaction, Vehicle, VehicleLog, TodoNote, Entity, ExerciseLog } from '../types';
+import { 
+  Account, 
+  Transaction, 
+  Vehicle, 
+  VehicleLog, 
+  TodoNote, 
+  Entity, 
+  ExerciseLog,
+  CalendarEvent,
+  MenstrualLog,
+  MenstrualCycleSettings,
+  MenstrualPeriodRecord 
+} from '../types';
 
 export const DEMO_ACCOUNTS: Account[] = [
   {
@@ -191,3 +203,104 @@ export const DEMO_EXERCISE_LOGS: ExerciseLog[] = [
     updatedAt: Date.now() - 86400000
   }
 ];
+
+export const DEMO_CALENDAR_EVENTS: CalendarEvent[] = [
+  {
+    id: 'demo-cal-1',
+    title: 'HDFC Credit Card Bill Due',
+    date: todayStr,
+    time: '10:00',
+    type: 'FINANCE',
+    category: 'Bill',
+    color: 'amber',
+    notes: 'Statement bill payment auto-clearing'
+  },
+  {
+    id: 'demo-cal-2',
+    title: 'Nexon EV Tyre Rotation & Alignment',
+    date: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+    time: '11:30',
+    type: 'VEHICLE',
+    category: 'Service',
+    color: 'sky',
+    notes: 'Tata authorized service station booking'
+  },
+  {
+    id: 'demo-cal-3',
+    title: 'Gym Strength Training & Mobility',
+    date: todayStr,
+    time: '18:00',
+    type: 'EXERCISE',
+    category: 'Workout',
+    color: 'emerald',
+    notes: 'Squats, lunges, mobility drills'
+  }
+];
+
+export const DEMO_MENSTRUAL_SETTINGS: MenstrualCycleSettings = {
+  averageCycleLength: 28,
+  averagePeriodDuration: 5,
+  lutealPhaseLength: 14,
+  lastPeriodStartDate: new Date(Date.now() - 86400000 * 12).toISOString().split('T')[0],
+  privacyMode: false
+};
+
+export const DEMO_MENSTRUAL_PERIODS: MenstrualPeriodRecord[] = [
+  {
+    id: 'period-rec-1',
+    startDate: new Date(Date.now() - 86400000 * 12).toISOString().split('T')[0],
+    endDate: new Date(Date.now() - 86400000 * 8).toISOString().split('T')[0],
+    cycleLength: 28,
+    durationDays: 5,
+    notes: 'Normal flow, mild cramps on day 1'
+  },
+  {
+    id: 'period-rec-2',
+    startDate: new Date(Date.now() - 86400000 * 40).toISOString().split('T')[0],
+    endDate: new Date(Date.now() - 86400000 * 36).toISOString().split('T')[0],
+    cycleLength: 29,
+    durationDays: 5,
+    notes: 'On time, healthy cycle'
+  }
+];
+
+export const DEMO_MENSTRUAL_LOGS: MenstrualLog[] = [
+  {
+    id: 'mlog-1',
+    date: new Date(Date.now() - 86400000 * 12).toISOString().split('T')[0],
+    isPeriodDay: true,
+    flow: 'MEDIUM',
+    cramps: 'MODERATE',
+    crampLocations: ['Lower abdomen', 'Lower back'],
+    moods: ['TIRED', 'SENSITIVE'],
+    symptoms: ['Bloating', 'Fatigue'],
+    waterIntakeGlasses: 8,
+    sleepHours: 7.5,
+    notes: 'Drank herbal tea and rested'
+  },
+  {
+    id: 'mlog-2',
+    date: new Date(Date.now() - 86400000 * 11).toISOString().split('T')[0],
+    isPeriodDay: true,
+    flow: 'HEAVY',
+    cramps: 'MILD',
+    moods: ['CALM'],
+    symptoms: ['Bloating'],
+    waterIntakeGlasses: 9,
+    sleepHours: 8
+  },
+  {
+    id: 'mlog-3',
+    date: todayStr,
+    isPeriodDay: false,
+    flow: 'NONE',
+    cramps: 'NONE',
+    moods: ['HAPPY', 'ENERGETIC'],
+    symptoms: [],
+    mucus: 'WATERY',
+    waterIntakeGlasses: 10,
+    sleepHours: 8,
+    notes: 'Feeling great, high energy in follicular phase'
+  }
+];
+

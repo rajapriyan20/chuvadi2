@@ -18,7 +18,9 @@ import {
   LogOut,
   ArrowLeft,
   LogIn,
-  Eye
+  Eye,
+  CalendarDays,
+  Heart
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
@@ -82,6 +84,18 @@ export const SideMenu: React.FC<SideMenuProps> = ({
       icon: CheckSquare,
       badge: pendingTodosCount > 0 ? `${pendingTodosCount}` : undefined,
       badgeColor: 'bg-emerald-500 text-slate-950 font-bold'
+    },
+    {
+      id: 'calendar' as ActiveTab,
+      label: 'Calendar',
+      subtitle: 'Unified Events, Bills & Schedule',
+      icon: CalendarDays,
+    },
+    {
+      id: 'menstrual' as ActiveTab,
+      label: 'Menstrual Tracker',
+      subtitle: 'Cycle, Symptoms & Fertility',
+      icon: Heart,
     },
     {
       id: 'exercise' as ActiveTab,

@@ -9,10 +9,15 @@ import {
   CheckCircle2, 
   Lock,
   ArrowRight,
-  UserCheck
+  UserCheck,
+  AlertTriangle,
+  Copy,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { WhatsAppLogo } from './WhatsAppLogo';
+import appletConfig from '../../../firebase-applet-config.json';
 
 interface AuthScreenProps {
   onLogin: () => Promise<any>;
@@ -22,10 +27,16 @@ interface AuthScreenProps {
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGuest }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const firebaseSettingsUrl = `https://console.firebase.google.com/project/${appletConfig.projectId}/authentication/settings`;
 
   const handleSignIn = async () => {
     setIsLoading(true);
     setError(null);
+    setIsUnauthorizedDomain(false);
     try {
       await onLogin();
     } catch (err: any) {
@@ -41,10 +52,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
         setError('The sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
         return;
       }
+      if (
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.includes('auth/unauthorized-domain')
+      ) {
+        setIsUnauthorizedDomain(true);
+        return;
+      }
       console.warn('Sign-in attempt failed:', err);
       setError(err?.message || 'Failed to sign in. Please check your network or try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCopyDomain = () => {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
     }
   };
 
@@ -120,6 +146,74 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
           {error && (
             <div className="mb-4 p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300">
               {error}
+            </div>
+          )}
+
+          {/* Unauthorized Domain Interactive Solution Banner */}
+          {isUnauthorizedDomain && (
+            <div className="mb-5 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-left space-y-3 animate-fadeIn">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                <span>Domain Not Authorized in Firebase</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                You are accessing Chuvadi from <strong className="text-white">{currentHostname}</strong>. Firebase Authentication requires any deployment domain (e.g. GitHub Pages) to be added to the Authorized Domains list.
+              </p>
+
+              <div className="bg-[#0b1017] p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono text-amber-200">
+                <span className="truncate mr-2">{currentHostname}</span>
+                <button
+                  type="button"
+                  onClick={handleCopyDomain}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-sans font-bold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                >
+                  {copiedDomain ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{copiedDomain ? 'Copied!' : 'Copy Domain'}</span>
+                </button>
+              </div>
+
+              <div className="space-y-1.5 text-[11px] text-slate-400">
+                <div className="font-semibold text-slate-300">How to fix this:</div>
+                <ol className="list-decimal list-inside space-y-1 pl-1">
+                  <li>
+                    Open{' '}
+                    <a
+                      href={firebaseSettingsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-400 hover:text-amber-300 underline font-medium inline-flex items-center gap-0.5"
+                    >
+                      <span>Firebase Console Authorized Domains</span>
+                      <ExternalLink size={10} />
+                    </a>
+                  </li>
+                  <li>
+                    Click <strong className="text-slate-200">Add domain</strong>
+                  </li>
+                  <li>
+                    Paste <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">{currentHostname}</code> and save
+                  </li>
+                </ol>
+              </div>
+
+              <div className="pt-1 flex flex-col sm:flex-row items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSignIn}
+                  className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer text-center"
+                >
+                  Retry Sign In
+                </button>
+                {onContinueAsGuest && (
+                  <button
+                    type="button"
+                    onClick={onContinueAsGuest}
+                    className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition cursor-pointer text-center"
+                  >
+                    Continue in Guest Mode for now
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

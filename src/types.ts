@@ -154,4 +154,69 @@ export interface GmailExpenseEmail {
   addedTxnId?: string;
 }
 
-export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'reports' | 'ai' | 'exercise';
+// Calendar Types
+export type CalendarEventType = 'FINANCE' | 'VEHICLE' | 'EXERCISE' | 'MENSTRUAL' | 'CUSTOM' | 'REMINDER';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  endDate?: string;
+  time?: string; // HH:mm
+  type: CalendarEventType;
+  category?: string; // e.g. 'Personal', 'Bill', 'Workout', 'Period', 'Car Service'
+  color?: string; // e.g. 'amber', 'rose', 'emerald', 'sky', 'indigo', 'violet'
+  notes?: string;
+  isAllDay?: boolean;
+  completed?: boolean;
+  linkedId?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+// Menstrual Tracker Types
+export type FlowIntensity = 'NONE' | 'SPOTTING' | 'LIGHT' | 'MEDIUM' | 'HEAVY' | 'CLOTS';
+export type CrampSeverity = 'NONE' | 'MILD' | 'MODERATE' | 'SEVERE';
+export type MoodType = 'HAPPY' | 'CALM' | 'ENERGETIC' | 'SENSITIVE' | 'IRRITABLE' | 'ANXIOUS' | 'TIRED' | 'MOOD_SWINGS';
+export type CervicalMucus = 'DRY' | 'STICKY' | 'CREAMY' | 'EGGWHITE' | 'WATERY';
+export type CyclePhase = 'MENSTRUAL' | 'FOLLICULAR' | 'OVULATORY' | 'LUTEAL';
+
+export interface MenstrualCycleSettings {
+  averageCycleLength: number; // default 28
+  averagePeriodDuration: number; // default 5
+  lutealPhaseLength: number; // default 14
+  lastPeriodStartDate?: string; // YYYY-MM-DD
+  privacyMode?: boolean;
+}
+
+export interface MenstrualLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  isPeriodDay: boolean;
+  flow?: FlowIntensity;
+  cramps?: CrampSeverity;
+  crampLocations?: string[];
+  moods?: MoodType[];
+  symptoms?: string[];
+  mucus?: CervicalMucus;
+  temperature?: number; // BBT in °C
+  weight?: number; // kg
+  waterIntakeGlasses?: number;
+  sleepHours?: number;
+  sexualActivity?: 'PROTECTED' | 'UNPROTECTED' | 'NONE';
+  notes?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface MenstrualPeriodRecord {
+  id: string;
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  cycleLength?: number; // Days from previous period start
+  durationDays?: number;
+  notes?: string;
+}
+
+export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'calendar' | 'menstrual' | 'exercise' | 'reports' | 'ai';
+
