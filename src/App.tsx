@@ -47,7 +47,12 @@ import type { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
-import { markEmailAsAdded, setCachedGmailToken, clearGmailSession } from './services/gmail';
+import { 
+  markEmailAsAdded, 
+  setCachedGmailToken, 
+  clearGmailSession,
+  sanitizeAndPurgeContaminatedCaches 
+} from './services/gmail';
 import {
   DEMO_ACCOUNTS,
   DEMO_TRANSACTIONS,
@@ -676,6 +681,7 @@ export function App() {
       setCachedGmailToken(null);
       await logoutUser();
       clearLocalCache();
+      sanitizeAndPurgeContaminatedCaches();
       setUser(null);
       setGuestMode(false);
       sessionStorage.removeItem('chuvadi_guest_mode');
@@ -700,6 +706,7 @@ export function App() {
     setGuestMode(false);
     sessionStorage.removeItem('chuvadi_guest_mode');
     clearGmailSession();
+    sanitizeAndPurgeContaminatedCaches();
     setUser(null);
     setAccounts([]);
     setTransactions([]);

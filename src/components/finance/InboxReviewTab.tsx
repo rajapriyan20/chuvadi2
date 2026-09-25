@@ -164,7 +164,8 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
         filterRules,
         fieldRules,
         accounts,
-        emails
+        emails,
+        userKey
       );
 
       setEmails(result.emails);

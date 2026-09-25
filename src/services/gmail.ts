@@ -32,9 +32,66 @@ let inMemoryToken: string | null = null;
 let inMemoryTokenUser: string | null = null;
 
 export function getUserScopeKey(userIdentifier?: string | null): string {
-  if (!userIdentifier) return 'guest';
+  if (!userIdentifier || userIdentifier === 'guest') return 'guest';
   const clean = userIdentifier.toLowerCase().trim();
   return clean.replace(/[^a-z0-9_]/g, '_');
+}
+
+/**
+ * Proactively sanitize legacy or contaminated cross-account local storage caches
+ */
+export function sanitizeAndPurgeContaminatedCaches(): void {
+  try {
+    // 1. Remove legacy un-scoped cache key
+    localStorage.removeItem('chuvadi_gmail_emails_cache_v1');
+
+    // 2. Ensure 'guest' cache never contains real private email data
+    const guestKey = 'chuvadi_gmail_emails_guest';
+    const guestRaw = localStorage.getItem(guestKey);
+    if (guestRaw) {
+      try {
+        const parsed = JSON.parse(guestRaw);
+        if (Array.isArray(parsed) && parsed.some((e: any) => !String(e.id || '').startsWith('demo-mail-'))) {
+          localStorage.removeItem(guestKey);
+        }
+      } catch {
+        localStorage.removeItem(guestKey);
+      }
+    }
+
+    // 3. Purge cross-contaminated caches: Any non-primary user key that accidentally contains
+    // real emails scanned from the primary account (e.g. rajapriyan20)
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('chuvadi_gmail_emails_') && !key.includes('rajapriyan20') && key !== 'chuvadi_gmail_emails_guest') {
+        const val = localStorage.getItem(key);
+        if (val) {
+          try {
+            const list = JSON.parse(val);
+            if (Array.isArray(list) && list.length > 0) {
+              // Check if emails lack matching owner or match previous 28 items
+              const belongsToOther = list.some((e: any) => 
+                (e.mailboxOwner && e.mailboxOwner === PRIMARY_GMAIL_USER) ||
+                (!e.mailboxOwner && list.length >= 20)
+              );
+              if (belongsToOther) {
+                localStorage.removeItem(key);
+              }
+            }
+          } catch {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error during cache sanitization:', e);
+  }
+}
+
+// Run sanitization immediately on module load
+if (typeof window !== 'undefined') {
+  sanitizeAndPurgeContaminatedCaches();
 }
 
 export function getCachedGmailToken(userIdentifier?: string | null): string | null {
@@ -129,7 +186,7 @@ async function waitForGoogleIdentity(): Promise<boolean> {
  * Authenticate via Google Identity Services (GIS) Token Client
  * This is Google's official, direct client-side OAuth 2.0 flow for web applications.
  */
-function authenticateWithGIS(clientId: string): Promise<string> {
+function authenticateWithGIS(clientId: string, userHint?: string | null): Promise<string> {
   return new Promise((resolve, reject) => {
     const win = window as any;
     if (!win.google?.accounts?.oauth2) {
@@ -137,7 +194,8 @@ function authenticateWithGIS(clientId: string): Promise<string> {
     }
 
     try {
-      const tokenClient = win.google.accounts.oauth2.initTokenClient({
+      const emailHint = userHint && userHint.includes('@') ? userHint.toLowerCase().trim() : undefined;
+      const clientConfig: any = {
         client_id: clientId,
         scope: GMAIL_SCOPES.join(' '),
         callback: (resp: any) => {
@@ -153,9 +211,18 @@ function authenticateWithGIS(clientId: string): Promise<string> {
         error_callback: (err: any) => {
           reject(new Error(err?.message || err?.type || 'Google Identity authorization popup failed.'));
         }
-      });
+      };
 
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      if (emailHint) {
+        clientConfig.hint = emailHint;
+      }
+
+      const tokenClient = win.google.accounts.oauth2.initTokenClient(clientConfig);
+
+      tokenClient.requestAccessToken({ 
+        prompt: 'consent',
+        hint: emailHint
+      });
     } catch (err: any) {
       reject(err);
     }
@@ -165,17 +232,21 @@ function authenticateWithGIS(clientId: string): Promise<string> {
 /**
  * Authenticate via Firebase Auth initialized with the provisioned applet config
  */
-async function authenticateWithFirebaseAuth(): Promise<string> {
+async function authenticateWithFirebaseAuth(userHint?: string | null): Promise<string> {
   const existingApp = getApps().find(a => a.name === 'oauthApp');
   const oauthApp = existingApp || initializeApp(appletConfig, 'oauthApp');
   const oauthAuth = getAuth(oauthApp);
 
   const provider = new GoogleAuthProvider();
   GMAIL_SCOPES.forEach(scope => provider.addScope(scope));
-  provider.setCustomParameters({
+  const customParams: Record<string, string> = {
     prompt: 'consent',
     access_type: 'offline'
-  });
+  };
+  if (userHint && userHint.includes('@')) {
+    customParams.login_hint = userHint.toLowerCase().trim();
+  }
+  provider.setCustomParameters(customParams);
 
   const result = await signInWithPopup(oauthAuth, provider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -184,6 +255,39 @@ async function authenticateWithFirebaseAuth(): Promise<string> {
   }
 
   return credential.accessToken;
+}
+
+/**
+ * Verify that the granted Gmail OAuth token belongs to the matching user's mailbox
+ */
+export async function verifyGmailMailbox(token: string, expectedUserEmail?: string | null): Promise<string> {
+  try {
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      return '';
+    }
+    const data = await res.json();
+    const mailboxEmail = (data.emailAddress || '').toLowerCase().trim();
+
+    if (expectedUserEmail && expectedUserEmail.includes('@')) {
+      const expected = expectedUserEmail.toLowerCase().trim();
+      if (mailboxEmail && mailboxEmail !== expected) {
+        clearGmailSession();
+        throw new Error(
+          `Account Mismatch: You are logged into Chuvadi as "${expected}", but authorized the Gmail mailbox for "${mailboxEmail}". Please authorize using "${expected}" to keep your data isolated and secure.`
+        );
+      }
+    }
+    return mailboxEmail;
+  } catch (err: any) {
+    if (err?.message?.includes('Account Mismatch')) {
+      throw err;
+    }
+    console.warn('Could not verify Gmail profile:', err);
+    return '';
+  }
 }
 
 /**
@@ -197,10 +301,14 @@ export async function authenticateGmail(userIdentifier?: string | null): Promise
   // Strategy 1: Google Identity Services (preferred for custom domains and standard OAuth)
   if (hasGIS && clientId) {
     try {
-      const token = await authenticateWithGIS(clientId);
+      const token = await authenticateWithGIS(clientId, userIdentifier);
+      await verifyGmailMailbox(token, userIdentifier);
       setCachedGmailToken(token, userIdentifier);
       return token;
     } catch (gisError: any) {
+      if (String(gisError?.message || '').includes('Account Mismatch')) {
+        throw gisError;
+      }
       console.warn('GIS authorization failed, trying Firebase Auth fallback:', gisError);
       
       const errMsg = String(gisError?.message || gisError || '');
@@ -218,10 +326,14 @@ export async function authenticateGmail(userIdentifier?: string | null): Promise
 
   // Strategy 2: Firebase Auth with applet project
   try {
-    const token = await authenticateWithFirebaseAuth();
+    const token = await authenticateWithFirebaseAuth(userIdentifier);
+    await verifyGmailMailbox(token, userIdentifier);
     setCachedGmailToken(token, userIdentifier);
     return token;
   } catch (fbError: any) {
+    if (String(fbError?.message || '').includes('Account Mismatch')) {
+      throw fbError;
+    }
     const code = fbError?.code || '';
     const origin = window.location.origin;
 
@@ -423,9 +535,13 @@ export function saveFieldSuggestionRules(rules: FieldSuggestionRule[], userIdent
 }
 
 export function loadCachedEmails(userIdentifier?: string | null): GmailExpenseEmail[] {
+  if (!userIdentifier || userIdentifier === 'guest') {
+    return [];
+  }
   try {
-    const isPrimary = userIdentifier?.toLowerCase().trim() === PRIMARY_GMAIL_USER;
-    const scopedKey = getEmailsCacheKey(userIdentifier);
+    const cleanUser = userIdentifier.toLowerCase().trim();
+    const isPrimary = cleanUser === PRIMARY_GMAIL_USER;
+    const scopedKey = getEmailsCacheKey(cleanUser);
     let raw = localStorage.getItem(scopedKey);
 
     // If primary user rajapriyan20@gmail.com and hasn't yet been copied from legacy key, migrate it
@@ -437,8 +553,24 @@ export function loadCachedEmails(userIdentifier?: string | null): GmailExpenseEm
       }
     }
 
-    // For other users or guests, return only their isolated scoped cache
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const list: GmailExpenseEmail[] = JSON.parse(raw);
+      if (!Array.isArray(list)) return [];
+
+      // For non-primary users (e.g. appsheetrp@gmail.com), enforce strict mailbox isolation:
+      // Drop any item that belongs to rajapriyan20@gmail.com or has mismatched mailboxOwner!
+      if (!isPrimary) {
+        return list.filter(e => {
+          const owner = (e as any).mailboxOwner;
+          if (owner) {
+            return owner === cleanUser;
+          }
+          // If no owner tag was present (legacy), do not let rajapriyan's data leak into this user's inbox
+          return false;
+        });
+      }
+      return list;
+    }
   } catch (e) {
     console.error('Error loading cached emails:', e);
   }
@@ -446,9 +578,18 @@ export function loadCachedEmails(userIdentifier?: string | null): GmailExpenseEm
 }
 
 export function saveCachedEmails(emails: GmailExpenseEmail[], userIdentifier?: string | null): void {
+  if (!userIdentifier || userIdentifier === 'guest') {
+    return;
+  }
   try {
-    const scopedKey = getEmailsCacheKey(userIdentifier);
-    localStorage.setItem(scopedKey, JSON.stringify(emails));
+    const cleanUser = userIdentifier.toLowerCase().trim();
+    const scopedKey = getEmailsCacheKey(cleanUser);
+    // Stamp mailboxOwner on each email to guarantee provenance and isolation
+    const tagged = emails.map(e => ({
+      ...e,
+      mailboxOwner: cleanUser
+    }));
+    localStorage.setItem(scopedKey, JSON.stringify(tagged));
   } catch (e) {
     console.error('Error caching emails:', e);
   }
@@ -640,9 +781,15 @@ export async function fetchExpenseEmailsFromGmail(
   filterRules: GmailFilterRule[],
   fieldRules: FieldSuggestionRule[],
   accounts: Account[],
-  existingCached: GmailExpenseEmail[] = []
+  existingCached: GmailExpenseEmail[] = [],
+  userIdentifier?: string | null
 ): Promise<{ emails: GmailExpenseEmail[]; error?: string }> {
   try {
+    // 1. Proactively verify mailbox ownership matches logged-in user
+    if (userIdentifier && userIdentifier.includes('@')) {
+      await verifyGmailMailbox(token, userIdentifier);
+    }
+
     const activeRules = filterRules.filter(r => r.enabled && r.query.trim());
     if (activeRules.length === 0) {
       return { emails: existingCached, error: 'No active Gmail filter rules found. Please enable or add at least one filter query in the Rules tab.' };
@@ -662,7 +809,7 @@ export async function fetchExpenseEmailsFromGmail(
 
     if (!listRes.ok) {
       if (listRes.status === 401) {
-        setCachedGmailToken(null);
+        setCachedGmailToken(null, userIdentifier);
         return { emails: existingCached, error: 'Gmail authorization expired. Please click "Connect Gmail Account" to reconnect.' };
       }
       const errText = await listRes.text();
@@ -696,6 +843,7 @@ export async function fetchExpenseEmailsFromGmail(
 
     const rawMsgs = await Promise.all(messagePromises);
     const parsedEmails: GmailExpenseEmail[] = [];
+    const cleanOwner = userIdentifier ? userIdentifier.toLowerCase().trim() : undefined;
 
     for (const raw of rawMsgs) {
       if (!raw || !raw.id) continue;
@@ -749,8 +897,9 @@ export async function fetchExpenseEmailsFromGmail(
         suggestedAccountId: suggestedAccountId || accounts[0]?.id || '',
         suggestedType: detectedType,
         status: prevStatus?.status || 'PENDING',
-        addedTxnId: prevStatus?.addedTxnId
-      });
+        addedTxnId: prevStatus?.addedTxnId,
+        mailboxOwner: cleanOwner
+      } as any);
     }
 
     parsedEmails.sort((a, b) => b.timestamp - a.timestamp);
@@ -762,7 +911,7 @@ export async function fetchExpenseEmailsFromGmail(
       }
     }
 
-    saveCachedEmails(parsedEmails);
+    saveCachedEmails(parsedEmails, userIdentifier);
     return { emails: parsedEmails };
 
   } catch (err: any) {

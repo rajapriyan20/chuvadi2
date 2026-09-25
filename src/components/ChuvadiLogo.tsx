@@ -125,15 +125,47 @@ export const ChuvadiLogo: React.FC<ChuvadiLogoProps> = ({
             <text x="405" y="252" fontFamily="sans-serif" fontSize="13" fontWeight="bold" fill="#4d2c0e" textAnchor="middle">|||</text>
             <text x="405" y="277" fontFamily="sans-serif" fontSize="13" fontWeight="bold" fill="#4d2c0e" textAnchor="middle">|||</text>
 
-            {/* Engraved Ledger Wave */}
-            <path d="M 180 235 
-                     C 195 215, 215 255, 235 225
-                     C 255 255, 275 220, 290 235" 
-                  fill="none" 
-                  stroke="#3d220a" 
-                  strokeWidth="4" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" />
+            {/* Tamil Inscribed Letters: First letter "கீ" and second letter "ர்" fully etched */}
+            <g id="tamil-engraved-script">
+              <text 
+                x="156" 
+                y="244" 
+                fontFamily="'Noto Serif Tamil', 'Noto Sans Tamil', FreeSerif, 'Tamil Sangam MN', sans-serif" 
+                fontSize="30" 
+                fontWeight="bold" 
+                fill="#2d1604" 
+                letterSpacing="3"
+              >
+                கீ ர்
+              </text>
+              
+              {/* Third letter "த்": Just started being written! */}
+              {/* Top initial hook & cross-stroke of "த" currently being engraved */}
+              <path 
+                d="M 234 243 L 234 227 C 234 222, 240 220, 246 220 L 253 220 C 259 220, 263 224, 263 230 C 263 234, 260 238, 255 241"
+                fill="none" 
+                stroke="#2d1604" 
+                strokeWidth="3.2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+              
+              {/* Faint guide of the rest of "த்" being formed */}
+              <path 
+                d="M 255 241 C 250 244, 242 248, 242 254 C 242 258, 248 261, 258 261 L 265 261"
+                fill="none" 
+                stroke="#2d1604" 
+                strokeWidth="1.8" 
+                strokeDasharray="2,3" 
+                strokeOpacity="0.35" 
+                strokeLinecap="round" 
+              />
+              {/* Pulli (dot) guide */}
+              <circle cx="254" cy="214" r="2.2" fill="#2d1604" fillOpacity="0.35" />
+
+              {/* Tiny incised carving flash at point of stylus contact */}
+              <circle cx="255" cy="241" r="2.8" fill="#fde68a" stroke="#78350f" strokeWidth="0.8" />
+            </g>
           </g>
 
           {/* Hanging Braided Cord & Carved Wooden Bead */}
@@ -159,8 +191,8 @@ export const ChuvadiLogo: React.FC<ChuvadiLogoProps> = ({
             <ellipse cx="81" cy="418" rx="8" ry="6" fill="#3e2723" stroke="#271810" strokeWidth="2" />
           </g>
 
-          {/* Antique Bronze Stylus (Ezhuthani) resting diagonally */}
-          <g>
+          {/* Antique Bronze Stylus (Ezhuthani) resting directly at the active writing point */}
+          <g transform="translate(17, -15)">
             <polygon points="252,246 258,242 430,76 422,70" fill="url(#chuvadiStylusGrad)" stroke="#2b200b" strokeWidth="1.5" />
             <polygon points="238,256 253,243 257,247" fill="url(#chuvadiNibGrad)" stroke="#1f1606" strokeWidth="1.2" />
             <rect x="310" y="160" width="14" height="26" rx="4" transform="rotate(-44 317 173)" fill="url(#chuvadiNibGrad)" stroke="#3d2d10" strokeWidth="1.5" />

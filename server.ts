@@ -232,6 +232,26 @@ Current User Snapshot Context:
     }
   });
 
+  // Dedicated PWA Manifest & Service Worker Endpoints (Standards-compliant headers for WebAPK installability)
+  app.get("/sw.js", (_req, res) => {
+    const swPath = process.env.NODE_ENV !== "production"
+      ? path.join(process.cwd(), "public", "sw.js")
+      : path.join(process.cwd(), "dist", "sw.js");
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Service-Worker-Allowed", "/");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.sendFile(swPath);
+  });
+
+  app.get(["/manifest.json", "/manifest.webmanifest"], (_req, res) => {
+    const manifestPath = process.env.NODE_ENV !== "production"
+      ? path.join(process.cwd(), "public", "manifest.json")
+      : path.join(process.cwd(), "dist", "manifest.json");
+    res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.sendFile(manifestPath);
+  });
+
   // Vite middleware for development vs static build for production
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

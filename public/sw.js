@@ -1,5 +1,5 @@
 // Chuvadi Progressive Web App Service Worker
-const CACHE_NAME = 'chuvadi-cache-v1';
+const CACHE_NAME = 'chuvadi-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -14,12 +14,21 @@ const PRECACHE_ASSETS = [
 
 // Install Event - Pre-cache core assets & activate immediately
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('Pre-cache warning during SW install:', err);
-      });
-    }).then(() => self.skipWaiting())
+      return Promise.allSettled(
+        PRECACHE_ASSETS.map((url) =>
+          fetch(url, { cache: 'reload' })
+            .then((res) => {
+              if (res.ok) return cache.put(url, res);
+            })
+            .catch((err) => {
+              console.warn('Pre-cache skip for:', url, err);
+            })
+        )
+      );
+    })
   );
 });
 
