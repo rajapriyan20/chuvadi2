@@ -226,3 +226,29 @@ export interface MenstrualPeriodRecord {
 
 export type ActiveTab = 'dashboard' | 'finance' | 'garage' | 'todos' | 'calendar' | 'menstrual' | 'exercise' | 'reports' | 'ai';
 
+export type MeasurementGoal = 'INCREASE' | 'DECREASE' | 'MAINTAIN' | 'NONE';
+
+export interface BodyProfileLog {
+  id: string;
+  date: string; // YYYY-MM-DD (Recommended: 1st of every month)
+  age?: number | null;
+  gender?: string | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  weightGoal?: MeasurementGoal;
+  stomachCircumferenceCm?: number | null;
+  stomachGoal?: MeasurementGoal;
+  thighCircumferenceCm?: number | null;
+  thighGoal?: MeasurementGoal;
+  bicepsCircumferenceCm?: number | null;
+  bicepsGoal?: MeasurementGoal;
+  jawlineVisibility?: number | null; // Scale 1 to 10
+  jawlineGoal?: 'IMPROVE' | 'MAINTAIN' | 'NONE';
+  focusItems?: string[]; // Top 3 items to focus on
+  notes?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export type TabVisibilityMap = Record<ActiveTab, boolean>;
+

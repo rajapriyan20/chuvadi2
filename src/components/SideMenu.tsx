@@ -20,12 +20,13 @@ import {
   LogIn,
   Eye,
   CalendarDays,
-  Heart
+  Heart,
+  Bell
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
 import { PWAInstallButton } from './common/PWAInstallButton';
-import type { ActiveTab } from '../types';
+import type { ActiveTab, TabVisibilityMap } from '../types';
 
 interface SideMenuProps {
   isOpen: boolean;
@@ -40,6 +41,8 @@ interface SideMenuProps {
   onOpenQuickAdd?: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
+  onOpenNotificationSettings?: () => void;
+  tabVisibility?: TabVisibilityMap;
 }
 
 export const SideMenu: React.FC<SideMenuProps> = ({
@@ -54,7 +57,9 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   onLogin,
   onOpenQuickAdd,
   onOpenExport,
-  onOpenSettings
+  onOpenSettings,
+  onOpenNotificationSettings,
+  tabVisibility
 }) => {
   const menuItems = [
     {
@@ -176,7 +181,9 @@ export const SideMenu: React.FC<SideMenuProps> = ({
             Navigation
           </div>
 
-          {menuItems.map((item) => {
+          {menuItems
+            .filter((item) => !tabVisibility || tabVisibility[item.id] !== false)
+            .map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
 
@@ -249,6 +256,20 @@ export const SideMenu: React.FC<SideMenuProps> = ({
             >
               <Plus size={15} strokeWidth={2.5} />
               <span>Record Transaction</span>
+            </button>
+          )}
+
+          {onOpenNotificationSettings && (
+            <button
+              id="sidemenu-notifications-btn"
+              onClick={() => {
+                onOpenNotificationSettings();
+                onClose();
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#151d28] hover:bg-[#1a2432] text-amber-300 text-xs font-semibold border border-amber-500/25 transition active:scale-95 cursor-pointer shadow-sm"
+            >
+              <Bell size={13} className="text-amber-400" />
+              <span>Notification Settings</span>
             </button>
           )}
 

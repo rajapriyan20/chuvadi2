@@ -9,7 +9,8 @@ import {
   CalendarEvent,
   MenstrualLog,
   MenstrualCycleSettings,
-  MenstrualPeriodRecord 
+  MenstrualPeriodRecord,
+  BodyProfileLog 
 } from '../types';
 
 export const DEMO_ACCOUNTS: Account[] = [
@@ -303,4 +304,68 @@ export const DEMO_MENSTRUAL_LOGS: MenstrualLog[] = [
     notes: 'Feeling great, high energy in follicular phase'
   }
 ];
+
+export const DEMO_BODY_PROFILES: BodyProfileLog[] = [
+  {
+    id: 'body-profile-1',
+    date: '2026-07-01',
+    age: 28,
+    gender: 'MALE',
+    heightCm: 175,
+    weightKg: 78.5,
+    weightGoal: 'DECREASE',
+    stomachCircumferenceCm: 92.0,
+    stomachGoal: 'DECREASE',
+    thighCircumferenceCm: 56.0,
+    thighGoal: 'MAINTAIN',
+    bicepsCircumferenceCm: 34.5,
+    bicepsGoal: 'INCREASE',
+    jawlineVisibility: 6,
+    jawlineGoal: 'IMPROVE',
+    focusItems: ['Stomach reduction', 'Biceps hypertrophy', 'Jawline definition'],
+    notes: 'Initial monthly baseline measurement. Started caloric deficit and strength training.',
+    createdAt: Date.now() - 86400000 * 85
+  },
+  {
+    id: 'body-profile-2',
+    date: '2026-08-01',
+    age: 28,
+    gender: 'MALE',
+    heightCm: 175,
+    weightKg: 76.8,
+    weightGoal: 'DECREASE',
+    stomachCircumferenceCm: 89.5,
+    stomachGoal: 'DECREASE',
+    thighCircumferenceCm: 56.5,
+    thighGoal: 'MAINTAIN',
+    bicepsCircumferenceCm: 35.2,
+    bicepsGoal: 'INCREASE',
+    jawlineVisibility: 7,
+    jawlineGoal: 'IMPROVE',
+    focusItems: ['Stomach reduction', 'Biceps hypertrophy', 'Jawline definition'],
+    notes: 'Waist down by 2.5 cm! Consistent protein intake and daily steps.',
+    createdAt: Date.now() - 86400000 * 55
+  },
+  {
+    id: 'body-profile-3',
+    date: '2026-09-01',
+    age: 28,
+    gender: 'MALE',
+    heightCm: 175,
+    weightKg: 75.2,
+    weightGoal: 'DECREASE',
+    stomachCircumferenceCm: 87.0,
+    stomachGoal: 'DECREASE',
+    thighCircumferenceCm: 57.0,
+    thighGoal: 'MAINTAIN',
+    bicepsCircumferenceCm: 36.0,
+    bicepsGoal: 'INCREASE',
+    jawlineVisibility: 8,
+    jawlineGoal: 'IMPROVE',
+    focusItems: ['Stomach reduction', 'Biceps hypertrophy', 'Jawline definition'],
+    notes: 'Reached intermediate goal weight! Jawline visibly sharper, posture improved.',
+    createdAt: Date.now() - 86400000 * 25
+  }
+];
+
 

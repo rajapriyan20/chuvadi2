@@ -7,22 +7,25 @@ import {
   PieChart, 
   Sparkles,
   CalendarDays,
-  Heart 
+  Heart,
+  Dumbbell 
 } from 'lucide-react';
-import type { ActiveTab } from '../types';
+import type { ActiveTab, TabVisibilityMap } from '../types';
 
 interface NavigationProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   renewalsCount?: number;
   pendingTodosCount?: number;
+  tabVisibility?: TabVisibilityMap;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onSelectTab,
   renewalsCount = 0,
-  pendingTodosCount = 0
+  pendingTodosCount = 0,
+  tabVisibility
 }) => {
   const desktopTabs = [
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
@@ -42,6 +45,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       badgeColor: 'bg-emerald-500 text-slate-950 font-bold'
     },
     { id: 'calendar' as ActiveTab, label: 'Calendar', icon: CalendarDays },
+    { id: 'exercise' as ActiveTab, label: 'Exercise', icon: Dumbbell },
     { id: 'menstrual' as ActiveTab, label: 'Cycle', icon: Heart },
     { id: 'reports' as ActiveTab, label: 'Reports', icon: PieChart },
     { 
@@ -56,6 +60,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'finance' as ActiveTab, label: 'Finance', icon: Wallet },
     { id: 'calendar' as ActiveTab, label: 'Calendar', icon: CalendarDays },
+    { id: 'exercise' as ActiveTab, label: 'Exercise', icon: Dumbbell },
     { id: 'menstrual' as ActiveTab, label: 'Cycle', icon: Heart },
     { 
       id: 'garage' as ActiveTab, 
@@ -71,12 +76,15 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
   ];
 
+  const visibleDesktopTabs = desktopTabs.filter(tab => !tabVisibility || tabVisibility[tab.id] !== false);
+  const visibleMobileTabs = mobileTabs.filter(tab => !tabVisibility || tabVisibility[tab.id] !== false);
+
   return (
     <>
       {/* Desktop Navigation Bar */}
       <nav className="hidden md:block bg-[#0f141c]/90 border-b border-slate-800/80 px-4 lg:px-8">
         <div className="max-w-7xl mx-auto flex items-center gap-1 py-1.5 overflow-x-auto scrollbar-none">
-          {desktopTabs.map((tab) => {
+          {visibleDesktopTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 
@@ -108,40 +116,43 @@ export const Navigation: React.FC<NavigationProps> = ({
       </nav>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0d1218]/95 backdrop-blur-lg border-t border-slate-800/80 px-2 py-1.5 safe-area-pb">
-        <div className="grid grid-cols-6 gap-1 max-w-md mx-auto">
-          {mobileTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+      <nav 
+        id="mobile-bottom-nav"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0c1017]/95 backdrop-blur-lg border-t border-slate-800/90 px-1 py-1 flex items-center justify-around shadow-2xl safe-area-bottom overflow-x-auto"
+      >
+        {visibleMobileTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
 
-            return (
-              <button
-                key={tab.id}
-                id={`mobile-nav-${tab.id}`}
-                onClick={() => onSelectTab(tab.id)}
-                className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition relative ${
-                  isActive
-                    ? 'text-amber-400 bg-amber-500/10'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <div className="relative">
-                  <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                  {tab.badge && (
-                    <span className="absolute -top-1.5 -right-2 px-1 py-0.2 text-[9px] font-bold rounded-full bg-amber-500 text-slate-950">
-                      {tab.badge}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] font-medium tracking-tight mt-1 truncate max-w-full">
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onSelectTab(tab.id)}
+              className={`flex-1 min-w-[50px] flex flex-col items-center justify-center py-1 rounded-xl transition relative ${
+                isActive
+                  ? 'text-amber-400'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <div className="relative">
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                {tab.badge && (
+                  <span className="absolute -top-1 -right-2 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-bold flex items-center justify-center">
+                    {tab.badge}
+                  </span>
+                )}
+              </div>
+              <span className={`text-[10px] tracking-tight mt-0.5 ${isActive ? 'font-bold text-amber-300' : 'font-medium'}`}>
+                {tab.label}
+              </span>
+
+              {isActive && (
+                <span className="w-1 h-1 rounded-full bg-amber-400 absolute bottom-0.5" />
+              )}
+            </button>
+          );
+        })}
       </nav>
     </>
   );
 };
-

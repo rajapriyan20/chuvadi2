@@ -7,12 +7,14 @@ import {
   Menu,
   Eye,
   ArrowLeft,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
 import { PWAInstallButton } from './common/PWAInstallButton';
 import { LogoModal } from './common/LogoModal';
+import { LogoutConfirmModal } from './modals/LogoutConfirmModal';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -25,6 +27,7 @@ interface HeaderProps {
   onOpenAi: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
+  onOpenNotificationSettings?: () => void;
   onLogin: () => void;
   onLogout: () => void;
   onExitGuestMode?: () => void;
@@ -42,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAi,
   onOpenExport,
   onOpenSettings,
+  onOpenNotificationSettings,
   onLogin,
   onLogout,
   onExitGuestMode,
@@ -51,6 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [showLogoPopup, setShowLogoPopup] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleLogoutClick = async () => {
     setIsSigningOut(true);
@@ -193,7 +198,25 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Action Buttons & Profile Controls */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Notifications Button */}
+            {onOpenNotificationSettings && (
+              <button
+                id="header-notifications-btn"
+                onClick={onOpenNotificationSettings}
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700/60 transition active:scale-95 relative cursor-pointer"
+                title="Notification Settings & Reminders"
+                aria-label="Notification Settings"
+              >
+                <Bell size={16} />
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center shadow-sm">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Quick Record Button */}
             <button
               id="header-quick-add-btn"
@@ -222,10 +245,11 @@ export const Header: React.FC<HeaderProps> = ({
             ) : user ? (
               <button
                 id="header-logout-btn"
-                onClick={handleLogoutClick}
+                type="button"
+                onClick={() => setShowLogoutConfirm(true)}
                 disabled={isSigningOut}
-                className="flex items-center gap-1.5 p-1.5 pr-2.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs border border-slate-700/60 transition active:scale-95 group"
-                title={`Signed in as ${user.email || 'User'}. Click to sign out.`}
+                className="flex items-center gap-1.5 p-1.5 pr-2.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs border border-slate-700/60 transition active:scale-95 group cursor-pointer"
+                title={`Signed in as ${user.email || 'User'}. Click to view account & logout.`}
               >
                 {user.photoURL ? (
                   <img 
@@ -260,6 +284,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* WhatsApp DP-style High-Resolution Logo Lightbox Modal */}
       <LogoModal isOpen={showLogoPopup} onClose={() => setShowLogoPopup(false)} />
+
+      {/* Logout Confirmation Popup Modal */}
+      <LogoutConfirmModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirmLogout={async () => {
+          setShowLogoutConfirm(false);
+          await handleLogoutClick();
+        }}
+        user={user}
+        isLoggingOut={isSigningOut}
+      />
     </header>
   );
 };

@@ -202,33 +202,73 @@ Extract the data and respond with ONLY valid JSON strictly matching:
         });
       }
 
-      const systemPrompt = `You are "Chuvadi Assistant", an intelligent, thoughtful personal finance and life OS advisor named after the ancient palm-leaf ledger tradition of India.
-You help the user optimize their daily spending, track vehicle maintenance and renewals (Insurance, PUC), monitor checklist tasks, and build healthy financial habits.
-Be concise, practical, warm, and highlight specific figures in Indian Rupees (₹) when relevant.
+      const systemPrompt = `You are "Chuvadi Assistant", an intelligent, thoughtful personal life OS and financial advisor named after the ancient palm-leaf ledger tradition of India.
+You have complete knowledge across all domains in the user's Chuvadi ledger:
+1. Finance & Accounts: Net worth, bank accounts, credit cards, income, expenses, receivables/payables.
+2. Garage & Vehicles: Cars, bikes, odometer readings, service logs, fuel logs, insurance policy numbers & expiries, PUC certificate validity.
+3. Fitness & Body Profile: Workout logs, exercise history, monthly body measurements (weight, waist, biceps, thigh, jawline score 1-10, top 3 focus items).
+4. Wellness & Menstrual Tracker: Cycle length, period records, symptoms, flow, cramps, predicted cycles.
+5. Checklists & To-dos: Pending items, priorities, completed tasks.
+6. Calendar & Birthdays: Anniversaries, upcoming birthdays, important life events.
 
-Current User Snapshot Context:
+Be concise, practical, warm, and highlight specific figures (in Indian Rupees ₹ for currency, km for vehicles, cm/kg for body measurements) when relevant.
+Format cleanly using standard markdown: use headings (###), bold (**text**), bullet points (*), and clean line breaks.
+
+Current User Snapshot Across All Modules:
 - Net Worth / Total Balance: ₹${context.totalBalance || 0}
-- Total Accounts: ${context.accountsCount || 0}
-- Accounts Summary: ${JSON.stringify(context.accounts || [])}
+- Accounts: ${JSON.stringify(context.accounts || [])}
 - Recent Monthly Expenses: ₹${context.monthlyExpense || 0}
-- Recent Transactions Sample: ${JSON.stringify((context.recentTransactions || []).slice(0, 10))}
+- Recent Transactions Sample: ${JSON.stringify((context.recentTransactions || context.transactions || []).slice(0, 10))}
 - Vehicles: ${JSON.stringify(context.vehicles || [])}
-- Pending Checklists / To-dos: ${JSON.stringify((context.pendingTodos || []).slice(0, 5))}`;
+- Vehicle Logs Sample: ${JSON.stringify((context.vehicleLogs || []).slice(0, 5))}
+- Fitness Workouts (${(context.exerciseLogs || []).length} logs): ${JSON.stringify((context.exerciseLogs || []).slice(0, 5))}
+- Monthly Body Profile Tracking: ${JSON.stringify((context.bodyProfileLogs || []).slice(0, 3))}
+- Wellness & Menstrual Tracking: Settings: ${JSON.stringify(context.menstrualSettings || {})}, Recent Logs: ${JSON.stringify((context.menstrualLogs || []).slice(0, 5))}, Periods: ${JSON.stringify((context.menstrualPeriods || []).slice(0, 3))}
+- Checklists / To-dos: ${JSON.stringify((context.pendingTodos || context.todos || []).slice(0, 8))}
+- Calendar & Birthdays: ${JSON.stringify((context.calendarEvents || []).slice(0, 8))}
+- Receivables & Payables (Debts): ${JSON.stringify((context.entities || []).slice(0, 5))}`;
 
-      const response = await client.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${systemPrompt}\n\nUser Question: ${message}` }]
-          }
-        ]
-      });
+      let replyText: string | null = null;
+      try {
+        const response = await client.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: `${systemPrompt}\n\nUser Question: ${message}` }]
+            }
+          ]
+        });
+        replyText = response.text || null;
+      } catch (primaryErr: any) {
+        console.warn("Primary gemini-3.8-flash failed, attempting fallback model:", primaryErr.message);
+        try {
+          const fallbackResp = await client.models.generateContent({
+            model: "gemini-flash-latest",
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: `${systemPrompt}\n\nUser Question: ${message}` }]
+              }
+            ]
+          });
+          replyText = fallbackResp.text || null;
+        } catch (secondaryErr: any) {
+          console.warn("Both Gemini models unavailable:", secondaryErr.message);
+        }
+      }
 
-      return res.json({ reply: response.text || "I was unable to analyze your data at this time." });
+      if (replyText) {
+        return res.json({ reply: replyText });
+      }
+
+      // If Gemini API is temporarily busy (HTTP 503 or 429 quota exhaustion), synthesize response from user context
+      const localReply = generateServerAdvisorFallback(message, context);
+      return res.json({ reply: localReply, source: "offline-advisory" });
     } catch (err: any) {
       console.error("Gemini chat error:", err);
-      return res.status(500).json({ error: err.message || "AI service error" });
+      const safeReply = generateServerAdvisorFallback(req.body.message || "", req.body.context || {});
+      return res.json({ reply: safeReply, source: "offline-advisory" });
     }
   });
 
@@ -359,6 +399,76 @@ function parseExpenseHeuristic(text: string, accounts: any[], vehicles: any[]) {
     odometer: null,
     notes: "Auto-extracted via parser"
   };
+}
+
+function generateServerAdvisorFallback(message: string, context: Record<string, any>): string {
+  const lower = (message || "").toLowerCase().trim();
+  const accounts = context.accounts || [];
+  const vehicles = context.vehicles || [];
+  const totalBalance = Number(context.totalBalance) || accounts.reduce((acc: number, a: any) => acc + (Number(a.balance) || 0), 0);
+  const monthlyExpense = Number(context.monthlyExpense) || 0;
+  const exerciseLogs = context.exerciseLogs || [];
+  const bodyProfileLogs = context.bodyProfileLogs || [];
+  const menstrualLogs = context.menstrualLogs || [];
+  const calendarEvents = context.calendarEvents || [];
+  const todos = context.todos || context.pendingTodos || [];
+
+  if (lower.includes("renewal") || lower.includes("vehicle") || lower.includes("insurance") || lower.includes("puc")) {
+    if (vehicles.length === 0) {
+      return "🚗 **Garage Status:** No vehicles currently registered.\n\nAdd your vehicle under the Vehicles tab to track insurance policies, PUC expiration, and service intervals.";
+    }
+    const lines = vehicles.map((v: any) => `• **${v.name}** (${v.vehicleNumber || 'Unassigned'}): Insurance: ${v.insuranceExpiry || 'Not set'}, PUC: ${v.pucExpiry || 'Not set'}`);
+    return `🚗 **Vehicle Compliance Check:**\n\n${lines.join('\n')}\n\n*Review the Vehicles tab for upcoming expiration dates.*`;
+  }
+
+  if (lower.includes("exercise") || lower.includes("workout") || lower.includes("body") || lower.includes("biceps") || lower.includes("jawline") || lower.includes("weight")) {
+    const latestBody = bodyProfileLogs[0];
+    let bodySummary = "";
+    if (latestBody) {
+      bodySummary = `\n\n**Latest Monthly Body Profile (${latestBody.date}):**\n• Weight: ${latestBody.weightKg ? `${latestBody.weightKg} kg` : '—'} (Goal: ${latestBody.weightGoal || 'Maintain'})\n• Waist: ${latestBody.stomachCircumferenceCm ? `${latestBody.stomachCircumferenceCm} cm` : '—'}\n• Biceps: ${latestBody.bicepsCircumferenceCm ? `${latestBody.bicepsCircumferenceCm} cm` : '—'}\n• Jawline Score: ${latestBody.jawlineVisibility || '—'}/10`;
+    }
+    return `🏋️ **Fitness & Workout Summary:**\n\n• **Total Logged Workouts:** ${exerciseLogs.length}\n• **Recent Activity:** ${exerciseLogs[0]?.description || 'No recent workouts logged.'}${bodySummary}\n\n*Consistency is key! Remember to log your body profile on the 1st of every month.*`;
+  }
+
+  if (lower.includes("cycle") || lower.includes("period") || lower.includes("menstrual") || lower.includes("wellness")) {
+    const settings = context.menstrualSettings || {};
+    return `🌸 **Wellness & Cycle Tracker:**\n\n• **Average Cycle Length:** ${settings.averageCycleLength || 28} days\n• **Average Duration:** ${settings.averagePeriodDuration || 5} days\n• **Last Period Logged:** ${settings.lastPeriodStartDate || 'Not recorded'}\n• **Total Wellness Logs:** ${menstrualLogs.length}\n\n*Check the Wellness Tracker tab for fertility window predictions and symptom logs.*`;
+  }
+
+  if (lower.includes("birthday") || lower.includes("calendar") || lower.includes("event") || lower.includes("anniversary")) {
+    const upcoming = calendarEvents.slice(0, 5);
+    if (upcoming.length === 0) {
+      return "📅 **Calendar & Birthdays:** No upcoming calendar events logged.\n\nHead to the Calendar tab to add birthdays, bill reminders, and anniversaries!";
+    }
+    const lines = upcoming.map((e: any) => `• **${e.title}** (${e.date}) ${e.category ? `[${e.category}]` : ''}`);
+    return `📅 **Upcoming Events & Reminders:**\n\n${lines.join('\n')}\n\n*Keep track of special dates in your Calendar tab.*`;
+  }
+
+  if (lower.includes("todo") || lower.includes("checklist") || lower.includes("task")) {
+    const pending = todos.filter((t: any) => !t.completed);
+    if (pending.length === 0) {
+      return "✅ **Checklists:** All tasks and checklist reminders are completed!";
+    }
+    const lines = pending.slice(0, 5).map((t: any) => `• ${t.title || t.text}`);
+    return `📝 **Pending Tasks (${pending.length} remaining):**\n\n${lines.join('\n')}`;
+  }
+
+  if (lower.includes("fuel") || lower.includes("service")) {
+    return "⛽ **Fuel & Maintenance Analysis:**\n\nTo view complete fuel fill-ups and garage servicing costs, check the Vehicles tab or filter your Passbook by 'Fuel' and 'Vehicle Maintenance'.";
+  }
+
+  if (lower.includes("summary") || lower.includes("balance") || lower.includes("net worth") || lower.includes("ledger")) {
+    const list = accounts.length > 0
+      ? accounts.map((a: any) => `• **${a.name}**: ₹${(Number(a.balance) || 0).toLocaleString('en-IN')}`).join('\n')
+      : "• No accounts logged yet";
+    return `📊 **Financial Ledger Snapshot:**\n\n💰 **Total Net Balance:** ₹${totalBalance.toLocaleString('en-IN')}\n\n**Accounts:**\n${list}\n\n**Recent Monthly Expenses:** ₹${monthlyExpense.toLocaleString('en-IN')}`;
+  }
+
+  if (lower === "hi" || lower === "hello" || lower === "hey" || lower.includes("namaste")) {
+    return `Namaste! 🙏 I am your **Chuvadi Intelligence Advisor**.\n\nHere is your current life OS summary at a glance:\n• 💰 **Net Balance:** ₹${totalBalance.toLocaleString('en-IN')}\n• 🚗 **Vehicles:** ${vehicles.length} recorded\n• 🏋️ **Workouts:** ${exerciseLogs.length} logged\n• 📅 **Events/Birthdays:** ${calendarEvents.length} tracked\n\nAsk me about your finances, vehicle renewals, fitness metrics, or upcoming birthdays!`;
+  }
+
+  return `💡 **Chuvadi Financial Advice:**\n\n• **Net Balance:** ₹${totalBalance.toLocaleString('en-IN')}\n• **Monthly Spending:** ₹${monthlyExpense.toLocaleString('en-IN')}\n\n**Advice:** Track each expense immediately after it occurs to maintain pristine records. Use the Voice/Text bar to log transactions in seconds!`;
 }
 
 startServer().catch((err) => {

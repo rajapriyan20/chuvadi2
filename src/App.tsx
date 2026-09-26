@@ -66,7 +66,8 @@ import {
   DEMO_CALENDAR_EVENTS,
   DEMO_MENSTRUAL_SETTINGS,
   DEMO_MENSTRUAL_PERIODS,
-  DEMO_MENSTRUAL_LOGS
+  DEMO_MENSTRUAL_LOGS,
+  DEMO_BODY_PROFILES
 } from './data/demoData';
 
 // Modals
@@ -79,8 +80,11 @@ import { TodoModal } from './components/modals/TodoModal';
 import { EntityModal } from './components/modals/EntityModal';
 import { ExportModal } from './components/modals/ExportModal';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { NotificationSettingsModal } from './components/modals/NotificationSettingsModal';
+import { checkAndTriggerDueNotifications } from './services/notificationService';
 
-// Tabs
+// Components & Tabs
+import { Navigation } from './components/Navigation';
 import { DashboardTab } from './components/tabs/DashboardTab';
 import { FinanceTab } from './components/tabs/FinanceTab';
 import { GarageTab } from './components/tabs/GarageTab';
@@ -104,7 +108,9 @@ import type {
   CalendarEvent,
   MenstrualLog,
   MenstrualPeriodRecord,
-  MenstrualCycleSettings
+  MenstrualCycleSettings,
+  BodyProfileLog,
+  TabVisibilityMap
 } from './types';
 
 export function App() {
@@ -137,6 +143,30 @@ export function App() {
     lutealPhaseLength: 14,
     privacyMode: false
   });
+  const [bodyProfileLogs, setBodyProfileLogs] = useState<BodyProfileLog[]>(() => {
+    const saved = sessionStorage.getItem('chuvadi_body_profiles');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEMO_BODY_PROFILES;
+  });
+  const [tabVisibility, setTabVisibility] = useState<TabVisibilityMap>(() => {
+    const saved = localStorage.getItem('chuvadi_tab_visibility');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {
+      dashboard: true,
+      finance: true,
+      garage: true,
+      todos: true,
+      calendar: true,
+      exercise: true,
+      menstrual: true,
+      reports: true,
+      ai: true
+    };
+  });
   const [nonPrimaryBannerDismissed, setNonPrimaryBannerDismissed] = useState<boolean>(false);
 
   // Modals Visibility & Editing State
@@ -163,6 +193,20 @@ export function App() {
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
+
+  // Check and trigger due local notifications based on user's configured frequency & alert rules
+  useEffect(() => {
+    checkAndTriggerDueNotifications({
+      vehicles,
+      vehicleLogs,
+      todos,
+      calendarEvents,
+      bodyProfileLogs,
+      menstrualLogs,
+      menstrualSettings
+    });
+  }, [vehicles, todos, calendarEvents, bodyProfileLogs]);
 
   // Listen to Auth State
   useEffect(() => {
@@ -240,6 +284,7 @@ export function App() {
       setMenstrualLogs(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_LOGS)));
       setMenstrualPeriods(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_PERIODS)));
       setMenstrualSettings(JSON.parse(JSON.stringify(DEMO_MENSTRUAL_SETTINGS)));
+      setBodyProfileLogs(JSON.parse(JSON.stringify(DEMO_BODY_PROFILES)));
     }
   }, [guestMode, user]);
 
@@ -552,6 +597,48 @@ export function App() {
     await deleteExerciseLog(id, user);
   };
 
+  // Monthly Body Profile Handlers (Requirement 6)
+  const handleSaveBodyProfile = async (log: Omit<BodyProfileLog, 'id'> & { id?: string }) => {
+    const id = log.id || 'body-profile-' + Date.now();
+    const payload: BodyProfileLog = {
+      ...log,
+      id,
+      createdAt: log.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+    setBodyProfileLogs(prev => {
+      const exists = prev.some(p => p.id === id);
+      const updated = exists ? prev.map(p => (p.id === id ? payload : p)) : [payload, ...prev];
+      sessionStorage.setItem('chuvadi_body_profiles', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleDeleteBodyProfile = async (id: string) => {
+    setBodyProfileLogs(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      sessionStorage.setItem('chuvadi_body_profiles', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Menu Tab Visibility Customization Handler (Requirement 8)
+  const handleToggleTabVisibility = (tabId: ActiveTab) => {
+    setTabVisibility(prev => {
+      const currentlyVisibleCount = Object.values(prev).filter(Boolean).length;
+      if (prev[tabId] && currentlyVisibleCount <= 1) {
+        return prev; // Never allow hiding all tabs
+      }
+      const next = { ...prev, [tabId]: !prev[tabId] };
+      localStorage.setItem('chuvadi_tab_visibility', JSON.stringify(next));
+      if (!next[activeTab]) {
+        const firstVisible = (Object.keys(next) as ActiveTab[]).find(k => next[k]);
+        if (firstVisible) setActiveTab(firstVisible);
+      }
+      return next;
+    });
+  };
+
   // Calendar Event Handlers
   const handleSaveCalendarEvent = async (event: Omit<CalendarEvent, 'id'> & { id?: string }) => {
     if (guestMode && !user) {
@@ -778,6 +865,7 @@ export function App() {
         onOpenAi={() => setActiveTab('ai')}
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onLogin={loginWithGoogle}
         onLogout={handleLogout}
         onExitGuestMode={handleExitGuestMode}
@@ -802,6 +890,17 @@ export function App() {
         }}
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+        tabVisibility={tabVisibility}
+      />
+
+      {/* Primary Desktop and Mobile Bottom Navigation Bar */}
+      <Navigation
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        renewalsCount={renewalsCount}
+        pendingTodosCount={pendingTodosCount}
+        tabVisibility={tabVisibility}
       />
 
       {/* Main Content Area */}
@@ -967,6 +1066,9 @@ export function App() {
             logs={exerciseLogs}
             onSaveLog={handleSaveExerciseLog}
             onDeleteLog={handleDeleteExerciseLog}
+            bodyProfileLogs={bodyProfileLogs}
+            onSaveBodyProfile={handleSaveBodyProfile}
+            onDeleteBodyProfile={handleDeleteBodyProfile}
           />
         )}
 
@@ -984,6 +1086,12 @@ export function App() {
             vehicles={vehicles}
             transactions={transactions}
             todos={todos}
+            calendarEvents={calendarEvents}
+            exerciseLogs={exerciseLogs}
+            bodyProfileLogs={bodyProfileLogs}
+            menstrualLogs={menstrualLogs}
+            menstrualSettings={menstrualSettings}
+            entities={entities}
             onSaveParsedTransaction={async (t) => { await handleSaveTransaction(t); }}
           />
         )}
@@ -1106,12 +1214,32 @@ export function App() {
         onSeedData={handleSeedForActiveUser}
         onClearUserData={handleClearActiveUser}
         onClearCache={clearLocalCache}
+        tabVisibility={tabVisibility}
+        onToggleTabVisibility={handleToggleTabVisibility}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
       />
 
-      {/* 10. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
+      {/* 10. Dedicated Notification Settings Modal */}
+      <NotificationSettingsModal
+        isOpen={isNotificationSettingsOpen}
+        onClose={() => setIsNotificationSettingsOpen(false)}
+        onSettingsUpdated={() => {
+          checkAndTriggerDueNotifications({
+            vehicles,
+            vehicleLogs,
+            todos,
+            calendarEvents,
+            bodyProfileLogs,
+            menstrualLogs,
+            menstrualSettings
+          });
+        }}
+      />
+
+      {/* 11. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
       <PWAInstallBanner />
 
-      {/* 11. Guest Mode Floating Overlay Action Pill */}
+      {/* 12. Guest Mode Floating Overlay Action Pill */}
       {isCurrentGuest && (
         <GuestModeOverlay 
           onExitGuestMode={handleExitGuestMode}

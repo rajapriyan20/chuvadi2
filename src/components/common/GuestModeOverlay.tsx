@@ -13,7 +13,7 @@ export const GuestModeOverlay: React.FC<GuestModeOverlayProps> = ({
   return (
     <div 
       id="guest-mode-overlay-pill"
-      className="fixed bottom-4 left-3 sm:left-6 z-30 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="fixed bottom-[4.25rem] md:bottom-5 left-3 sm:left-6 z-50 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-300"
       role="complementary"
       aria-label="Guest Demo Controls"
     >

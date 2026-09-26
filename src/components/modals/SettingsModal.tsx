@@ -18,6 +18,12 @@ import {
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { InstallAppModal } from './InstallAppModal';
 import { useTheme } from '../../context/ThemeContext';
+import type { ActiveTab, TabVisibilityMap } from '../../types';
+import { 
+  LayoutGrid, 
+  EyeOff,
+  Bell
+} from 'lucide-react';
 import appletConfig from '../../../firebase-applet-config.json';
 
 interface SettingsModalProps {
@@ -30,7 +36,22 @@ interface SettingsModalProps {
   isGuestMode?: boolean;
   onLogin?: () => void;
   onExitGuestMode?: () => void;
+  tabVisibility?: TabVisibilityMap;
+  onToggleTabVisibility?: (tabId: ActiveTab) => void;
+  onOpenNotificationSettings?: () => void;
 }
+
+const ALL_TABS_CONFIG: Array<{ id: ActiveTab; label: string; desc: string }> = [
+  { id: 'dashboard', label: 'Dashboard', desc: 'Net balance & account overview' },
+  { id: 'finance', label: 'Finance & Passbook', desc: 'Ledger, bank accounts & transactions' },
+  { id: 'garage', label: 'Garage & Vehicles', desc: 'Fuel logs, maintenance, insurance & PUC' },
+  { id: 'todos', label: 'Checklists & Reminders', desc: 'Notes, task lists & to-dos' },
+  { id: 'calendar', label: 'Calendar & Birthdays', desc: 'Life events, birthdays & anniversaries' },
+  { id: 'exercise', label: 'Exercise & Body Profile', desc: 'Workouts & monthly body metrics' },
+  { id: 'menstrual', label: 'Wellness Tracker', desc: 'Cycle, symptoms & health logging' },
+  { id: 'reports', label: 'Reports & Analytics', desc: 'Spending breakdown and visual charts' },
+  { id: 'ai', label: 'Chuvadi AI Advisor', desc: 'Intelligence hub, receipt OCR & voice' },
+];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -41,7 +62,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   user,
   isGuestMode = false,
   onLogin,
-  onExitGuestMode
+  onExitGuestMode,
+  tabVisibility = {
+    dashboard: true,
+    finance: true,
+    garage: true,
+    todos: true,
+    calendar: true,
+    exercise: true,
+    menstrual: true,
+    reports: true,
+    ai: true,
+  },
+  onToggleTabVisibility = () => {},
+  onOpenNotificationSettings
 }) => {
   const { theme, setTheme, themes, currentThemeConfig } = useTheme();
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
@@ -176,6 +210,97 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 })}
               </div>
             </div>
+
+            {/* Menu Tabs Visibility Toggle Section (Requirement 8) */}
+            <div className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <LayoutGrid size={16} className="text-emerald-400" />
+                  <span>Customize Menu Tabs</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Toggle Show / Hide
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Show or hide specific tabs from the bottom navigation and side drawer menu. Default is to show all tabs.
+              </p>
+
+              <div className="space-y-1.5 pt-1">
+                {ALL_TABS_CONFIG.map((tab) => {
+                  const isVisible = tabVisibility[tab.id] !== false;
+
+                  return (
+                    <div
+                      key={tab.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-[#0e131a] border border-slate-800/90 hover:border-slate-700/80 transition"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <span>{tab.label}</span>
+                          {!isVisible && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-300 font-medium">
+                              Hidden
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {tab.desc}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onToggleTabVisibility(tab.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition active:scale-95 shrink-0 ${
+                          isVisible
+                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200'
+                        }`}
+                        title={isVisible ? 'Click to hide this tab' : 'Click to show this tab'}
+                      >
+                        {isVisible ? (
+                          <>
+                            <Eye size={13} className="text-emerald-400" />
+                            <span>Shown</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff size={13} className="text-slate-400" />
+                            <span>Hidden</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Notification Preferences Card (Exclusive dedicated notifications page) */}
+            {onOpenNotificationSettings && (
+              <div className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    <Bell size={16} className="text-amber-400" />
+                    <span>Notification Preferences</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenNotificationSettings();
+                    }}
+                    className="px-3 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold transition active:scale-95 cursor-pointer"
+                  >
+                    Configure Alerts
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Decide what alerts you receive, adjust frequencies, and set reminder times for vehicle renewals, daily expenses, monthly body tracking, and birthdays.
+                </p>
+              </div>
+            )}
 
             {/* Install to Phone / Desktop Button */}
             <div className="p-4 bg-gradient-to-r from-amber-500/10 via-[#151c26] to-emerald-500/10 rounded-2xl border border-amber-500/30 space-y-2.5">
