@@ -12,10 +12,12 @@ import {
   LogIn,
   ArrowLeft,
   Eye,
-  Check
+  Check,
+  Palette
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { InstallAppModal } from './InstallAppModal';
+import { useTheme } from '../../context/ThemeContext';
 import appletConfig from '../../../firebase-applet-config.json';
 
 interface SettingsModalProps {
@@ -41,6 +43,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onLogin,
   onExitGuestMode
 }) => {
+  const { theme, setTheme, themes, currentThemeConfig } = useTheme();
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -106,6 +109,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="text-xs text-slate-400">
                   Modular React 19 • Atomic Firestore • Server-side Gemini AI
                 </div>
+              </div>
+            </div>
+
+            {/* Colour Theme Selector (3 Choices with Default Classic Amber) */}
+            <div className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <Palette size={16} className="text-amber-400" />
+                  <span>Workspace Colour Theme</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  {currentThemeConfig.name}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Choose an accent theme for buttons, icons, highlights, and workspace charts.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                {themes.map((t) => {
+                  const isSelected = theme === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTheme(t.id)}
+                      className={`flex flex-col p-3 rounded-xl border text-left transition-all relative overflow-hidden group cursor-pointer active:scale-95 ${
+                        isSelected
+                          ? 'border-amber-400 bg-amber-500/15 shadow-md ring-1 ring-amber-400/50'
+                          : 'border-slate-800/80 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-900'
+                      }`}
+                    >
+                      {/* Swatch & Indicator */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span 
+                            className="w-4 h-4 rounded-full shadow-sm border border-white/20 shrink-0"
+                            style={{ backgroundColor: t.accentColor }} 
+                          />
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full opacity-60 shrink-0" 
+                            style={{ backgroundColor: t.accentColor }} 
+                          />
+                        </div>
+                        {isSelected ? (
+                          <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center font-bold">
+                            <Check size={11} strokeWidth={3} />
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>{t.name}</span>
+                        {t.badgeLabel && (
+                          <span className="px-1 py-0.2 rounded text-[9px] bg-slate-800 text-slate-400 border border-slate-700 font-medium">
+                            {t.badgeLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
+                        {t.subtitle}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

@@ -67,22 +67,29 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
       {/* iOS Safari Guide Modal */}
       {showIOSGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-[#121824] border border-slate-700 p-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div 
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm p-3 sm:p-4 flex flex-col items-center justify-center animate-in fade-in"
+          onClick={() => setShowIOSGuide(false)}
+        >
+          <div 
+            className="w-full max-w-sm rounded-2xl bg-[#121824] border border-slate-700 shadow-2xl my-auto max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-[#151c28] shrink-0">
               <div className="flex items-center gap-2">
                 <Smartphone size={18} className="text-amber-400" />
                 <h3 className="text-sm font-bold text-white">Install on iPhone / iPad</h3>
               </div>
               <button
                 onClick={() => setShowIOSGuide(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                aria-label="Close"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="py-4 space-y-3 text-xs text-slate-300">
+            <div className="p-4 overflow-y-auto space-y-3 text-xs text-slate-300">
               <div className="flex items-start gap-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
                 <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400 shrink-0">
                   <Share2 size={16} />
@@ -114,55 +121,66 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               </div>
             </div>
 
-            <button
-              onClick={() => setShowIOSGuide(false)}
-              className="w-full rounded-xl bg-slate-800 hover:bg-slate-700 py-2.5 text-xs font-semibold text-white transition"
-            >
-              Got it
-            </button>
+            <div className="p-3 border-t border-slate-800/80 bg-[#10151f] shrink-0">
+              <button
+                onClick={() => setShowIOSGuide(false)}
+                className="w-full rounded-xl bg-slate-800 hover:bg-slate-700 py-2.5 text-xs font-semibold text-white transition active:scale-95"
+              >
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Chrome Android Guide Modal */}
       {showAndroidGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-[#121824] border border-slate-700 p-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div 
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm p-3 sm:p-4 flex flex-col items-center justify-center animate-in fade-in"
+          onClick={() => setShowAndroidGuide(false)}
+        >
+          <div 
+            className="w-full max-w-sm rounded-2xl bg-[#121824] border border-slate-700 shadow-2xl my-auto max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-[#151c28] shrink-0">
               <div className="flex items-center gap-2">
                 <Smartphone size={18} className="text-amber-400" />
                 <h3 className="text-sm font-bold text-white">Install on Android Chrome</h3>
               </div>
               <button
                 onClick={() => setShowAndroidGuide(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                aria-label="Close"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="py-4 space-y-3 text-xs text-slate-300">
-              <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-2">
-                <p>
+            <div className="p-4 overflow-y-auto space-y-3 text-xs text-slate-300">
+              <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                <p className="font-semibold text-amber-200">
                   To install Chuvadi directly from Google Chrome:
                 </p>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-200">
-                  <li>Tap the <strong>three dots (⋮)</strong> menu in the top-right corner of Chrome.</li>
-                  <li>Select <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
-                  <li>Tap <strong>Install</strong> to confirm.</li>
+                <ol className="list-decimal list-inside space-y-2 text-slate-200">
+                  <li className="leading-relaxed">Tap the <strong className="text-white">three dots (⋮)</strong> menu in the top-right corner of Chrome.</li>
+                  <li className="leading-relaxed">Select <strong className="text-amber-300">Install app</strong> or <strong className="text-amber-300">Add to Home screen</strong>.</li>
+                  <li className="leading-relaxed">Tap <strong className="text-white">Install</strong> to confirm.</li>
                 </ol>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 leading-normal">
                 Once installed, Chuvadi appears on your device home screen and app drawer with fast standalone loading and offline support.
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAndroidGuide(false)}
-              className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 py-2.5 text-xs font-semibold text-slate-950 transition"
-            >
-              Got it
-            </button>
+            <div className="p-3 border-t border-slate-800/80 bg-[#10151f] shrink-0">
+              <button
+                onClick={() => setShowAndroidGuide(false)}
+                className="w-full rounded-xl bg-amber-500 hover:bg-amber-400 py-2.5 text-xs font-bold text-slate-950 transition active:scale-95 shadow-md shadow-amber-500/20"
+              >
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}

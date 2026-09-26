@@ -1,1 +1,64 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   Chuvadi 3 Colour Themes Architecture
+   - Theme 1 (Default): Classic Amber (Palm manuscript gold & obsidian warmth)
+   - Theme 2: Emerald Ledger (Jade green, radiant prosperity mint & deep forest)
+   - Theme 3: Royal Sapphire (Oceanic blue, cobalt executive & cosmic navy)
+   ========================================================================== */
+
+:root, [data-theme="amber"] {
+  --theme-accent: #f59e0b;
+  --theme-accent-light: #fbbf24;
+  --theme-accent-dark: #d97706;
+  --theme-bg: #0a0d12;
+  --theme-card: #121820;
+}
+
+[data-theme="emerald"] {
+  --theme-accent: #10b981;
+  --theme-accent-light: #34d399;
+  --theme-accent-dark: #059669;
+  --theme-bg: #06110e;
+  --theme-card: #0c1814;
+
+  /* Remap amber palette tokens to Emerald */
+  --color-amber-50: #ecfdf5;
+  --color-amber-100: #d1fae5;
+  --color-amber-200: #a7f3d0;
+  --color-amber-300: #6ee7b7;
+  --color-amber-400: #34d399;
+  --color-amber-500: #10b981;
+  --color-amber-600: #059669;
+  --color-amber-700: #047857;
+  --color-amber-800: #065f46;
+  --color-amber-900: #064e3b;
+  --color-amber-950: #022c22;
+}
+
+[data-theme="sapphire"] {
+  --theme-accent: #3b82f6;
+  --theme-accent-light: #60a5fa;
+  --theme-accent-dark: #2563eb;
+  --theme-bg: #080d19;
+  --theme-card: #0e1628;
+
+  /* Remap amber palette tokens to Sapphire / Cobalt */
+  --color-amber-50: #eff6ff;
+  --color-amber-100: #dbeafe;
+  --color-amber-200: #bfdbfe;
+  --color-amber-300: #93c5fd;
+  --color-amber-400: #60a5fa;
+  --color-amber-500: #3b82f6;
+  --color-amber-600: #2563eb;
+  --color-amber-700: #1d4ed8;
+  --color-amber-800: #1e40af;
+  --color-amber-900: #1e3a8a;
+  --color-amber-950: #172554;
+}
+
+body {
+  background-color: var(--theme-bg, #0a0d12);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+

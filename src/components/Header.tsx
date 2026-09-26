@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
 import { 
   Plus, 
-  Sparkles, 
-  Download, 
-  Settings as SettingsIcon, 
   LogIn, 
   LogOut, 
   User as UserIcon,
   Menu,
-  CheckCircle2,
-  AlertCircle,
   Eye,
-  ArrowLeft
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
@@ -26,8 +22,8 @@ interface HeaderProps {
   isGuestMode?: boolean;
   onOpenQuickAdd: () => void;
   onOpenAi: () => void;
-  onOpenExport: () => void;
-  onOpenSettings: () => void;
+  onOpenExport?: () => void;
+  onOpenSettings?: () => void;
   onLogin: () => void;
   onLogout: () => void;
   onExitGuestMode?: () => void;
@@ -53,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [showLogoPopup, setShowLogoPopup] = useState(false);
 
   const handleLogoutClick = async () => {
     setIsSigningOut(true);
@@ -161,14 +158,32 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            <div className="flex items-center gap-2.5">
-              <ChuvadiLogo size={32} />
-              <div className="hidden xs:block">
-                <span className="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5">
-                  Chuvadi
-                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
-                    {isGuestMode ? 'Guest Demo' : 'Life OS'}
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              {/* Clickable Logo with WhatsApp DP-style popup trigger */}
+              <button
+                onClick={() => setShowLogoPopup(true)}
+                className="relative rounded-2xl p-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 hover:border-amber-500/40 transition active:scale-95 cursor-pointer group shrink-0"
+                title="Click to view logo"
+                aria-label="View Chuvadi logo in full resolution"
+              >
+                <ChuvadiLogo size={36} />
+                <div className="absolute inset-0 rounded-2xl bg-white/0 group-hover:bg-white/5 transition-colors" />
+              </button>
+
+              {/* App Heading & Tagline */}
+              <div className="flex flex-col justify-center select-none">
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="font-extrabold text-base sm:text-lg tracking-tight text-white">
+                    Chuvadi
                   </span>
+                  {isGuestMode && (
+                    <span className="text-[9px] uppercase font-bold text-amber-400 bg-amber-400/10 px-1 py-0.2 rounded border border-amber-400/20 leading-none">
+                      Demo
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-amber-300/80 font-medium tracking-tight mt-0.5 leading-tight">
+                  A manuscript to track life!
                 </span>
               </div>
             </div>
@@ -186,28 +201,8 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden xs:inline">Record</span>
             </button>
 
-            {/* Export Data */}
-            <button
-              id="header-export-btn"
-              onClick={onOpenExport}
-              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
-              title="Export CSV / JSON Backup"
-            >
-              <Download size={16} />
-            </button>
-
             {/* PWA Install Button */}
             <PWAInstallButton variant="compact" />
-
-            {/* Settings */}
-            <button
-              id="header-settings-btn"
-              onClick={onOpenSettings}
-              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition"
-              title="Application Settings"
-            >
-              <SettingsIcon size={16} />
-            </button>
 
             {/* Auth State Button */}
             {isGuestMode ? (
@@ -271,6 +266,70 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* WhatsApp DP-style High-Resolution Logo Lightbox Modal */}
+      {showLogoPopup && (
+        <div 
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/90 backdrop-blur-md p-3 sm:p-6 flex flex-col items-center justify-center animate-in fade-in duration-200"
+          onClick={() => setShowLogoPopup(false)}
+        >
+          <div 
+            className="w-full max-w-sm sm:max-w-md bg-[#111722] border border-amber-500/25 rounded-3xl shadow-2xl overflow-hidden my-auto flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Lightbox Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800/80 bg-[#141b26] shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight">Chuvadi</h3>
+                  <p className="text-[10px] text-amber-300/80 leading-tight">A manuscript to track life!</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLogoPopup(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
+                title="Close"
+                aria-label="Close Logo View"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* High-Resolution SVG Logo Display (WhatsApp DP Style) */}
+            <div className="p-6 sm:p-8 flex flex-col items-center justify-center bg-gradient-to-b from-[#151c27] via-[#0f141d] to-[#0c1017] relative select-none">
+              <div className="absolute inset-0 bg-radial-gradient from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+              
+              <div className="relative p-3 rounded-2xl bg-black/40 border border-amber-500/25 shadow-2xl flex items-center justify-center">
+                <ChuvadiLogo size={280} />
+              </div>
+
+              {/* Sub-label description */}
+              <div className="mt-5 text-center space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                  <span>சுவடி • Palm-Leaf Ledger</span>
+                </div>
+                <p className="text-xs text-slate-200 font-medium">
+                  Inscribed with Tamil letters <strong className="text-amber-300">"கீ ர் த்"</strong> &amp; traditional stylus
+                </p>
+                <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                  Inspired by ancient palm-leaf manuscripts crafted across eras to inscribe wisdom, deeds, accounts, and milestones.
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom Dismiss Button */}
+            <div className="p-3 border-t border-slate-800/80 bg-[#111722] shrink-0">
+              <button
+                onClick={() => setShowLogoPopup(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition active:scale-95"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

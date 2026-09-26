@@ -65,10 +65,16 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto p-3 sm:p-4 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center animate-fadeIn"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col my-auto max-h-[calc(100dvh-1.5rem)]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
+        <div className="px-5 py-3.5 sm:px-6 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26] shrink-0">
           <div className="flex items-center gap-2 text-amber-300 font-bold text-base">
             <Smartphone size={18} />
             <span>Install Chuvadi App</span>

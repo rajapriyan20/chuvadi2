@@ -47,6 +47,7 @@ import type { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
+import { PWAInstallBanner } from './components/common/PWAInstallBanner';
 import { 
   markEmailAsAdded, 
   setCachedGmailToken, 
@@ -745,12 +746,15 @@ export function App() {
   // 2. If user is NOT logged in and has not entered Guest Mode, show the dedicated Welcome & Sign-In Screen!
   if (!user && !guestMode) {
     return (
-      <AuthScreen 
-        onLogin={async () => {
-          await loginWithGoogle();
-        }} 
-        onContinueAsGuest={handleContinueAsGuest} 
-      />
+      <>
+        <AuthScreen 
+          onLogin={async () => {
+            await loginWithGoogle();
+          }} 
+          onContinueAsGuest={handleContinueAsGuest} 
+        />
+        <PWAInstallBanner />
+      </>
     );
   }
 
@@ -758,7 +762,7 @@ export function App() {
 
   // 3. Main Authenticated / Guest App Screen
   return (
-    <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[var(--theme-bg,#0a0d12)] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 transition-colors duration-200">
       {/* Top Application Header */}
       <Header
         totalNetWorth={totalNetWorth}
@@ -1102,6 +1106,9 @@ export function App() {
         onClearUserData={handleClearActiveUser}
         onClearCache={clearLocalCache}
       />
+
+      {/* 10. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
+      <PWAInstallBanner />
     </div>
   );
 }
