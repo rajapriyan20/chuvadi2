@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { WhatsAppLogo } from './WhatsAppLogo';
+import { LogoModal } from './LogoModal';
 import appletConfig from '../../../firebase-applet-config.json';
 
 interface AuthScreenProps {
@@ -29,6 +30,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
   const [error, setError] = useState<string | null>(null);
   const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [showLogoModal, setShowLogoModal] = useState(false);
 
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const firebaseSettingsUrl = `https://console.firebase.google.com/project/${appletConfig.projectId}/authentication/settings`;
@@ -106,16 +108,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
 
           {/* Logo & App Title */}
           <div className="flex flex-col items-center text-center mb-7">
-            <div className="p-3 bg-[#161c24] rounded-2xl border border-slate-800 shadow-inner mb-3">
+            <button
+              type="button"
+              onClick={() => setShowLogoModal(true)}
+              className="p-3 bg-[#161c24] hover:bg-[#1b2330] rounded-2xl border border-slate-800 hover:border-amber-500/40 shadow-inner mb-3 transition active:scale-95 cursor-pointer group relative"
+              title="Click to view logo in full resolution"
+              aria-label="View Chuvadi logo in full resolution"
+            >
               <ChuvadiLogo size={56} />
-            </div>
+              <div className="absolute inset-0 rounded-2xl bg-white/0 group-hover:bg-white/5 transition-colors" />
+            </button>
             <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
               <span>Chuvadi</span>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 Life OS
               </span>
             </h1>
-            <p className="text-xs text-slate-400 mt-1.5 max-w-xs leading-relaxed">
+            <p className="text-[11px] text-amber-300/80 font-medium tracking-tight mt-0.5">
+              A manuscript to track life!
+            </p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
               Personal finance ledger, garage & vehicle manager, daily checklists, and exercise tracking.
             </p>
           </div>
@@ -262,6 +274,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
               </button>
             )}
           </div>
+
+          {/* Developer Attribution inside Login Card */}
+          <div className="mt-5 pt-3.5 border-t border-slate-800/80 flex items-center justify-center gap-2 text-xs text-slate-400 select-none">
+            <span>developed by</span>
+            <strong className="text-slate-200 font-semibold tracking-wide">Rajapriyan</strong>
+            <a
+              href="https://wa.me/919600001118"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 transition"
+              title="Chat with Rajapriyan on WhatsApp (+91 9600001118)"
+            >
+              <WhatsAppLogo size={13} />
+            </a>
+          </div>
         </div>
 
         {/* Feature Icons Strip */}
@@ -282,9 +309,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
       </div>
 
       {/* Footer */}
-      <div className="text-center text-[11px] text-slate-600 py-2">
-        <span>© {new Date().getFullYear()} Chuvadi • All rights reserved</span>
+      <div className="text-center text-[11px] text-slate-500 py-2">
+        <span>© {new Date().getFullYear()} Chuvadi • Developed by <strong className="text-slate-400 font-semibold">Rajapriyan</strong> • All rights reserved</span>
       </div>
+
+      {/* Logo Lightbox Modal */}
+      <LogoModal isOpen={showLogoModal} onClose={() => setShowLogoModal(false)} />
     </div>
   );
 };

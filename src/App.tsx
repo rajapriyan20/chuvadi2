@@ -48,6 +48,7 @@ import { Header } from './components/Header';
 import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
 import { PWAInstallBanner } from './components/common/PWAInstallBanner';
+import { GuestModeOverlay } from './components/common/GuestModeOverlay';
 import { 
   markEmailAsAdded, 
   setCachedGmailToken, 
@@ -1109,6 +1110,14 @@ export function App() {
 
       {/* 10. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
       <PWAInstallBanner />
+
+      {/* 11. Guest Mode Floating Overlay Action Pill */}
+      {isCurrentGuest && (
+        <GuestModeOverlay 
+          onExitGuestMode={handleExitGuestMode}
+          onLogin={loginWithGoogle}
+        />
+      )}
     </div>
   );
 }
