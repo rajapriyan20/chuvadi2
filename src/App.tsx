@@ -49,6 +49,7 @@ import { SideMenu } from './components/SideMenu';
 import { AuthScreen } from './components/common/AuthScreen';
 import { PWAInstallBanner } from './components/common/PWAInstallBanner';
 import { GuestModeOverlay } from './components/common/GuestModeOverlay';
+import { DailyInstallToast } from './components/common/DailyInstallToast';
 import { 
   markEmailAsAdded, 
   setCachedGmailToken, 
@@ -89,7 +90,6 @@ import { DashboardTab } from './components/tabs/DashboardTab';
 import { FinanceTab } from './components/tabs/FinanceTab';
 import { GarageTab } from './components/tabs/GarageTab';
 import { TodosTab } from './components/tabs/TodosTab';
-import { ReportsTab } from './components/tabs/ReportsTab';
 import { AiAssistantTab } from './components/tabs/AiAssistantTab';
 import { ExerciseLogView } from './components/exercise/ExerciseLogView';
 import { CalendarTab } from './components/tabs/CalendarTab';
@@ -116,7 +116,17 @@ import type {
 export function App() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [financeSubTab, setFinanceSubTab] = useState<'coa' | 'transactions' | 'reports' | 'inbox'>('coa');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState<boolean>(false);
+
+  const handleSelectTab = (tab: ActiveTab) => {
+    if (tab === 'reports') {
+      setActiveTab('finance');
+      setFinanceSubTab('reports');
+    } else {
+      setActiveTab(tab);
+    }
+  };
 
   // Auth & Network State
   const [user, setUser] = useState<User | null>(null);
@@ -541,6 +551,26 @@ export function App() {
     });
   };
 
+  const handleUpdateTodoItemDate = async (noteId: string, itemId: string, date: string) => {
+    const note = todos.find(t => t.id === noteId);
+    if (!note) return;
+
+    const updatedItems = note.items.map(it => 
+      it.id === itemId ? { ...it, date: date ? date : undefined } : it
+    );
+
+    if (guestMode && !user) {
+      setTodos(prev => prev.map(t => t.id === noteId ? { ...t, items: updatedItems, updatedAt: Date.now() } : t));
+      return;
+    }
+
+    await saveTodo({
+      ...note,
+      items: updatedItems,
+      updatedAt: Date.now()
+    });
+  };
+
   const handleTogglePin = async (todo: TodoNote) => {
     if (guestMode && !user) {
       setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, pinned: !t.pinned, updatedAt: Date.now() } : t));
@@ -878,7 +908,7 @@ export function App() {
         isOpen={isSideMenuOpen}
         onClose={() => setIsSideMenuOpen(false)}
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         renewalsCount={renewalsCount}
         pendingTodosCount={pendingTodosCount}
         isGuestMode={isCurrentGuest}
@@ -897,7 +927,7 @@ export function App() {
       {/* Primary Desktop and Mobile Bottom Navigation Bar */}
       <Navigation
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         renewalsCount={renewalsCount}
         pendingTodosCount={pendingTodosCount}
         tabVisibility={tabVisibility}
@@ -945,14 +975,17 @@ export function App() {
             transactions={transactions}
             vehicles={vehicles}
             todos={todos}
-            onOpenQuickAdd={() => {
-              setEditingTxn(null);
-              setIsTxnModalOpen(true);
-            }}
+            calendarEvents={calendarEvents}
+            exerciseLogs={exerciseLogs}
+            bodyProfileLogs={bodyProfileLogs}
+            menstrualLogs={menstrualLogs}
+            menstrualSettings={menstrualSettings}
             onOpenPassbook={handleOpenPassbook}
             onSelectTxn={handleSelectTxn}
-            onSelectTab={setActiveTab}
+            onSelectTab={handleSelectTab}
+            onSelectFinanceSubTab={(st) => setFinanceSubTab(st)}
             onToggleTodoItem={handleToggleTodoItem}
+            onUpdateTodoItemDate={handleUpdateTodoItemDate}
             isGuestMode={isCurrentGuest}
             onLogin={loginWithGoogle}
             onExitGuestMode={handleExitGuestMode}
@@ -963,6 +996,7 @@ export function App() {
           <FinanceTab
             accounts={accounts}
             transactions={transactions}
+            vehicles={vehicles}
             entities={entities}
             onOpenNewAccount={(defaultType) => {
               setEditingAccount(defaultType ? ({ id: '', name: '', type: defaultType, balance: 0 } as any) : null);
@@ -989,6 +1023,8 @@ export function App() {
             }}
             isGuestMode={isCurrentGuest}
             user={user}
+            activeSubTab={financeSubTab}
+            onSubTabChange={setFinanceSubTab}
           />
         )}
 
@@ -1026,6 +1062,7 @@ export function App() {
             onDeleteTodo={handleDeleteTodo}
             onToggleTodoItem={handleToggleTodoItem}
             onTogglePin={handleTogglePin}
+            onUpdateTodoItemDate={handleUpdateTodoItemDate}
           />
         )}
 
@@ -1073,10 +1110,38 @@ export function App() {
         )}
 
         {activeTab === 'reports' && (
-          <ReportsTab
+          <FinanceTab
             accounts={accounts}
             transactions={transactions}
             vehicles={vehicles}
+            entities={entities}
+            onOpenNewAccount={(defaultType) => {
+              setEditingAccount(defaultType ? ({ id: '', name: '', type: defaultType, balance: 0 } as any) : null);
+              setIsAccountModalOpen(true);
+            }}
+            onEditAccount={(acc) => {
+              setEditingAccount(acc);
+              setIsAccountModalOpen(true);
+            }}
+            onSaveAccount={handleSaveAccount}
+            onDeleteAccount={handleDeleteAccount}
+            onOpenPassbook={handleOpenPassbook}
+            onSelectTxn={handleSelectTxn}
+            onOpenNewTxn={() => {
+              setEditingTxn(null);
+              setIsTxnModalOpen(true);
+            }}
+            onOpenNewEntity={() => setIsEntityModalOpen(true)}
+            onDeleteEntity={handleDeleteEntity}
+            onOpenNewTxnWithDefaults={(defaults, emailId) => {
+              if (emailId) setPendingEmailImportId(emailId);
+              setEditingTxn(defaults as any);
+              setIsTxnModalOpen(true);
+            }}
+            isGuestMode={isCurrentGuest}
+            user={user}
+            activeSubTab="reports"
+            onSubTabChange={setFinanceSubTab}
           />
         )}
 
@@ -1239,7 +1304,10 @@ export function App() {
       {/* 11. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
       <PWAInstallBanner />
 
-      {/* 12. Guest Mode Floating Overlay Action Pill */}
+      {/* 12. Daily Floating 5-Second Install Toast (Only in browser mode, once a day) */}
+      <DailyInstallToast />
+
+      {/* 13. Guest Mode Floating Overlay Action Pill */}
       {isCurrentGuest && (
         <GuestModeOverlay 
           onExitGuestMode={handleExitGuestMode}

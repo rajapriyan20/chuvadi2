@@ -82,6 +82,7 @@ export interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
+  date?: string; // YYYY-MM-DD
 }
 
 export interface TodoNote {

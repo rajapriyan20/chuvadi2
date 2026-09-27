@@ -7,17 +7,20 @@ import {
   ArrowRightLeft, 
   Layers,
   Receipt,
-  Inbox
+  Inbox,
+  PieChart
 } from 'lucide-react';
 import { formatCurrency, formatDate, DEFAULT_CATEGORIES } from '../../utils/formatters';
-import type { Account, Transaction, Entity, AccountType } from '../../types';
+import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
 import type { User } from 'firebase/auth';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
 import { InboxReviewTab } from '../finance/InboxReviewTab';
+import { ReportsTab } from './ReportsTab';
 
 interface FinanceTabProps {
   accounts: Account[];
   transactions: Transaction[];
+  vehicles?: Vehicle[];
   entities: Entity[];
   onOpenNewAccount: (defaultType?: AccountType) => void;
   onEditAccount: (account: Account) => void;
@@ -31,11 +34,14 @@ interface FinanceTabProps {
   onOpenNewTxnWithDefaults?: (defaults: Partial<Transaction>, emailId?: string) => void;
   isGuestMode?: boolean;
   user?: User | null;
+  activeSubTab?: 'coa' | 'transactions' | 'reports' | 'inbox';
+  onSubTabChange?: (tab: 'coa' | 'transactions' | 'reports' | 'inbox') => void;
 }
 
 export const FinanceTab: React.FC<FinanceTabProps> = ({
   accounts,
   transactions,
+  vehicles = [],
   entities: _entities,
   onOpenNewAccount,
   onEditAccount,
@@ -48,10 +54,17 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onDeleteEntity: _onDeleteEntity,
   onOpenNewTxnWithDefaults,
   isGuestMode = false,
-  user
+  user,
+  activeSubTab,
+  onSubTabChange
 }) => {
-  // Chart of Accounts is shown first by default, then Transactions, then Inbox / Review
-  const [subTab, setSubTab] = useState<'coa' | 'transactions' | 'inbox'>('coa');
+  // Chart of Accounts is shown first by default, then Transactions, then Reports, then Inbox / Review
+  const [internalSubTab, setInternalSubTab] = useState<'coa' | 'transactions' | 'reports' | 'inbox'>('coa');
+  const subTab = activeSubTab || internalSubTab;
+  const setSubTab = (t: 'coa' | 'transactions' | 'reports' | 'inbox') => {
+    setInternalSubTab(t);
+    onSubTabChange?.(t);
+  };
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -109,6 +122,18 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <span>Transactions</span>
           </button>
           <button
+            id="finance-subtab-reports-btn"
+            onClick={() => setSubTab('reports')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
+              subTab === 'reports'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <PieChart size={14} />
+            <span>Reports & Analytics</span>
+          </button>
+          <button
             id="finance-subtab-inbox-btn"
             onClick={() => setSubTab('inbox')}
             className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold transition ${
@@ -128,6 +153,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           )}
           {subTab === 'transactions' && (
             <span>Ledger History & Search</span>
+          )}
+          {subTab === 'reports' && (
+            <span>Visual Charts, Category Cash Flow & Analytics</span>
           )}
           {subTab === 'inbox' && (
             <span>Gmail Expense Extraction & Rule Filters</span>
@@ -278,7 +306,18 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
     </div>
   )}
 
-  {/* View 3: Inbox / Review Tab */}
+  {/* View 3: Reports & Analytics Tab */}
+  {subTab === 'reports' && (
+    <div className="pt-2">
+      <ReportsTab
+        transactions={transactions}
+        accounts={accounts}
+        vehicles={vehicles}
+      />
+    </div>
+  )}
+
+  {/* View 4: Inbox / Review Tab */}
   {subTab === 'inbox' && (
     <InboxReviewTab
       accounts={accounts}

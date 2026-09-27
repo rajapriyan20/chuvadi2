@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Pin, Trash2, CheckSquare, Search, Edit3 } from 'lucide-react';
+import { Plus, Pin, Trash2, CheckSquare, Search, Edit3, Calendar, Clock, X } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import type { TodoNote } from '../../types';
 
@@ -10,6 +10,7 @@ interface TodosTabProps {
   onToggleTodoItem: (noteId: string, itemId: string) => void;
   onTogglePin: (todo: TodoNote) => void;
   onDeleteTodo: (id: string) => void;
+  onUpdateTodoItemDate?: (noteId: string, itemId: string, date: string) => void;
 }
 
 export const TodosTab: React.FC<TodosTabProps> = ({
@@ -18,7 +19,8 @@ export const TodosTab: React.FC<TodosTabProps> = ({
   onEditTodo,
   onToggleTodoItem,
   onTogglePin,
-  onDeleteTodo
+  onDeleteTodo,
+  onUpdateTodoItemDate
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -116,18 +118,67 @@ export const TodosTab: React.FC<TodosTabProps> = ({
                       {note.items.map((item) => (
                         <div
                           key={item.id}
-                          onClick={() => onToggleTodoItem(note.id, item.id)}
-                          className="flex items-start gap-2 cursor-pointer group"
+                          className="flex items-center justify-between gap-2 group/item py-0.5"
                         >
-                          <input
-                            type="checkbox"
-                            checked={item.completed}
-                            readOnly
-                            className="mt-0.5 w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer pointer-events-none"
-                          />
-                          <span className={`text-xs ${item.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}`}>
-                            {item.text}
-                          </span>
+                          <div
+                            onClick={() => onToggleTodoItem(note.id, item.id)}
+                            className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={item.completed}
+                              readOnly
+                              className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer pointer-events-none shrink-0"
+                            />
+                            <span className={`text-xs break-words ${item.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover/item:text-white'}`}>
+                              {item.text}
+                            </span>
+                          </div>
+
+                          {/* Date display & picker icon next to checklist item */}
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {item.date ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] sm:text-xs font-mono">
+                                <label 
+                                  className="relative flex items-center gap-1 cursor-pointer"
+                                  title={`Target date: ${item.date}. Tap to change`}
+                                >
+                                  <Calendar size={11} className="text-amber-400 shrink-0" />
+                                  <span>{item.date}</span>
+                                  {onUpdateTodoItemDate && (
+                                    <input
+                                      type="date"
+                                      value={item.date}
+                                      onChange={(e) => onUpdateTodoItemDate(note.id, item.id, e.target.value)}
+                                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                    />
+                                  )}
+                                </label>
+                                {onUpdateTodoItemDate && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onUpdateTodoItemDate(note.id, item.id, '')}
+                                    className="text-amber-400 hover:text-rose-400 p-0.5 transition cursor-pointer"
+                                    title="Remove date"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                )}
+                              </span>
+                            ) : onUpdateTodoItemDate ? (
+                              <label 
+                                className="relative p-1 rounded hover:bg-slate-700/60 text-slate-400 hover:text-amber-300 cursor-pointer transition shrink-0"
+                                title="Add date to item"
+                              >
+                                <Calendar size={12} className="text-slate-400 hover:text-amber-300" />
+                                <input
+                                  type="date"
+                                  onChange={(e) => onUpdateTodoItemDate(note.id, item.id, e.target.value)}
+                                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -199,18 +250,67 @@ export const TodosTab: React.FC<TodosTabProps> = ({
                       {note.items.map((item) => (
                         <div
                           key={item.id}
-                          onClick={() => onToggleTodoItem(note.id, item.id)}
-                          className="flex items-start gap-2 cursor-pointer group"
+                          className="flex items-center justify-between gap-2 group/item py-0.5"
                         >
-                          <input
-                            type="checkbox"
-                            checked={item.completed}
-                            readOnly
-                            className="mt-0.5 w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer pointer-events-none"
-                          />
-                          <span className={`text-xs ${item.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}`}>
-                            {item.text}
-                          </span>
+                          <div
+                            onClick={() => onToggleTodoItem(note.id, item.id)}
+                            className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={item.completed}
+                              readOnly
+                              className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer pointer-events-none shrink-0"
+                            />
+                            <span className={`text-xs break-words ${item.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover/item:text-white'}`}>
+                              {item.text}
+                            </span>
+                          </div>
+
+                          {/* Date display & picker icon next to checklist item */}
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {item.date ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] sm:text-xs font-mono">
+                                <label 
+                                  className="relative flex items-center gap-1 cursor-pointer"
+                                  title={`Target date: ${item.date}. Tap to change`}
+                                >
+                                  <Calendar size={11} className="text-amber-400 shrink-0" />
+                                  <span>{item.date}</span>
+                                  {onUpdateTodoItemDate && (
+                                    <input
+                                      type="date"
+                                      value={item.date}
+                                      onChange={(e) => onUpdateTodoItemDate(note.id, item.id, e.target.value)}
+                                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                    />
+                                  )}
+                                </label>
+                                {onUpdateTodoItemDate && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onUpdateTodoItemDate(note.id, item.id, '')}
+                                    className="text-amber-400 hover:text-rose-400 p-0.5 transition cursor-pointer"
+                                    title="Remove date"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                )}
+                              </span>
+                            ) : onUpdateTodoItemDate ? (
+                              <label 
+                                className="relative p-1 rounded hover:bg-slate-700/60 text-slate-400 hover:text-amber-300 cursor-pointer transition shrink-0"
+                                title="Add date to item"
+                              >
+                                <Calendar size={12} className="text-slate-400 hover:text-amber-300" />
+                                <input
+                                  type="date"
+                                  onChange={(e) => onUpdateTodoItemDate(note.id, item.id, e.target.value)}
+                                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>

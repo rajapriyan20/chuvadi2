@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
-import { PWAInstallButton } from './common/PWAInstallButton';
 import type { ActiveTab, TabVisibilityMap } from '../types';
 
 interface SideMenuProps {
@@ -108,12 +107,6 @@ export const SideMenu: React.FC<SideMenuProps> = ({
       label: 'Exercise Log',
       subtitle: 'Daily Workouts & Fitness',
       icon: Dumbbell,
-    },
-    {
-      id: 'reports' as ActiveTab,
-      label: 'Reports',
-      subtitle: 'Spending Breakdown & Trends',
-      icon: PieChart,
     },
     {
       id: 'ai' as ActiveTab,
@@ -243,22 +236,6 @@ export const SideMenu: React.FC<SideMenuProps> = ({
 
         {/* Quick Utility Bottom Section - ALWAYS visible & pinned without scrolling */}
         <div className="p-2.5 sm:p-3 border-t border-slate-800/80 bg-[#10151d] space-y-1.5 sm:space-y-2 shrink-0 mt-auto shadow-2xl">
-          {/* PWA In-App Install Option */}
-          <PWAInstallButton variant="full" />
-
-          {onOpenQuickAdd && (
-            <button
-              onClick={() => {
-                onOpenQuickAdd();
-                onClose();
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2 sm:py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition active:scale-95"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              <span>Record Transaction</span>
-            </button>
-          )}
-
           {onOpenNotificationSettings && (
             <button
               id="sidemenu-notifications-btn"

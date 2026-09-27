@@ -13,11 +13,14 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  Download
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { WhatsAppLogo } from './WhatsAppLogo';
 import { LogoModal } from './LogoModal';
+import { InstallAppModal } from '../modals/InstallAppModal';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 import appletConfig from '../../../firebase-applet-config.json';
 
 interface AuthScreenProps {
@@ -31,6 +34,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
   const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [copiedDomain, setCopiedDomain] = useState(false);
   const [showLogoModal, setShowLogoModal] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  const { isInstalled, isInstallable, install } = usePWAInstall();
 
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const firebaseSettingsUrl = `https://console.firebase.google.com/project/${appletConfig.projectId}/authentication/settings`;
@@ -78,21 +84,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
 
   return (
     <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-8 selection:bg-amber-500 selection:text-slate-950">
-      {/* Top Bar with Developer attribution & WhatsApp */}
-      <div className="max-w-5xl w-full mx-auto flex items-center justify-between py-2 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-500">developed by</span>
-          <strong className="text-slate-300 font-semibold">Rajapriyan</strong>
-          <a
-            href="https://wa.me/919600001118"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center p-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 transition ml-1"
-            title="Chat on WhatsApp (+91 9600001118)"
-          >
-            <WhatsAppLogo size={13} />
-          </a>
-        </div>
+      {/* Top Bar with Private & Encrypted Status */}
+      <div className="max-w-5xl w-full mx-auto flex items-center justify-end py-2 text-xs">
         <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
           <Lock size={12} className="text-amber-400" />
           <span>Private & Encrypted</span>
@@ -111,11 +104,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
             <button
               type="button"
               onClick={() => setShowLogoModal(true)}
-              className="p-3 bg-[#161c24] hover:bg-[#1b2330] rounded-2xl border border-slate-800 hover:border-amber-500/40 shadow-inner mb-3 transition active:scale-95 cursor-pointer group relative"
+              className="w-20 h-20 p-1 flex items-center justify-center bg-[#161c24] hover:bg-[#1b2330] rounded-2xl border border-slate-800 hover:border-amber-500/40 shadow-inner mb-3 transition active:scale-95 cursor-pointer group relative"
               title="Click to view logo in full resolution"
               aria-label="View Chuvadi logo in full resolution"
             >
-              <ChuvadiLogo size={56} />
+              <ChuvadiLogo size={70} />
               <div className="absolute inset-0 rounded-2xl bg-white/0 group-hover:bg-white/5 transition-colors" />
             </button>
             <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
@@ -273,6 +266,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
                 <ArrowRight size={13} />
               </button>
             )}
+
+            {/* Install App on Phone / Desktop */}
+            {!isInstalled && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (isInstallable) {
+                    await install();
+                  } else {
+                    setShowInstallModal(true);
+                  }
+                }}
+                disabled={isLoading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold rounded-2xl border border-amber-500/30 transition shadow-sm active:scale-95 cursor-pointer"
+                title="Install Chuvadi on your phone or computer"
+              >
+                <Download size={14} className="text-amber-400" />
+                <span>Install App on Phone / PC</span>
+              </button>
+            )}
           </div>
 
           {/* Developer Attribution inside Login Card */}
@@ -310,11 +323,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onContinueAsGue
 
       {/* Footer */}
       <div className="text-center text-[11px] text-slate-500 py-2">
-        <span>© {new Date().getFullYear()} Chuvadi • Developed by <strong className="text-slate-400 font-semibold">Rajapriyan</strong> • All rights reserved</span>
+        <span>© {new Date().getFullYear()} Chuvadi • A Way of Life • All rights reserved</span>
       </div>
 
       {/* Logo Lightbox Modal */}
       <LogoModal isOpen={showLogoModal} onClose={() => setShowLogoModal(false)} />
+
+      {/* Manual Installation Guide Modal */}
+      <InstallAppModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
     </div>
   );
 };

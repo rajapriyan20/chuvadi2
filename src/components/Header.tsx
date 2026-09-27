@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Plus, 
   LogIn, 
   LogOut, 
   User as UserIcon,
@@ -12,7 +11,6 @@ import {
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
-import { PWAInstallButton } from './common/PWAInstallButton';
 import { LogoModal } from './common/LogoModal';
 import { LogoutConfirmModal } from './modals/LogoutConfirmModal';
 import type { User } from 'firebase/auth';
@@ -23,7 +21,7 @@ interface HeaderProps {
   user: User | null;
   isOnline: boolean;
   isGuestMode?: boolean;
-  onOpenQuickAdd: () => void;
+  onOpenQuickAdd?: () => void;
   onOpenAi: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
@@ -216,19 +214,6 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </button>
             )}
-
-            {/* Quick Record Button */}
-            <button
-              id="header-quick-add-btn"
-              onClick={onOpenQuickAdd}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition active:scale-95"
-            >
-              <Plus size={16} strokeWidth={2.5} />
-              <span className="hidden xs:inline">Record</span>
-            </button>
-
-            {/* PWA Install Button */}
-            <PWAInstallButton variant="compact" />
 
             {/* Auth State Button */}
             {isGuestMode ? (

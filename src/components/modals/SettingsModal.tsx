@@ -49,7 +49,6 @@ const ALL_TABS_CONFIG: Array<{ id: ActiveTab; label: string; desc: string }> = [
   { id: 'calendar', label: 'Calendar & Birthdays', desc: 'Life events, birthdays & anniversaries' },
   { id: 'exercise', label: 'Exercise & Body Profile', desc: 'Workouts & monthly body metrics' },
   { id: 'menstrual', label: 'Wellness Tracker', desc: 'Cycle, symptoms & health logging' },
-  { id: 'reports', label: 'Reports & Analytics', desc: 'Spending breakdown and visual charts' },
   { id: 'ai', label: 'Chuvadi AI Advisor', desc: 'Intelligence hub, receipt OCR & voice' },
 ];
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Plus, Trash2, Pin } from 'lucide-react';
+import { X, Check, Plus, Trash2, Pin, Calendar, Clock } from 'lucide-react';
 import type { TodoNote, TodoItem } from '../../types';
 
 interface TodoModalProps {
@@ -65,6 +65,10 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
   const handleItemTextChange = (id: string, text: string) => {
     setItems(items.map(it => it.id === id ? { ...it, text } : it));
+  };
+
+  const handleItemDateChange = (id: string, date: string) => {
+    setItems(items.map(it => it.id === id ? { ...it, date: date || undefined } : it));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,26 +141,57 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {items.map((it) => (
-                <div key={it.id} className="flex items-center gap-2">
+                <div key={it.id} className="flex items-center gap-1.5 p-1 rounded-xl bg-[#0a0e14] border border-slate-800">
                   <input
                     type="checkbox"
                     checked={it.completed}
                     onChange={() => handleToggleItem(it.id)}
-                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    className="w-4 h-4 accent-amber-500 rounded cursor-pointer shrink-0 ml-1"
                   />
                   <input
                     type="text"
                     value={it.text}
                     placeholder="List item..."
                     onChange={(e) => handleItemTextChange(it.id, e.target.value)}
-                    className={`flex-1 bg-[#0a0e14] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white ${it.completed ? 'line-through text-slate-500' : ''}`}
+                    className={`flex-1 bg-transparent border-0 px-2 py-1 text-xs text-white focus:outline-none ${it.completed ? 'line-through text-slate-500' : ''}`}
                   />
+
+                  {/* Date badge if set */}
+                  {it.date && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-mono shrink-0">
+                      <span>{it.date}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleItemDateChange(it.id, '')}
+                        className="text-amber-400 hover:text-rose-400 p-0.5 transition"
+                        title="Remove date"
+                      >
+                        <X size={9} />
+                      </button>
+                    </span>
+                  )}
+
+                  {/* Date picker icon */}
+                  <label 
+                    className="relative p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-300 cursor-pointer transition shrink-0"
+                    title={it.date ? `Target date: ${it.date}. Click to change` : "Add date"}
+                  >
+                    <Calendar size={13} className={it.date ? "text-amber-400" : "text-slate-500"} />
+                    <input
+                      type="date"
+                      value={it.date || ''}
+                      onChange={(e) => handleItemDateChange(it.id, e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </label>
+
                   <button
                     type="button"
                     onClick={() => handleRemoveItem(it.id)}
-                    className="p-1 text-slate-500 hover:text-rose-400 transition"
+                    className="p-1.5 text-slate-500 hover:text-rose-400 transition shrink-0"
+                    title="Delete item"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               ))}

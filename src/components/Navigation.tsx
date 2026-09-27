@@ -47,7 +47,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'calendar' as ActiveTab, label: 'Calendar', icon: CalendarDays },
     { id: 'exercise' as ActiveTab, label: 'Exercise', icon: Dumbbell },
     { id: 'menstrual' as ActiveTab, label: 'Cycle', icon: Heart },
-    { id: 'reports' as ActiveTab, label: 'Reports', icon: PieChart },
     { 
       id: 'ai' as ActiveTab, 
       label: 'Chuvadi AI', 
