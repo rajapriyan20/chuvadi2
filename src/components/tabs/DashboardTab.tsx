@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -8,6 +8,7 @@ import {
   ArrowDownLeft, 
   ArrowRightLeft,
   ChevronRight,
+  ChevronLeft,
   ShieldAlert,
   Wallet,
   Sparkles,
@@ -16,14 +17,12 @@ import {
   Calendar,
   CalendarDays,
   Dumbbell,
-  Heart,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
   Layers,
   PieChart,
   Receipt,
-  X
+  X,
+  LayoutGrid,
+  GalleryHorizontal
 } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysRemaining } from '../../utils/formatters';
 import type { 
@@ -88,6 +87,58 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 }) => {
   const today = new Date();
 
+  // Overview Layout Mode: 'carousel' (horizontal scrollable track) | 'grid' (compact horizontal grid)
+  const [overviewLayout, setOverviewLayout] = useState<'carousel' | 'grid'>(() => {
+    try {
+      return (localStorage.getItem('chuvadi_dashboard_overview_layout') as 'carousel' | 'grid') || 'carousel';
+    } catch {
+      return 'carousel';
+    }
+  });
+
+  const handleToggleLayout = (mode: 'carousel' | 'grid') => {
+    setOverviewLayout(mode);
+    try {
+      localStorage.setItem('chuvadi_dashboard_overview_layout', mode);
+    } catch {}
+  };
+
+  // Carousel ref and scroll handling
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScrollability = () => {
+    if (carouselRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = carouselRef.current;
+      setCanScrollLeft(scrollLeft > 8);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 8);
+    }
+  };
+
+  const handleScrollCarousel = (direction: 'left' | 'right') => {
+    if (carouselRef.current) {
+      const scrollStep = 280;
+      carouselRef.current.scrollBy({
+        left: direction === 'left' ? -scrollStep : scrollStep,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (el && overviewLayout === 'carousel') {
+      checkScrollability();
+      el.addEventListener('scroll', checkScrollability, { passive: true });
+      window.addEventListener('resize', checkScrollability);
+      return () => {
+        el.removeEventListener('scroll', checkScrollability);
+        window.removeEventListener('resize', checkScrollability);
+      };
+    }
+  }, [overviewLayout]);
+
   // Dynamic Time-of-Day Greeting
   const greeting = useMemo(() => {
     const hour = today.getHours();
@@ -98,10 +149,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const formattedToday = useMemo(() => {
     return today.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
     });
   }, [today]);
 
@@ -162,301 +212,511 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const recentTransactions = transactions.slice(0, 5);
 
+  // Next Upcoming Horizon Event
+  const nextHorizonEvent = upcomingEvents[0];
+  const nextHorizonDiffDays = useMemo(() => {
+    if (!nextHorizonEvent?.date) return null;
+    const evDate = new Date(nextHorizonEvent.date);
+    return Math.ceil((evDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }, [nextHorizonEvent, today]);
+
+  // Unified Overview Cards Data Model
+  const overviewCards = useMemo(() => [
+    {
+      id: 'net-worth',
+      label: 'Net Worth',
+      value: formatCurrency(totalNetWorth),
+      subtext: `Liquid: ${formatCurrency(liquidBalance)}`,
+      icon: Wallet,
+      accent: 'amber' as const,
+      badge: null,
+      onClick: () => onSelectTab('finance'),
+      tooltip: 'View Financial Ledger & Net Worth'
+    },
+    {
+      id: 'inflow',
+      label: 'Monthly Inflow',
+      value: `+${formatCurrency(monthlyIncome)}`,
+      subtext: `${transactions.filter(t => t.type === 'INCOME').length} credits recorded`,
+      icon: TrendingUp,
+      accent: 'emerald' as const,
+      badge: null,
+      onClick: () => onSelectTab('finance'),
+      tooltip: 'View Monthly Incomes'
+    },
+    {
+      id: 'outflow',
+      label: 'Monthly Outflow',
+      value: `-${formatCurrency(monthlyExpense)}`,
+      subtext: `Net: ${netSavings >= 0 ? '+' : ''}${formatCurrency(netSavings)} (${savingsRate}%)`,
+      icon: TrendingDown,
+      accent: 'rose' as const,
+      badge: null,
+      onClick: () => onSelectTab('finance'),
+      tooltip: 'View Monthly Expenses'
+    },
+    {
+      id: 'garage',
+      label: 'Garage Fleet',
+      value: `${vehicles.length} ${vehicles.length === 1 ? 'Vehicle' : 'Vehicles'}`,
+      subtext: criticalRenewals.length > 0 ? `${criticalRenewals.length} urgent renewals` : 'All renewals active',
+      icon: Car,
+      accent: 'sky' as const,
+      badge: criticalRenewals.length > 0 ? {
+        text: `${criticalRenewals.length} due`,
+        variant: 'warning' as const
+      } : null,
+      onClick: () => onSelectTab('garage'),
+      tooltip: 'View Vehicles, Fuel & Maintenance'
+    },
+    {
+      id: 'todos',
+      label: 'Active Tasks',
+      value: `${totalPendingTodos} Pending`,
+      subtext: `${pinnedTodos.length} pinned checklists`,
+      icon: CheckSquare,
+      accent: 'amber' as const,
+      badge: null,
+      onClick: () => onSelectTab('todos'),
+      tooltip: 'View Checklists & Reminders'
+    },
+    {
+      id: 'horizon',
+      label: 'Upcoming Horizon',
+      value: nextHorizonEvent ? nextHorizonEvent.title : 'All Clear',
+      subtext: nextHorizonEvent 
+        ? `${nextHorizonDiffDays === 0 ? 'Today' : nextHorizonDiffDays === 1 ? 'Tomorrow' : `in ${nextHorizonDiffDays}d`} • ${formatDate(nextHorizonEvent.date)}`
+        : 'No events in 14 days',
+      icon: CalendarDays,
+      accent: 'indigo' as const,
+      badge: nextHorizonEvent ? {
+        text: nextHorizonDiffDays === 0 ? 'Today' : nextHorizonDiffDays === 1 ? 'Tmrw' : `${nextHorizonDiffDays}d`,
+        variant: 'info' as const
+      } : null,
+      onClick: () => onSelectTab('calendar'),
+      tooltip: 'View Unified Calendar & Events'
+    },
+    {
+      id: 'fitness',
+      label: 'Fitness & Pulse',
+      value: lastBodyProfile?.weightKg != null ? `${lastBodyProfile.weightKg} kg` : (lastWorkout ? 'Logged' : 'Pulse'),
+      subtext: isFirstOfMonth 
+        ? '🔔 1st of month: log body stats'
+        : (lastWorkout ? `Last: ${lastWorkout.description}` : 'Track workouts & body'),
+      icon: Dumbbell,
+      accent: 'teal' as const,
+      badge: isFirstOfMonth ? {
+        text: 'Due',
+        variant: 'amber' as const
+      } : null,
+      onClick: () => onSelectTab('exercise'),
+      tooltip: 'View Fitness & Body Profile'
+    }
+  ], [
+    totalNetWorth,
+    liquidBalance,
+    monthlyIncome,
+    transactions,
+    monthlyExpense,
+    netSavings,
+    savingsRate,
+    vehicles.length,
+    criticalRenewals.length,
+    totalPendingTodos,
+    pinnedTodos.length,
+    nextHorizonEvent,
+    nextHorizonDiffDays,
+    lastBodyProfile,
+    lastWorkout,
+    isFirstOfMonth,
+    onSelectTab
+  ]);
+
+  // Color Map for Overview Cards
+  const accentStyles = {
+    amber: {
+      border: 'border-amber-500/20 hover:border-amber-500/40',
+      iconBg: 'bg-amber-500/15 text-amber-400',
+      valueText: 'text-amber-200',
+      badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+    },
+    emerald: {
+      border: 'border-emerald-500/20 hover:border-emerald-500/40',
+      iconBg: 'bg-emerald-500/15 text-emerald-400',
+      valueText: 'text-emerald-400',
+      badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+    },
+    rose: {
+      border: 'border-rose-500/20 hover:border-rose-500/40',
+      iconBg: 'bg-rose-500/15 text-rose-400',
+      valueText: 'text-rose-400',
+      badgeBg: 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+    },
+    sky: {
+      border: 'border-sky-500/20 hover:border-sky-500/40',
+      iconBg: 'bg-sky-500/15 text-sky-400',
+      valueText: 'text-sky-300',
+      badgeBg: 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+    },
+    indigo: {
+      border: 'border-indigo-500/20 hover:border-indigo-500/40',
+      iconBg: 'bg-indigo-500/15 text-indigo-400',
+      valueText: 'text-indigo-200',
+      badgeBg: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+    },
+    teal: {
+      border: 'border-teal-500/20 hover:border-teal-500/40',
+      iconBg: 'bg-teal-500/15 text-teal-400',
+      valueText: 'text-teal-300',
+      badgeBg: 'bg-teal-500/15 text-teal-300 border-teal-500/30'
+    }
+  };
+
   return (
-    <div className="space-y-6 pb-20 md:pb-8 animate-fadeIn">
+    <div className="space-y-4 pb-20 md:pb-8 animate-fadeIn">
       
-      {/* 1. Executive Life OS Header Banner */}
-      <div className="p-5 sm:p-6 bg-gradient-to-br from-[#151c27] via-[#101620] to-[#0c1017] rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+      {/* 1. Executive Life OS Header Banner (Compact & High-Density) */}
+      <div className="p-3.5 sm:p-4 bg-gradient-to-r from-[#151c27] via-[#101620] to-[#0c1017] rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20 font-mono">
-                சுவடி • Life Command Center
-              </span>
-              <span className="text-xs text-slate-400">
-                {formattedToday}
-              </span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 relative z-10">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 font-mono">
+                  சுவடி • Life OS
+                </span>
+                <span className="text-xs text-slate-400 font-medium">
+                  {formattedToday}
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-xl font-black text-white tracking-tight mt-0.5">
+                {greeting}, welcome back
+              </h1>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              {greeting}, welcome back
-            </h1>
-            <p className="text-xs text-slate-400">
-              Here is your personal life manuscript: financial health, garage renewals, today’s tasks, and calendar events.
-            </p>
           </div>
 
-          {/* Quick Life Pulse Chips */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Quick Shortcuts & Navigation Hub */}
+          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
             <button
-              onClick={() => onSelectTab('finance')}
-              className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="View Finance Ledger & Accounts"
+              type="button"
+              onClick={() => {
+                if (onSelectFinanceSubTab) onSelectFinanceSubTab('coa');
+                onSelectTab('finance');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700/70 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Chart of Accounts"
             >
-              <Wallet size={13} className="text-amber-400" />
-              <span>{accounts.length} Accounts</span>
+              <Layers size={13} className="text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">Accounts</span>
             </button>
 
             <button
-              onClick={() => onSelectTab('garage')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
-                criticalRenewals.length > 0
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700'
-              }`}
-              title="View Garage & Fleet"
+              type="button"
+              onClick={() => {
+                if (onSelectFinanceSubTab) onSelectFinanceSubTab('transactions');
+                onSelectTab('finance');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700/70 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Ledger Transactions"
             >
-              <Car size={13} className="text-sky-400" />
-              <span>{vehicles.length} Vehicles</span>
-              {criticalRenewals.length > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-400" />
-              )}
+              <Receipt size={13} className="text-emerald-400 shrink-0" />
+              <span className="hidden sm:inline">Ledger</span>
             </button>
 
             <button
-              onClick={() => onSelectTab('todos')}
-              className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="View Checklists & Tasks"
+              type="button"
+              onClick={() => {
+                if (onSelectFinanceSubTab) onSelectFinanceSubTab('reports');
+                onSelectTab('finance');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-xs font-semibold text-amber-300 border border-amber-500/30 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="Reports & Analytics"
             >
-              <CheckSquare size={13} className="text-emerald-400" />
-              <span>{totalPendingTodos} Pending</span>
+              <PieChart size={13} className="text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">Reports</span>
             </button>
+
+            {/* Guest Demo Prompt Inlined */}
+            {isGuestMode && onLogin && (
+              <button
+                onClick={onLogin}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 cursor-pointer shadow-sm flex items-center gap-1"
+                title="Sign in with Google to save permanently"
+              >
+                <LogIn size={12} className="stroke-[2.5]" />
+                <span>Sign In</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Sleek Horizontal Overview Carousel / Grid Section */}
+      <div className="space-y-2">
+        {/* Controls Bar: Title, Layout Toggle (Carousel vs Grid), and Carousel Nav Chevrons */}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <span>Overview & Vital Metrics</span>
+            </span>
+            <span className="text-[10px] font-mono font-medium text-slate-500 px-1.5 py-0.2 rounded bg-slate-800/80 border border-slate-700/40">
+              {overviewCards.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle: Carousel vs Grid */}
+            <div className="flex items-center bg-[#131922] p-0.5 rounded-xl border border-slate-800 text-slate-400">
+              <button
+                type="button"
+                onClick={() => handleToggleLayout('carousel')}
+                className={`p-1 sm:px-2 sm:py-1 rounded-lg text-xs font-medium flex items-center gap-1 transition cursor-pointer ${
+                  overviewLayout === 'carousel'
+                    ? 'bg-amber-500/20 text-amber-300 font-semibold'
+                    : 'hover:text-slate-200'
+                }`}
+                title="Horizontal Scrollable Carousel"
+              >
+                <GalleryHorizontal size={13} />
+                <span className="hidden sm:inline text-[11px]">Carousel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleLayout('grid')}
+                className={`p-1 sm:px-2 sm:py-1 rounded-lg text-xs font-medium flex items-center gap-1 transition cursor-pointer ${
+                  overviewLayout === 'grid'
+                    ? 'bg-amber-500/20 text-amber-300 font-semibold'
+                    : 'hover:text-slate-200'
+                }`}
+                title="Compact Horizontal Grid"
+              >
+                <LayoutGrid size={13} />
+                <span className="hidden sm:inline text-[11px]">Grid</span>
+              </button>
+            </div>
+
+            {/* Carousel Scroll Arrow Chevrons (visible when carousel mode is active) */}
+            {overviewLayout === 'carousel' && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleScrollCarousel('left')}
+                  disabled={!canScrollLeft}
+                  className="w-7 h-7 rounded-lg bg-[#141c26] hover:bg-[#1a2533] disabled:opacity-30 disabled:pointer-events-none text-slate-300 hover:text-white border border-slate-800 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-sm"
+                  title="Scroll left"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleScrollCarousel('right')}
+                  disabled={!canScrollRight}
+                  className="w-7 h-7 rounded-lg bg-[#141c26] hover:bg-[#1a2533] disabled:opacity-30 disabled:pointer-events-none text-slate-300 hover:text-white border border-slate-800 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-sm"
+                  title="Scroll right"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Guest Demo Prompt Banner */}
-        {isGuestMode && (
-          <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-amber-300 font-medium">
-              <Sparkles size={14} className="text-amber-400 shrink-0" />
-              <span>You are viewing Chuvadi in <strong>Guest Demo Mode</strong>. Try all modules freely.</span>
+        {/* The Overview Deck Container */}
+        {overviewLayout === 'carousel' ? (
+          <div className="relative group/carousel">
+            {/* Scrollable Horizontal Track */}
+            <div 
+              ref={carouselRef}
+              className="flex items-stretch gap-2.5 overflow-x-auto pb-1 pt-0.5 scroll-smooth no-scrollbar snap-x snap-mandatory"
+            >
+              {overviewCards.map((card) => {
+                const styles = accentStyles[card.accent];
+                const IconComponent = card.icon;
+
+                return (
+                  <div
+                    key={card.id}
+                    onClick={card.onClick}
+                    title={card.tooltip}
+                    className={`min-w-[200px] sm:min-w-[220px] max-w-[260px] flex-1 shrink-0 snap-start p-3 bg-[#131922] hover:bg-[#18212c] rounded-2xl border ${styles.border} transition group cursor-pointer shadow-sm relative overflow-hidden flex flex-col justify-between h-[92px]`}
+                  >
+                    {/* Top Row: Label + Icon & Badge */}
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-slate-300 truncate">
+                        {card.label}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {card.badge && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${
+                            card.badge.variant === 'warning'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                              : card.badge.variant === 'info'
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          }`}>
+                            {card.badge.text}
+                          </span>
+                        )}
+                        <div className={`w-6 h-6 rounded-lg ${styles.iconBg} flex items-center justify-center shrink-0 group-hover:scale-110 transition`}>
+                          <IconComponent size={13} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Value */}
+                    <div className={`text-xl sm:text-2xl font-black font-mono tracking-tight truncate ${styles.valueText}`}>
+                      {card.value}
+                    </div>
+
+                    {/* Subtext Footer */}
+                    <div className="text-[10px] text-slate-400 truncate flex items-center justify-between">
+                      <span className="truncate">{card.subtext}</span>
+                      <ChevronRight size={11} className="text-slate-600 group-hover:text-slate-400 shrink-0 ml-1 transition transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {onLogin && (
-                <button
-                  onClick={onLogin}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold transition active:scale-95 cursor-pointer shadow-sm"
+          </div>
+        ) : (
+          /* Compact Responsive Grid Mode: High density horizontal tiles */
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
+            {overviewCards.map((card) => {
+              const styles = accentStyles[card.accent];
+              const IconComponent = card.icon;
+
+              return (
+                <div
+                  key={card.id}
+                  onClick={card.onClick}
+                  title={card.tooltip}
+                  className={`p-3 bg-[#131922] hover:bg-[#18212c] rounded-2xl border ${styles.border} transition group cursor-pointer shadow-sm relative overflow-hidden flex flex-col justify-between h-[92px]`}
                 >
-                  <LogIn size={12} className="inline mr-1 stroke-[2.5]" />
-                  Sign In with Google
-                </button>
-              )}
-              {onExitGuestMode && (
-                <button
-                  onClick={onExitGuestMode}
-                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 cursor-pointer"
-                >
-                  <ArrowLeft size={12} className="inline mr-1" />
-                  Exit
-                </button>
-              )}
-            </div>
+                  {/* Top Row: Label + Icon & Badge */}
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 group-hover:text-slate-300 truncate">
+                      {card.label}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {card.badge && (
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border ${
+                          card.badge.variant === 'warning'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                            : card.badge.variant === 'info'
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          {card.badge.text}
+                        </span>
+                      )}
+                      <div className={`w-6 h-6 rounded-lg ${styles.iconBg} flex items-center justify-center shrink-0 group-hover:scale-110 transition`}>
+                        <IconComponent size={13} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Value */}
+                  <div className={`text-lg sm:text-xl font-black font-mono tracking-tight truncate ${styles.valueText}`}>
+                    {card.value}
+                  </div>
+
+                  {/* Subtext Footer */}
+                  <div className="text-[10px] text-slate-400 truncate flex items-center justify-between">
+                    <span className="truncate">{card.subtext}</span>
+                    <ChevronRight size={11} className="text-slate-600 group-hover:text-slate-400 shrink-0 ml-1 transition transform group-hover:translate-x-0.5" />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* 2. Primary Financial Command Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {/* Net Worth Card */}
-        <div 
-          onClick={() => onSelectTab('finance')}
-          className="p-5 bg-gradient-to-br from-[#182230] to-[#121922] rounded-3xl border border-amber-500/25 shadow-lg relative overflow-hidden cursor-pointer hover:border-amber-500/40 transition group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Total Net Worth</span>
-            <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center group-hover:scale-110 transition">
-              <Wallet size={15} />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-amber-200 font-mono mt-2 tracking-tight">
-            {formatCurrency(totalNetWorth)}
-          </div>
-          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
-            <span>Liquid Cash / Bank:</span>
-            <span className="font-mono font-bold text-slate-200">{formatCurrency(liquidBalance)}</span>
-          </div>
-        </div>
-
-        {/* Monthly Inflow */}
-        <div 
-          onClick={() => onSelectTab('finance')}
-          className="p-5 bg-[#141b24] hover:bg-[#18212c] rounded-3xl border border-emerald-900/30 shadow-md cursor-pointer transition group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Monthly Inflow</span>
-            <div className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition">
-              <TrendingUp size={15} />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-emerald-400 font-mono mt-2">
-            +{formatCurrency(monthlyIncome)}
-          </div>
-          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
-            <span>Credits recorded:</span>
-            <span className="text-emerald-300 font-semibold font-mono">
-              {transactions.filter(t => t.type === 'INCOME').length} items
-            </span>
-          </div>
-        </div>
-
-        {/* Monthly Outflow & Savings Rate */}
-        <div 
-          onClick={() => onSelectTab('finance')}
-          className="p-5 bg-[#141b24] hover:bg-[#18212c] rounded-3xl border border-rose-900/30 shadow-md cursor-pointer transition group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase tracking-wider">
-            <span>Monthly Expenses</span>
-            <div className="w-7 h-7 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center group-hover:scale-110 transition">
-              <TrendingDown size={15} />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-rose-400 font-mono mt-2">
-            -{formatCurrency(monthlyExpense)}
-          </div>
-          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
-            <span>Net Monthly Balance:</span>
-            <span className={`font-mono font-bold ${netSavings >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
-              {netSavings >= 0 ? '+' : ''}{formatCurrency(netSavings)} {monthlyIncome > 0 && `(${savingsRate}%)`}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Finance Hub Sub-navigation Shortcuts */}
-      <div className="flex items-center justify-between gap-2 p-2.5 sm:p-3 rounded-2xl bg-[#121820] border border-slate-800/90 text-xs shadow-sm">
-        <span className="text-slate-400 font-medium hidden sm:inline text-[11px] px-1">Finance Hub:</span>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              if (onSelectFinanceSubTab) onSelectFinanceSubTab('coa');
-              onSelectTab('finance');
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700/60 transition active:scale-95 cursor-pointer shadow-sm"
-          >
-            <Layers size={13} className="text-amber-400" />
-            <span>Chart of Accounts</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (onSelectFinanceSubTab) onSelectFinanceSubTab('transactions');
-              onSelectTab('finance');
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700/60 transition active:scale-95 cursor-pointer shadow-sm"
-          >
-            <Receipt size={13} className="text-emerald-400" />
-            <span>Transactions</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (onSelectFinanceSubTab) onSelectFinanceSubTab('reports');
-              onSelectTab('finance');
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-semibold border border-amber-500/30 transition active:scale-95 cursor-pointer shadow-sm"
-          >
-            <PieChart size={13} className="text-amber-400" />
-            <span>Reports & Analytics</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 3. Critical Renewal Alerts (PUC & Insurance Watch) */}
+      {/* 3. Compact Imminent Expiration Alert Strip (PUC & Insurance Watch) */}
       {criticalRenewals.length > 0 && (
-        <div className="p-4 bg-amber-950/30 border border-amber-600/40 rounded-3xl space-y-2.5 animate-fadeIn">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
-              <ShieldAlert size={16} className="animate-pulse" />
-              <span>Imminent Vehicle Expirations ({criticalRenewals.length})</span>
+        <div className="px-3.5 py-2.5 bg-amber-950/25 border border-amber-600/35 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs animate-fadeIn">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1.5 text-amber-400 font-bold uppercase tracking-wider text-[11px] shrink-0">
+              <ShieldAlert size={14} className="animate-pulse" />
+              <span>Imminent Renewals ({criticalRenewals.length}):</span>
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {criticalRenewals.map((r, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSelectTab('garage')}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#131922] hover:bg-[#18212c] border border-amber-600/30 text-slate-200 text-xs transition cursor-pointer"
+                >
+                  <Car size={11} className="text-amber-400" />
+                  <strong className="text-white font-semibold">{r.vehicle.name}</strong>
+                  <span className="text-slate-400 text-[11px]">{r.type}</span>
+                  <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                    r.status.isOverdue
+                      ? 'bg-rose-500/20 text-rose-300'
+                      : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {r.status.label}
+                  </span>
+                </button>
+              ))}
             </div>
-            <button
-              onClick={() => onSelectTab('garage')}
-              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
-            >
-              <span>View Garage</span>
-              <ChevronRight size={13} />
-            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {criticalRenewals.map((r, i) => (
-              <div
-                key={i}
-                onClick={() => onSelectTab('garage')}
-                className="p-3 bg-[#131922] hover:bg-[#18202c] rounded-2xl border border-amber-700/30 flex items-center justify-between cursor-pointer transition active:scale-98"
-              >
-                <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Car size={13} className="text-amber-400" />
-                    <span>{r.vehicle.name}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {r.type} expires on {formatDate(r.date)}
-                  </div>
-                </div>
-                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                  r.status.isOverdue
-                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                }`}>
-                  {r.status.label}
-                </span>
-              </div>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => onSelectTab('garage')}
+            className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 shrink-0 self-end sm:self-auto cursor-pointer"
+          >
+            <span>Garage</span>
+            <ChevronRight size={13} />
+          </button>
         </div>
       )}
 
-      {/* 4. Upcoming Horizon: Calendar Events & Birthdays (Next 14 Days) */}
+      {/* 4. Compact Horizon Strip: Upcoming Events & Birthdays (Next 14 Days) */}
       {upcomingEvents.length > 0 && (
-        <div className="p-4 bg-[#141c27] rounded-3xl border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-sky-300 uppercase tracking-wider">
-              <CalendarDays size={15} />
-              <span>Upcoming Life Events & Birthdays</span>
-            </div>
-            <button
-              onClick={() => onSelectTab('calendar')}
-              className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
-            >
-              <span>Unified Calendar</span>
-              <ChevronRight size={13} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="px-3.5 py-2 rounded-2xl bg-[#121822] border border-slate-800/80 flex items-center justify-between text-xs gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+            <span className="text-sky-400 font-bold text-[11px] uppercase tracking-wider flex items-center gap-1 shrink-0">
+              <CalendarDays size={13} />
+              <span>Horizon:</span>
+            </span>
             {upcomingEvents.map((ev) => {
               const evDate = new Date(ev.date);
               const diffDays = Math.ceil((evDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
               const isBday = ev.category === 'BIRTHDAY';
 
               return (
-                <div
+                <button 
                   key={ev.id}
+                  type="button"
                   onClick={() => onSelectTab('calendar')}
-                  className="p-3 rounded-2xl bg-[#0f141d] hover:bg-[#161e2b] border border-slate-800/80 transition cursor-pointer space-y-1"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 text-[11px] text-slate-300 hover:text-white cursor-pointer transition shrink-0 border border-slate-700/40"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-base">{isBday ? '🎂' : '📅'}</span>
-                    <span className="text-[10px] font-mono font-bold text-sky-300 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-                      {diffDays === 0 ? 'Today!' : diffDays === 1 ? 'Tomorrow' : `in ${diffDays}d`}
-                    </span>
-                  </div>
-                  <div className="text-xs font-bold text-white truncate">{ev.title}</div>
-                  <div className="text-[10px] text-slate-400">{formatDate(ev.date)}</div>
-                </div>
+                  <span>{isBday ? '🎂' : '📅'}</span>
+                  <span className="font-medium text-slate-200 max-w-[130px] truncate">{ev.title}</span>
+                  <span className="text-[10px] font-mono font-bold text-sky-300">
+                    {diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tmrw' : `${diffDays}d`}
+                  </span>
+                </button>
               );
             })}
           </div>
+          <button
+            type="button"
+            onClick={() => onSelectTab('calendar')}
+            className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <span className="hidden sm:inline">Calendar</span>
+            <ChevronRight size={13} />
+          </button>
         </div>
       )}
 
-      {/* 5. Two Column Grid: Active Priorities (Checklists) + Recent Ledger Stream */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 5. Two Column Grid: Active Priorities (Checklists) + Recent Ledger Stream (FITS ABOVE THE FOLD) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Pinned Priorities & Checklists (1 column on large) */}
         <div className="space-y-3">
@@ -474,11 +734,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </button>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {pinnedTodos.length === 0 ? (
               <div 
                 onClick={() => onSelectTab('todos')}
-                className="p-6 bg-[#131922] hover:bg-[#17202c] rounded-3xl border border-slate-800 text-center text-slate-500 text-xs cursor-pointer transition"
+                className="p-5 bg-[#131922] hover:bg-[#17202c] rounded-2xl border border-slate-800 text-center text-slate-500 text-xs cursor-pointer transition"
               >
                 No pinned checklists. Tap to organize trip preps, maintenance checkups, or shopping lists.
               </div>
@@ -486,7 +746,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               pinnedTodos.slice(0, 2).map((note) => (
                 <div
                   key={note.id}
-                  className="p-4 bg-[#141b24] rounded-3xl border border-amber-500/20 shadow-sm space-y-2.5"
+                  className="p-3.5 bg-[#141b24] rounded-2xl border border-amber-500/20 shadow-sm space-y-2"
                 >
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-bold text-amber-200 truncate">{note.title}</h3>
@@ -516,7 +776,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           </span>
                         </div>
 
-                        {/* Date display & picker icon on Dashboard item (Requirement 5) */}
+                        {/* Date display & picker icon on Dashboard item */}
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           {item.date ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] sm:text-xs font-mono">
@@ -570,10 +830,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             {/* Wellness & Fitness Monthly Pulse Card */}
             <div 
               onClick={() => onSelectTab('exercise')}
-              className="p-4 rounded-3xl bg-[#121822] hover:bg-[#16202c] border border-slate-800 transition cursor-pointer space-y-2"
+              className="p-3.5 rounded-2xl bg-[#121822] hover:bg-[#16202c] border border-slate-800 transition cursor-pointer space-y-1.5"
             >
               <div className="flex items-center justify-between text-xs font-bold text-white">
-                <span className="flex items-center gap-1.5 text-emerald-300">
+                <span className="flex items-center gap-1.5 text-teal-300">
                   <Dumbbell size={14} />
                   <span>Fitness & Wellness Pulse</span>
                 </span>
@@ -582,7 +842,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
               <div className="text-[11px] text-slate-400 space-y-1">
                 {isFirstOfMonth ? (
-                  <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 font-bold">
+                  <div className="p-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 font-bold text-[10px]">
                     🔔 Today is 1st of the month! Log your body measurements.
                   </div>
                 ) : lastBodyProfile ? (
@@ -623,11 +883,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </button>
           </div>
 
-          <div className="bg-[#131922] rounded-3xl border border-slate-800/90 divide-y divide-slate-800/60 overflow-hidden shadow-sm">
+          <div className="bg-[#131922] rounded-2xl border border-slate-800/90 divide-y divide-slate-800/60 overflow-hidden shadow-sm">
             {recentTransactions.length === 0 ? (
               <div 
                 onClick={() => onSelectTab('finance')}
-                className="p-8 text-center text-slate-500 text-xs cursor-pointer hover:bg-slate-800/20 transition"
+                className="p-6 text-center text-slate-500 text-xs cursor-pointer hover:bg-slate-800/20 transition"
               >
                 No recent transactions recorded yet. Tap to view finance accounts.
               </div>
@@ -640,11 +900,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <div
                     key={t.id}
                     onClick={() => onSelectTxn(t)}
-                    className="p-3.5 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition"
+                    className="p-3 sm:p-3.5 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                           t.type === 'TRANSFER'
                             ? 'bg-blue-500/15 text-blue-400'
                             : isExpense
@@ -653,11 +913,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         }`}
                       >
                         {t.type === 'TRANSFER' ? (
-                          <ArrowRightLeft size={16} />
+                          <ArrowRightLeft size={14} />
                         ) : isExpense ? (
-                          <ArrowUpRight size={16} />
+                          <ArrowUpRight size={14} />
                         ) : (
-                          <ArrowDownLeft size={16} />
+                          <ArrowDownLeft size={14} />
                         )}
                       </div>
                       <div className="min-w-0">
@@ -673,7 +933,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
+                    <div className="text-right shrink-0 ml-2">
                       <div
                         className={`text-xs font-bold font-mono ${
                           isExpense ? 'text-rose-400' : isIncome ? 'text-emerald-400' : 'text-blue-300'
@@ -690,13 +950,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
 
           {/* Quick Accounts & Passbooks Grid */}
-          <div className="pt-2">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {accounts.slice(0, 4).map((acc) => (
                 <div
                   key={acc.id}
                   onClick={() => onOpenPassbook(acc)}
-                  className="p-3.5 bg-[#141b24] hover:bg-[#18212c] rounded-2xl border border-slate-800 transition cursor-pointer group shadow-sm"
+                  className="p-3 bg-[#141b24] hover:bg-[#18212c] rounded-xl border border-slate-800 transition cursor-pointer group shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <span
@@ -707,7 +967,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       {acc.type}
                     </span>
                   </div>
-                  <div className="text-xs font-bold text-white group-hover:text-amber-300 truncate mt-1.5">
+                  <div className="text-xs font-bold text-white group-hover:text-amber-300 truncate mt-1">
                     {acc.name}
                   </div>
                   <div className="text-xs font-bold text-amber-200 font-mono mt-0.5">

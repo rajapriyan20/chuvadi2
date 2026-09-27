@@ -1,7 +1,7 @@
 /**
  * Client service calling the backend Express Gemini API proxy
  */
-import type { Account, Vehicle } from '../types';
+import type { Account, Vehicle, ExerciseLog, BodyProfileLog } from '../types';
 
 export interface ParsedExpenseResult {
   type: 'EXPENSE' | 'INCOME' | 'TRANSFER';
@@ -380,4 +380,53 @@ export function generateLocalFinancialAdvice(
   // 6. General / Fallback Financial Advice
   const savingsRate = totalIncome > 0 ? (((totalIncome - totalExpense) / totalIncome) * 100).toFixed(0) : '0';
   return `💡 **Chuvadi Advisor Insights:**\n\n• **Current Net Worth:** ₹${totalBalance.toLocaleString('en-IN')}\n• **Monthly Spending:** ₹${totalExpense.toLocaleString('en-IN')} vs Income: ₹${totalIncome.toLocaleString('en-IN')}\n• **Estimated Savings Rate:** ${savingsRate}%\n\n**Financial Tip:** Maintain an emergency reserve equal to at least 3-6 months of expenses in your high-liquidity bank or savings accounts.\n\nFeel free to tap any of the quick buttons above or ask about specific accounts, fuel expenses, or vehicle renewals!`;
+}
+
+export async function getExerciseAdviceWithAI(
+  exerciseLogs: ExerciseLog[],
+  bodyProfileLogs: BodyProfileLog[] = []
+): Promise<{ advice: string; source: 'gemini' | 'heuristic' }> {
+  try {
+    const res = await fetch('/api/gemini/exercise-advice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exerciseLogs, bodyProfileLogs })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.advice) {
+        return { advice: data.advice, source: data.source || 'gemini' };
+      }
+    }
+  } catch {
+    // Backend offline or static deployment
+  }
+
+  const fallback = generateClientExerciseAdvice(exerciseLogs, bodyProfileLogs);
+  return { advice: fallback, source: 'heuristic' };
+}
+
+export function generateClientExerciseAdvice(
+  exerciseLogs: ExerciseLog[],
+  _bodyProfileLogs: BodyProfileLog[] = []
+): string {
+  if (!exerciseLogs || exerciseLogs.length === 0) {
+    return "Start building your streak today! Aim for a **15-minute mobility circuit**: 2 rounds of 10 bodyweight squats, 8 push-ups, and a 5-minute brisk walk to prime your metabolism.";
+  }
+
+  const latest = exerciseLogs[0];
+  const desc = (latest.description || '').toLowerCase();
+
+  if (desc.includes('squat') || desc.includes('leg')) {
+    return `Solid effort on your recent lower-body session (**${latest.description}**). Aim for active recovery or a **12-minute core & push circuit** today: 3 rounds of 10 push-ups, 30s plank holds, and gentle hamstring stretches.`;
+  }
+  if (desc.includes('push') || desc.includes('chest') || desc.includes('bench')) {
+    return `Great push volume recently (**${latest.description}**). Shift focus to pulling and posterior chain today: aim for a **15-minute circuit** of 3 rounds of 12 bodyweight rows or band pull-aparts, followed by 10 minutes of brisk stair climbing.`;
+  }
+  if (desc.includes('walk') || desc.includes('run') || desc.includes('cardio') || desc.includes('stair')) {
+    return `Excellent cardiovascular consistency with your recent session (**${latest.description}**). Pair that aerobic base with strength today: aim for **2 rounds of 12 bodyweight squats + 8 slow-tempo push-ups** before cooling down.`;
+  }
+
+  return `Consistent momentum! Building on your recent workout (**${latest.description}**), aim for a **10-minute circuit** today: 2 rounds of 10 bodyweight squats, 8 push-ups, and a 30-second plank to keep all muscle groups firing.`;
 }

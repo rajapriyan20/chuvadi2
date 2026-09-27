@@ -62,3 +62,12 @@ body {
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
+/* Scrollbar hiding utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

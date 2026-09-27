@@ -272,6 +272,66 @@ Current User Snapshot Across All Modules:
     }
   });
 
+  // 4. Gemini Exercise Daily Action Plan & Workout Advice Endpoint
+  app.post("/api/gemini/exercise-advice", async (req, res) => {
+    try {
+      const { exerciseLogs = [], bodyProfileLogs = [] } = req.body;
+      const client = getGeminiClient();
+
+      if (!client) {
+        const fallback = generateServerExerciseAdviceFallback(exerciseLogs, bodyProfileLogs);
+        return res.json({ advice: fallback, source: "heuristic" });
+      }
+
+      const prompt = `You are an elite certified athletic coach and fitness mentor for "Chuvadi" (Personal Life OS).
+Analyze the user's exercise records and body metrics to generate a direct, actionable, high-impact workout action plan and advice for today.
+
+User's Recent Exercise Records (newest first):
+${exerciseLogs.slice(0, 10).map((l: any) => `- ${l.date}: ${l.description}`).join('\n') || 'No previous workouts logged.'}
+
+User's Latest Body Profile:
+${bodyProfileLogs.slice(0, 2).map((b: any) => `- Date: ${b.date}, Weight: ${b.weightKg || 'N/A'} kg, Focus: ${(b.focusItems || []).join(', ') || 'General fitness'}`).join('\n') || 'No body profile logs yet.'}
+
+Rules for the Action Plan:
+1. Provide a direct, hyper-specific 2 to 3 sentence action plan (30-65 words total).
+2. If previous exercise notes mention specific exercises or repetition counts (e.g. squats, push-ups, stairs, walking, running, pull-ups), reference changes, drops, or increases in reps, and propose an exact circuit for today (e.g. "Your squat count dropped from 11 reps to 4 reps yesterday. Aim for a unified 10-minute circuit today: 2 rounds of 8 squats + 5 push-ups directly after your morning stairs.").
+3. Tone must be encouraging, realistic, and laser-focused like a high-level personal trainer's daily brief.
+4. Do NOT include markdown headers (no # or ##), bullet lists, or conversational greetings like "Hello" or "Here is your plan".
+5. Output ONLY the raw plan paragraph. Use bold (**text**) for key exercise names, circuit durations, and rep targets.`;
+
+      let adviceText: string | null = null;
+      try {
+        const response = await client.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt
+        });
+        adviceText = response.text?.trim() || null;
+      } catch (primaryErr: any) {
+        console.warn("Primary gemini-3.8-flash exercise advice failed, trying fallback:", primaryErr.message);
+        try {
+          const fallbackResp = await client.models.generateContent({
+            model: "gemini-flash-latest",
+            contents: prompt
+          });
+          adviceText = fallbackResp.text?.trim() || null;
+        } catch (secondaryErr: any) {
+          console.warn("Gemini fallback model also failed:", secondaryErr.message);
+        }
+      }
+
+      if (adviceText) {
+        return res.json({ advice: adviceText, source: "gemini" });
+      }
+
+      const fallback = generateServerExerciseAdviceFallback(exerciseLogs, bodyProfileLogs);
+      return res.json({ advice: fallback, source: "heuristic" });
+    } catch (err: any) {
+      console.error("Gemini exercise advice endpoint error:", err);
+      const fallback = generateServerExerciseAdviceFallback(req.body.exerciseLogs || [], req.body.bodyProfileLogs || []);
+      return res.json({ advice: fallback, source: "heuristic", error: err.message });
+    }
+  });
+
   // Dedicated PWA Manifest & Service Worker Endpoints (Standards-compliant headers for WebAPK installability)
   app.get("/sw.js", (_req, res) => {
     const swPath = process.env.NODE_ENV !== "production"
@@ -469,6 +529,27 @@ function generateServerAdvisorFallback(message: string, context: Record<string, 
   }
 
   return `💡 **Chuvadi Financial Advice:**\n\n• **Net Balance:** ₹${totalBalance.toLocaleString('en-IN')}\n• **Monthly Spending:** ₹${monthlyExpense.toLocaleString('en-IN')}\n\n**Advice:** Track each expense immediately after it occurs to maintain pristine records. Use the Voice/Text bar to log transactions in seconds!`;
+}
+
+function generateServerExerciseAdviceFallback(exerciseLogs: any[], bodyProfileLogs: any[]): string {
+  if (!exerciseLogs || exerciseLogs.length === 0) {
+    return "Start building your streak today! Aim for a **15-minute mobility circuit**: 2 rounds of 10 bodyweight squats, 8 push-ups, and a 5-minute brisk walk to prime your metabolism.";
+  }
+
+  const latest = exerciseLogs[0];
+  const desc = (latest.description || '').toLowerCase();
+
+  if (desc.includes('squat') || desc.includes('leg')) {
+    return `Solid effort on your recent lower-body session (**${latest.description}**). Aim for active recovery or a **12-minute core & push circuit** today: 3 rounds of 10 push-ups, 30s plank holds, and gentle hamstring stretches.`;
+  }
+  if (desc.includes('push') || desc.includes('chest') || desc.includes('bench')) {
+    return `Great push volume recently (**${latest.description}**). Shift focus to pulling and posterior chain today: aim for a **15-minute circuit** of 3 rounds of 12 bodyweight rows or band pull-aparts, followed by 10 minutes of brisk stair climbing.`;
+  }
+  if (desc.includes('walk') || desc.includes('run') || desc.includes('cardio') || desc.includes('stair')) {
+    return `Excellent cardiovascular consistency with your recent session (**${latest.description}**). Pair that aerobic base with strength today: aim for **2 rounds of 12 bodyweight squats + 8 slow-tempo push-ups** before cooling down.`;
+  }
+
+  return `Consistent momentum! Building on your recent workout (**${latest.description}**), aim for a **10-minute circuit** today: 2 rounds of 10 bodyweight squats, 8 push-ups, and a 30-second plank to keep all muscle groups firing.`;
 }
 
 startServer().catch((err) => {
