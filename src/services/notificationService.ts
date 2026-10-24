@@ -55,6 +55,8 @@ export interface AppNotification {
 
 const SETTINGS_STORAGE_KEY = 'chuvadi_notification_settings_v1';
 const NOTIFICATIONS_STORAGE_KEY = 'chuvadi_app_notifications_v1';
+const DISMISSED_NOTIFICATIONS_STORAGE_KEY = 'chuvadi_dismissed_notifications_v1';
+const READ_NOTIFICATIONS_STORAGE_KEY = 'chuvadi_read_notifications_v1';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: false,
@@ -110,7 +112,72 @@ export function saveNotifications(notifications: AppNotification[]): void {
   }
 }
 
+// Dismissed / Deleted Notifications Tracking (Prevents deleted notifications from ever reappearing)
+export function getDismissedNotificationIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDismissedNotificationId(id: string): void {
+  try {
+    const set = getDismissedNotificationIds();
+    set.add(id);
+    localStorage.setItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.error('Failed to save dismissed notification ID:', e);
+  }
+}
+
+export function addDismissedNotificationIds(ids: string[]): void {
+  try {
+    const set = getDismissedNotificationIds();
+    ids.forEach(id => set.add(id));
+    localStorage.setItem(DISMISSED_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.error('Failed to save dismissed notification IDs:', e);
+  }
+}
+
+// Read Notifications Tracking (Prevents read notifications from reverting to unread)
+export function getReadNotificationIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_NOTIFICATIONS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addReadNotificationId(id: string): void {
+  try {
+    const set = getReadNotificationIds();
+    set.add(id);
+    localStorage.setItem(READ_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.error('Failed to save read notification ID:', e);
+  }
+}
+
+export function addReadNotificationIds(ids: string[]): void {
+  try {
+    const set = getReadNotificationIds();
+    ids.forEach(id => set.add(id));
+    localStorage.setItem(READ_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.error('Failed to save read notification IDs:', e);
+  }
+}
+
 export function markNotificationAsRead(id: string): AppNotification[] {
+  addReadNotificationId(id);
   const current = getStoredNotifications();
   const updated = current.map(n => n.id === id ? { ...n, read: true } : n);
   saveNotifications(updated);
@@ -119,12 +186,14 @@ export function markNotificationAsRead(id: string): AppNotification[] {
 
 export function markAllNotificationsAsRead(): AppNotification[] {
   const current = getStoredNotifications();
+  addReadNotificationIds(current.map(n => n.id));
   const updated = current.map(n => ({ ...n, read: true }));
   saveNotifications(updated);
   return updated;
 }
 
 export function deleteNotification(id: string): AppNotification[] {
+  addDismissedNotificationId(id);
   const current = getStoredNotifications();
   const updated = current.filter(n => n.id !== id);
   saveNotifications(updated);
@@ -132,6 +201,8 @@ export function deleteNotification(id: string): AppNotification[] {
 }
 
 export function clearAllNotifications(): AppNotification[] {
+  const current = getStoredNotifications();
+  addDismissedNotificationIds(current.map(n => n.id));
   saveNotifications([]);
   return [];
 }
@@ -233,13 +304,30 @@ export function syncAndGenerateAppNotifications(params: {
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
+  const dismissedIds = getDismissedNotificationIds();
+  const readIds = getReadNotificationIds();
   const existingList = getStoredNotifications();
   const readStateMap = new Map<string, boolean>();
   for (const item of existingList) {
     readStateMap.set(item.id, item.read);
   }
+  for (const id of readIds) {
+    readStateMap.set(id, true);
+  }
 
   const generated: AppNotification[] = [];
+
+  const pushIfNotDismissed = (item: AppNotification) => {
+    // If the user has deleted/dismissed this notification, never regenerate it!
+    if (dismissedIds.has(item.id)) {
+      return;
+    }
+    // If it was already marked as read, preserve the read state!
+    if (readStateMap.get(item.id) || readIds.has(item.id)) {
+      item.read = true;
+    }
+    generated.push(item);
+  };
 
   // 1. Vehicle Insurance & PUC Expiring
   if (settings.vehicleRenewals && params.vehicles.length > 0) {
@@ -251,7 +339,7 @@ export function syncAndGenerateAppNotifications(params: {
         if (diffDays <= advanceDays) {
           const id = `veh-ins-${v.id}-${v.insuranceExpiry}`;
           const isOverdue = diffDays < 0;
-          generated.push({
+          pushIfNotDismissed({
             id,
             title: `🚗 ${v.name} Insurance ${isOverdue ? 'Overdue' : 'Expiring'}`,
             message: isOverdue 
@@ -261,7 +349,7 @@ export function syncAndGenerateAppNotifications(params: {
             targetTab: 'garage',
             date: v.insuranceExpiry,
             timestamp: Date.now(),
-            read: readStateMap.get(id) || false,
+            read: readStateMap.get(id) || readIds.has(id) || false,
             priority: isOverdue ? 'critical' : diffDays <= 7 ? 'high' : 'normal'
           });
         }
@@ -273,7 +361,7 @@ export function syncAndGenerateAppNotifications(params: {
         if (diffDays <= advanceDays) {
           const id = `veh-puc-${v.id}-${v.pucExpiry}`;
           const isOverdue = diffDays < 0;
-          generated.push({
+          pushIfNotDismissed({
             id,
             title: `💨 ${v.name} PUC Certificate ${isOverdue ? 'Overdue' : 'Expiring'}`,
             message: isOverdue 
@@ -283,7 +371,7 @@ export function syncAndGenerateAppNotifications(params: {
             targetTab: 'garage',
             date: v.pucExpiry,
             timestamp: Date.now(),
-            read: readStateMap.get(id) || false,
+            read: readStateMap.get(id) || readIds.has(id) || false,
             priority: isOverdue ? 'critical' : 'normal'
           });
         }
@@ -300,7 +388,7 @@ export function syncAndGenerateAppNotifications(params: {
       const topNote = uncompletedNotes[0];
       const pendingTaskText = topNote.items.find(i => !i.completed)?.text || topNote.title;
 
-      generated.push({
+      pushIfNotDismissed({
         id,
         title: `📋 ${totalPending} Pending Tasks to Review`,
         message: `Next up: "${pendingTaskText}" across ${uncompletedNotes.length} active checklist${uncompletedNotes.length === 1 ? '' : 's'}.`,
@@ -308,7 +396,7 @@ export function syncAndGenerateAppNotifications(params: {
         targetTab: 'todos',
         date: todayStr,
         timestamp: Date.now(),
-        read: readStateMap.get(id) || false,
+        read: readStateMap.get(id) || readIds.has(id) || false,
         priority: 'normal'
       });
     }
@@ -326,7 +414,7 @@ export function syncAndGenerateAppNotifications(params: {
         const isBday = ev.category === 'BIRTHDAY';
         const whenText = diffDays === 0 ? 'Today!' : diffDays === 1 ? 'Tomorrow' : `in ${diffDays} days (${ev.date})`;
         
-        generated.push({
+        pushIfNotDismissed({
           id,
           title: isBday ? `🎂 Birthday: ${ev.title}` : `📅 Event: ${ev.title}`,
           message: `${whenText}. ${ev.notes ? `Notes: ${ev.notes}` : 'Check your schedule in Calendar.'}`,
@@ -334,7 +422,7 @@ export function syncAndGenerateAppNotifications(params: {
           targetTab: 'calendar',
           date: ev.date,
           timestamp: Date.now(),
-          read: readStateMap.get(id) || false,
+          read: readStateMap.get(id) || readIds.has(id) || false,
           priority: diffDays <= 1 ? 'high' : 'normal'
         });
       }
@@ -346,7 +434,7 @@ export function syncAndGenerateAppNotifications(params: {
     const isFirstOfMonth = today.getDate() === 1;
     if (isFirstOfMonth) {
       const id = `body-profile-${today.getFullYear()}-${today.getMonth() + 1}`;
-      generated.push({
+      pushIfNotDismissed({
         id,
         title: '🏋️ Monthly Body Profile Check-in',
         message: 'Today is the 1st of the month! Log your body circumferences, weight, and fitness focus in Exercise.',
@@ -354,7 +442,7 @@ export function syncAndGenerateAppNotifications(params: {
         targetTab: 'exercise',
         date: todayStr,
         timestamp: Date.now(),
-        read: readStateMap.get(id) || false,
+        read: readStateMap.get(id) || readIds.has(id) || false,
         priority: 'normal'
       });
     }
@@ -368,7 +456,7 @@ export function syncAndGenerateAppNotifications(params: {
     const targetMinutes = (eHour || 20) * 60 + (eMin || 30);
 
     if (nowMinutes >= targetMinutes) {
-      generated.push({
+      pushIfNotDismissed({
         id,
         title: '💰 Evening Expense Check-in',
         message: 'Take 30 seconds to record today’s expenses or voice dictate your spending into Chuvadi.',
@@ -376,16 +464,19 @@ export function syncAndGenerateAppNotifications(params: {
         targetTab: 'finance',
         date: todayStr,
         timestamp: Date.now(),
-        read: readStateMap.get(id) || false,
+        read: readStateMap.get(id) || readIds.has(id) || false,
         priority: 'normal'
       });
     }
   }
 
-  // Preserve any system alerts or extra entries not generated above
+  // Preserve any system alerts or extra entries not generated above (unless dismissed by user)
   const genIds = new Set(generated.map(g => g.id));
   for (const old of existingList) {
-    if (!genIds.has(old.id) && old.category === 'system') {
+    if (!genIds.has(old.id) && !dismissedIds.has(old.id)) {
+      if (readIds.has(old.id)) {
+        old.read = true;
+      }
       generated.push(old);
     }
   }
