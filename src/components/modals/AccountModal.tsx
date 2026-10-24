@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, Trash2 } from 'lucide-react';
-import type { Account, AccountType } from '../../types';
+import type { Account, AccountType, Transaction } from '../../types';
 import { BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
+import { formatCurrency } from '../../utils/formatters';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface AccountModalProps {
   onSave: (acc: Omit<Account, 'id'> & { id?: string }) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   initialData?: Account | null;
+  transactions?: Transaction[];
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({
@@ -16,11 +18,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onClose,
   onSave,
   onDelete,
-  initialData
+  initialData,
+  transactions = []
 }) => {
   const [name, setName] = useState('');
   const [isLiability, setIsLiability] = useState(false);
-  const [balance, setBalance] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
   const [institution, setInstitution] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState('#0284c7');
@@ -42,7 +45,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     if (initialData) {
       setName(initialData.name);
       setIsLiability(initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN');
-      setBalance(String(initialData.balance));
+      const op = typeof initialData.openingBalance === 'number'
+        ? initialData.openingBalance
+        : (typeof initialData.balance === 'number' ? initialData.balance : 0);
+      setOpeningBalance(String(op));
       setInstitution(initialData.institution || '');
       setAccountNumber(initialData.accountNumber || '');
       setColor(initialData.color || '#0284c7');
@@ -50,13 +56,35 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     } else {
       setName('');
       setIsLiability(false);
-      setBalance('0');
+      setOpeningBalance('0');
       setInstitution('');
       setAccountNumber('');
       setColor('#0284c7');
       setIcon('none');
     }
   }, [initialData, isOpen]);
+
+  // Calculate net transactions for this account
+  const { totalCredits, totalDebits, netTransactions } = useMemo(() => {
+    if (!initialData?.id || !transactions || transactions.length === 0) {
+      return { totalCredits: 0, totalDebits: 0, netTransactions: 0 };
+    }
+    let credits = 0;
+    let debits = 0;
+    for (const t of transactions) {
+      if ((t.type === 'INCOME' && t.toAccountId === initialData.id) || (t.type === 'TRANSFER' && t.toAccountId === initialData.id)) {
+        credits += Number(t.amount) || 0;
+      } else if ((t.type === 'EXPENSE' && t.fromAccountId === initialData.id) || (t.type === 'TRANSFER' && t.fromAccountId === initialData.id)) {
+        debits += Number(t.amount) || 0;
+      }
+    }
+    return { totalCredits: credits, totalDebits: debits, netTransactions: credits - debits };
+  }, [initialData, transactions]);
+
+  const liveCurrentBalance = useMemo(() => {
+    const op = parseFloat(openingBalance) || 0;
+    return op + netTransactions;
+  }, [openingBalance, netTransactions]);
 
   if (!isOpen) return null;
 
@@ -77,13 +105,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       resolvedType = isLiability ? 'LOAN' : 'BANK';
     }
 
+    const opNum = parseFloat(openingBalance) || 0;
+    const finalBalance = opNum + netTransactions;
+
     setIsSaving(true);
     try {
       await onSave({
         id: initialData?.id ? initialData.id : undefined,
         name: name.trim(),
         type: resolvedType,
-        balance: parseFloat(balance) || 0,
+        openingBalance: opNum,
+        balance: finalBalance,
         institution: institution.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
         color,
@@ -139,15 +171,32 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-              Current Balance (₹)
+              Opening Balance (₹)
             </label>
             <input
               type="number"
               step="any"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              value={openingBalance}
+              onChange={(e) => setOpeningBalance(e.target.value)}
+              placeholder="0"
               className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
             />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Initial ledger balance before any recorded transactions.
+            </p>
+          </div>
+
+          {/* Current Balance Calculation Preview */}
+          <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800 flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
+              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                Opening ({formatCurrency(parseFloat(openingBalance) || 0)}) {netTransactions >= 0 ? `+ Inflows (${formatCurrency(netTransactions)})` : `- Outflows (${formatCurrency(Math.abs(netTransactions))})`}
+              </div>
+            </div>
+            <div className="text-sm font-extrabold font-mono text-amber-200">
+              {formatCurrency(liveCurrentBalance)}
+            </div>
           </div>
 
           <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">

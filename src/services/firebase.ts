@@ -595,6 +595,9 @@ export async function saveAccount(acc: Omit<Account, 'id'> & { id?: string }, us
     ...acc,
     id,
     balance: Number(acc.balance) || 0,
+    openingBalance: typeof acc.openingBalance === 'number' 
+      ? acc.openingBalance 
+      : (acc.openingBalance !== undefined ? (Number(acc.openingBalance) || 0) : undefined),
     updatedAt: Date.now()
   };
 

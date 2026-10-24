@@ -17,6 +17,7 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  openingBalance?: number;
   accountNumber?: string;
   color?: string;
   icon?: string;

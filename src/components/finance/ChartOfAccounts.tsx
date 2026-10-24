@@ -258,6 +258,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [popupAccountType, setPopupAccountType] = useState<AccountType>('BANK');
   const [popupAccountCategoryId, setPopupAccountCategoryId] = useState<string>('BANK');
   const [popupAccountIcon, setPopupAccountIcon] = useState<string>('none');
+  const [popupAccountOpeningBalance, setPopupAccountOpeningBalance] = useState<string>('0');
   const [popupTxnSearch, setPopupTxnSearch] = useState<string>('');
   const [isSavingAccountPopup, setIsSavingAccountPopup] = useState<boolean>(false);
   const [isDeletingAccountPopup, setIsDeletingAccountPopup] = useState<boolean>(false);
@@ -405,6 +406,10 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       || categoriesList[0];
     setPopupAccountCategoryId(acc.categoryId || (matchedCat ? (matchedCat.id || matchedCat.type) : 'BANK'));
     setPopupAccountIcon(acc.icon || resolveBankLogoId(acc.icon, acc.name, acc.institution));
+    const op = typeof acc.openingBalance === 'number'
+      ? acc.openingBalance
+      : (typeof acc.balance === 'number' ? acc.balance : 0);
+    setPopupAccountOpeningBalance(String(op));
     setIsEditingAccountInPopup(false);
     setPopupTxnSearch('');
   };
@@ -427,6 +432,38 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         return timeB - timeA;
       });
   }, [selectedAccountForPopup, transactions]);
+
+  // Compute total credits, total debits, and net transaction total for this account
+  const { totalCredits, totalDebits, netTransactions } = useMemo(() => {
+    if (!selectedAccountForPopup) return { totalCredits: 0, totalDebits: 0, netTransactions: 0 };
+    const accId = selectedAccountForPopup.id;
+    let credits = 0;
+    let debits = 0;
+    for (const t of selectedAccountTxns) {
+      if ((t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId)) {
+        credits += Number(t.amount) || 0;
+      } else if ((t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId)) {
+        debits += Number(t.amount) || 0;
+      }
+    }
+    return { totalCredits: credits, totalDebits: debits, netTransactions: credits - debits };
+  }, [selectedAccountForPopup, selectedAccountTxns]);
+
+  const openingAccountBalance = useMemo(() => {
+    if (!selectedAccountForPopup) return 0;
+    return typeof selectedAccountForPopup.openingBalance === 'number'
+      ? selectedAccountForPopup.openingBalance
+      : (typeof selectedAccountForPopup.balance === 'number' ? selectedAccountForPopup.balance : 0);
+  }, [selectedAccountForPopup]);
+
+  const currentAccountBalance = useMemo(() => {
+    return openingAccountBalance + netTransactions;
+  }, [openingAccountBalance, netTransactions]);
+
+  const liveEditingCurrentBalance = useMemo(() => {
+    const op = parseFloat(popupAccountOpeningBalance) || 0;
+    return op + netTransactions;
+  }, [popupAccountOpeningBalance, netTransactions]);
 
   // Check if at least one transaction entry exists
   const hasTransactions = selectedAccountTxns.length > 0;
@@ -464,21 +501,22 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     try {
       const chosenCat = categoriesList.find(c => (c.id || c.type) === popupAccountCategoryId);
       const chosenType = chosenCat ? chosenCat.type : popupAccountType;
+      const opNum = parseFloat(popupAccountOpeningBalance) || 0;
+      const finalBalance = opNum + netTransactions;
 
-      await onSaveAccount({
+      const updatedAccount: Account = {
         ...selectedAccountForPopup,
         name: popupAccountName.trim(),
         type: chosenType,
         categoryId: popupAccountCategoryId,
-        icon: popupAccountIcon
-      });
-      setSelectedAccountForPopup(prev => prev ? {
-        ...prev,
-        name: popupAccountName.trim(),
-        type: chosenType,
-        categoryId: popupAccountCategoryId,
-        icon: popupAccountIcon
-      } : null);
+        icon: popupAccountIcon,
+        openingBalance: opNum,
+        balance: finalBalance,
+        updatedAt: Date.now()
+      };
+
+      await onSaveAccount(updatedAccount);
+      setSelectedAccountForPopup(updatedAccount);
       setIsEditingAccountInPopup(false);
     } catch (err) {
       console.error('Failed to update account:', err);
@@ -1333,7 +1371,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       type="button"
                       onClick={() => setIsEditingAccountInPopup(true)}
                       className="p-1.5 sm:p-2 rounded-xl text-amber-400 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition active:scale-95"
-                      title="Edit Account Name, Category & Logo"
+                      title="Edit Account Details & Opening Balance"
                       aria-label="Edit Account"
                     >
                       <Edit3 size={15} />
@@ -1430,7 +1468,38 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     </select>
                   </div>
 
-                  {/* Field 3: Bank Logo Selection */}
+                  {/* Field 3: Opening Balance */}
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                      Opening Balance (₹)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={popupAccountOpeningBalance}
+                      onChange={(e) => setPopupAccountOpeningBalance(e.target.value)}
+                      placeholder="0"
+                      className="w-full bg-[#0a0e14] border border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none shadow-inner"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Initial ledger balance before any recorded transactions.
+                    </p>
+                  </div>
+
+                  {/* Calculated Current Balance Preview in Edit Mode */}
+                  <div className="p-3 bg-[#0d131a] rounded-xl border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        Opening ({formatCurrency(parseFloat(popupAccountOpeningBalance) || 0)}) {netTransactions >= 0 ? `+ Inflows (${formatCurrency(netTransactions)})` : `- Outflows (${formatCurrency(Math.abs(netTransactions))})`}
+                      </div>
+                    </div>
+                    <div className="text-sm font-extrabold font-mono text-amber-200">
+                      {formatCurrency(liveEditingCurrentBalance)}
+                    </div>
+                  </div>
+
+                  {/* Field 4: Bank Logo Selection */}
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
                       Bank / Financial Institution Logo
@@ -1451,6 +1520,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       setPopupAccountType(selectedAccountForPopup.type);
                       setPopupAccountCategoryId(selectedAccountForPopup.categoryId || selectedAccountForPopup.type);
                       setPopupAccountIcon(selectedAccountForPopup.icon || 'none');
+                      setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
                       setIsEditingAccountInPopup(false);
                     }}
                     disabled={isSavingAccountPopup}
@@ -1478,8 +1548,32 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs font-semibold text-slate-400">Current Balance</span>
                     <span className="text-sm sm:text-base font-extrabold text-amber-200 font-mono">
-                      {formatCurrency(selectedAccountForPopup.balance)}
+                      {formatCurrency(currentAccountBalance)}
                     </span>
+                  </div>
+
+                  <div className="h-[1px] bg-slate-800/80" />
+
+                  {/* Ledger Breakdown: Opening Balance, Inflows, Outflows */}
+                  <div className="grid grid-cols-3 gap-2 py-1 text-center bg-[#131922] rounded-xl p-2 border border-slate-800/60">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">Opening Balance</div>
+                      <div className="text-xs font-mono font-bold text-slate-200 mt-0.5">
+                        {formatCurrency(openingAccountBalance)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-emerald-400">Total Inflow</div>
+                      <div className="text-xs font-mono font-bold text-emerald-300 mt-0.5">
+                        +{formatCurrency(totalCredits)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-rose-400">Total Outflow</div>
+                      <div className="text-xs font-mono font-bold text-rose-300 mt-0.5">
+                        -{formatCurrency(totalDebits)}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="h-[1px] bg-slate-800/80" />

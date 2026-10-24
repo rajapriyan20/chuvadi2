@@ -527,10 +527,33 @@ export function App() {
     }
   }, [guestMode, user]);
 
+  // Computed Accounts: Current balance is dynamically calculated as Opening Balance + all transactions in the account
+  const computedAccounts = useMemo(() => {
+    return accounts.map(acc => {
+      const opening = typeof acc.openingBalance === 'number'
+        ? acc.openingBalance
+        : (typeof acc.balance === 'number' ? acc.balance : 0);
+      let credits = 0;
+      let debits = 0;
+      for (const t of transactions) {
+        if ((t.type === 'INCOME' && t.toAccountId === acc.id) || (t.type === 'TRANSFER' && t.toAccountId === acc.id)) {
+          credits += Number(t.amount) || 0;
+        } else if ((t.type === 'EXPENSE' && t.fromAccountId === acc.id) || (t.type === 'TRANSFER' && t.fromAccountId === acc.id)) {
+          debits += Number(t.amount) || 0;
+        }
+      }
+      return {
+        ...acc,
+        openingBalance: opening,
+        balance: opening + credits - debits
+      };
+    });
+  }, [accounts, transactions]);
+
   // Compute Net Worth
   const totalNetWorth = useMemo(() => {
-    return accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
-  }, [accounts]);
+    return computedAccounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+  }, [computedAccounts]);
 
   // Compute Current Month Inflow & Outflow
   const { monthlyIncome, monthlyExpense } = useMemo(() => {
@@ -671,7 +694,27 @@ export function App() {
   // Account Operations
   const handleSaveAccount = async (acc: Omit<Account, 'id'> & { id?: string }) => {
     const id = acc.id || createDocId('accounts', user);
-    const payload: Account = { ...acc, id, updatedAt: Date.now() };
+    let credits = 0;
+    let debits = 0;
+    for (const t of transactions) {
+      if ((t.type === 'INCOME' && t.toAccountId === id) || (t.type === 'TRANSFER' && t.toAccountId === id)) {
+        credits += Number(t.amount) || 0;
+      } else if ((t.type === 'EXPENSE' && t.fromAccountId === id) || (t.type === 'TRANSFER' && t.fromAccountId === id)) {
+        debits += Number(t.amount) || 0;
+      }
+    }
+    const op = typeof acc.openingBalance === 'number'
+      ? acc.openingBalance
+      : (typeof acc.balance === 'number' ? acc.balance : 0);
+    const calculatedBalance = op + credits - debits;
+
+    const payload: Account = { 
+      ...acc, 
+      id, 
+      openingBalance: op,
+      balance: calculatedBalance, 
+      updatedAt: Date.now() 
+    };
     setAccounts(prev => {
       const idx = prev.findIndex(a => a.id === id);
       return idx >= 0 ? prev.map(a => a.id === id ? payload : a) : [...prev, payload];
@@ -1296,7 +1339,7 @@ export function App() {
             totalNetWorth={totalNetWorth}
             monthlyExpense={monthlyExpense}
             monthlyIncome={monthlyIncome}
-            accounts={accounts}
+            accounts={computedAccounts}
             transactions={transactions}
             vehicles={vehicles}
             todos={todos}
@@ -1319,7 +1362,7 @@ export function App() {
 
         {activeTab === 'finance' && (
           <FinanceTab
-            accounts={accounts}
+            accounts={computedAccounts}
             transactions={transactions}
             vehicles={vehicles}
             entities={entities}
@@ -1436,7 +1479,7 @@ export function App() {
 
         {activeTab === 'reports' && (
           <FinanceTab
-            accounts={accounts}
+            accounts={computedAccounts}
             transactions={transactions}
             vehicles={vehicles}
             entities={entities}
@@ -1472,7 +1515,7 @@ export function App() {
 
         {activeTab === 'ai' && (
           <AiAssistantTab
-            accounts={accounts}
+            accounts={computedAccounts}
             vehicles={vehicles}
             transactions={transactions}
             todos={todos}
@@ -1501,7 +1544,7 @@ export function App() {
         }}
         onSave={handleSaveTransaction}
         onDelete={handleDeleteTransaction}
-        accounts={accounts}
+        accounts={computedAccounts}
         vehicles={vehicles}
         initialData={editingTxn}
       />
@@ -1514,7 +1557,8 @@ export function App() {
           setEditingAccount(null);
         }}
         onSave={handleSaveAccount}
-        initialData={editingAccount}
+        initialData={editingAccount ? (computedAccounts.find(a => a.id === editingAccount.id) || editingAccount) : null}
+        transactions={transactions}
       />
 
       {/* 3. Account Passbook Modal */}
@@ -1524,7 +1568,7 @@ export function App() {
           setIsPassbookOpen(false);
           setPassbookAccount(null);
         }}
-        account={passbookAccount}
+        account={passbookAccount ? (computedAccounts.find(a => a.id === passbookAccount.id) || passbookAccount) : null}
         transactions={transactions}
         onSelectTxn={handleSelectTxn}
       />

@@ -41,18 +41,28 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     if (!account) return { totalCredits: 0, totalDebits: 0 };
     let credits = 0;
     let debits = 0;
-    for (const t of accountTxns) {
-      if (t.type === 'INCOME' && t.toAccountId === account.id) {
-        credits += t.amount;
-      } else if (t.type === 'EXPENSE' && t.fromAccountId === account.id) {
-        debits += t.amount;
-      } else if (t.type === 'TRANSFER') {
-        if (t.toAccountId === account.id) credits += t.amount;
-        if (t.fromAccountId === account.id) debits += t.amount;
+    // Use all transactions for this account for balance calculation
+    const allForAccount = transactions.filter(t => t.fromAccountId === account.id || t.toAccountId === account.id);
+    for (const t of allForAccount) {
+      if ((t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id)) {
+        credits += Number(t.amount) || 0;
+      } else if ((t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id)) {
+        debits += Number(t.amount) || 0;
       }
     }
     return { totalCredits: credits, totalDebits: debits };
-  }, [account, accountTxns]);
+  }, [account, transactions]);
+
+  const openingBalance = useMemo(() => {
+    if (!account) return 0;
+    return typeof account.openingBalance === 'number' 
+      ? account.openingBalance 
+      : (typeof account.balance === 'number' ? account.balance : 0);
+  }, [account]);
+
+  const currentBalance = useMemo(() => {
+    return openingBalance + totalCredits - totalDebits;
+  }, [openingBalance, totalCredits, totalDebits]);
 
   if (!isOpen || !account) return null;
 
@@ -112,24 +122,30 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         </div>
 
-        {/* Summary Metric Cards */}
-        <div className="grid grid-cols-3 gap-2 p-4 bg-[#0d1217] border-b border-slate-800/80">
-          <div className="p-3 bg-[#161c24] rounded-2xl border border-slate-800">
-            <div className="text-[10px] uppercase font-bold text-slate-400">Current Balance</div>
-            <div className="text-base font-bold text-amber-200 font-mono mt-0.5">
-              {formatCurrency(account.balance)}
+        {/* Summary Metric Cards: Opening + Inflow - Outflow = Current Balance */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-[#0d1217] border-b border-slate-800/80">
+          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
+            <div className="text-[10px] uppercase font-bold text-slate-400">Opening Balance</div>
+            <div className="text-sm sm:text-base font-bold text-slate-200 font-mono mt-0.5">
+              {formatCurrency(openingBalance)}
             </div>
           </div>
-          <div className="p-3 bg-[#161c24] rounded-2xl border border-slate-800">
+          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
             <div className="text-[10px] uppercase font-bold text-emerald-400">Total Inflow</div>
-            <div className="text-base font-bold text-emerald-300 font-mono mt-0.5">
+            <div className="text-sm sm:text-base font-bold text-emerald-300 font-mono mt-0.5">
               +{formatCurrency(totalCredits)}
             </div>
           </div>
-          <div className="p-3 bg-[#161c24] rounded-2xl border border-slate-800">
+          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
             <div className="text-[10px] uppercase font-bold text-rose-400">Total Outflow</div>
-            <div className="text-base font-bold text-rose-300 font-mono mt-0.5">
+            <div className="text-sm sm:text-base font-bold text-rose-300 font-mono mt-0.5">
               -{formatCurrency(totalDebits)}
+            </div>
+          </div>
+          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-amber-500/30 bg-amber-500/5">
+            <div className="text-[10px] uppercase font-bold text-amber-400">Current Balance</div>
+            <div className="text-sm sm:text-base font-extrabold text-amber-200 font-mono mt-0.5">
+              {formatCurrency(currentBalance)}
             </div>
           </div>
         </div>
