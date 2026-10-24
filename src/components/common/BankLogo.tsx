@@ -1,4 +1,13 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
+import { Search } from 'lucide-react';
+import { 
+  FINANCE_ICON_PACK, 
+  isFinanceIconId, 
+  getFinanceIconDefinition, 
+  FinanceIcon 
+} from './FinanceIconPack';
+
+export { FINANCE_ICON_PACK, isFinanceIconId, getFinanceIconDefinition, FinanceIcon };
 
 export interface BankDefinition {
   id: string;
@@ -439,10 +448,18 @@ export const BankLogo: React.FC<BankLogoProps> = ({
   size = 22,
   className = ''
 }) => {
+  if (iconId && isFinanceIconId(iconId)) {
+    return <FinanceIcon id={iconId} size={size} className={className} />;
+  }
+
   const resolvedId = resolveBankLogoId(iconId, name, institution);
 
   if (resolvedId === 'none') {
     return null;
+  }
+
+  if (isFinanceIconId(resolvedId)) {
+    return <FinanceIcon id={resolvedId} size={size} className={className} />;
   }
 
   const def = BANK_LOGOS.find((b) => b.id === resolvedId);
@@ -470,18 +487,101 @@ export const BankLogoPicker: React.FC<BankLogoPickerProps> = ({
   selectedId = 'none',
   onSelect
 }) => {
+  const [activeTab, setActiveTab] = useState<'all' | 'banks' | 'finance'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const selectedTitle = useMemo(() => {
+    if (!selectedId || selectedId === 'none') return 'No Logo Selected';
+    if (isFinanceIconId(selectedId)) {
+      const fi = getFinanceIconDefinition(selectedId);
+      return fi ? `Finance Icon: ${fi.label}` : 'Finance Icon';
+    }
+    const bank = BANK_LOGOS.find(b => b.id === selectedId);
+    return bank ? `Bank: ${bank.name}` : 'Custom';
+  }, [selectedId]);
+
+  const filteredBanks = useMemo(() => {
+    if (activeTab === 'finance') return [];
+    if (!searchQuery.trim()) return BANK_LOGOS;
+    const q = searchQuery.toLowerCase();
+    return BANK_LOGOS.filter(b => 
+      b.name.toLowerCase().includes(q) || 
+      b.shortName.toLowerCase().includes(q)
+    );
+  }, [activeTab, searchQuery]);
+
+  const filteredFinanceIcons = useMemo(() => {
+    if (activeTab === 'banks') return [];
+    if (!searchQuery.trim()) return FINANCE_ICON_PACK;
+    const q = searchQuery.toLowerCase();
+    return FINANCE_ICON_PACK.filter(fi => 
+      fi.label.toLowerCase().includes(q) || 
+      fi.group.toLowerCase().includes(q)
+    );
+  }, [activeTab, searchQuery]);
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
         <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-          Bank / Institution Logo
+          Account Icon & Bank Logo
         </label>
-        <span className="text-[10px] text-slate-500">
-          {selectedId === 'none' ? 'No Logo Selected' : BANK_LOGOS.find(b => b.id === selectedId)?.name || 'Custom'}
+        <span className="text-[10px] text-amber-300 font-medium truncate max-w-[190px]">
+          {selectedTitle}
         </span>
       </div>
 
-      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-2 bg-[#0a0e14] border border-slate-800 rounded-2xl scrollbar-thin scrollbar-thumb-slate-700">
+      {/* Tabs & Search Filter */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="inline-flex p-0.5 bg-[#0a0e14] rounded-xl border border-slate-800 text-[10px] font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('all')}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              activeTab === 'all'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            All Icons
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('banks')}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              activeTab === 'banks'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Bank Logos
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('finance')}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              activeTab === 'finance'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Finance Pack ({FINANCE_ICON_PACK.length})
+          </button>
+        </div>
+
+        <div className="relative flex-1 min-w-[120px]">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search icons..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#0a0e14] border border-slate-800 focus:border-amber-500 rounded-xl pl-7 pr-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none transition"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-52 overflow-y-auto p-2 bg-[#0a0e14] border border-slate-800 rounded-2xl scrollbar-thin scrollbar-thumb-slate-700">
         {/* "No Logo" Option */}
         <button
           type="button"
@@ -493,7 +593,7 @@ export const BankLogoPicker: React.FC<BankLogoPickerProps> = ({
           }`}
           title="No logo"
         >
-          <div className="w-6 h-6 rounded-lg border border-dashed border-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-500 mb-1">
+          <div className="w-7 h-7 rounded-lg border border-dashed border-slate-600 flex items-center justify-center text-[11px] font-bold text-slate-500 mb-1">
             Ø
           </div>
           <span className="text-[10px] font-medium leading-tight truncate w-full">
@@ -501,8 +601,39 @@ export const BankLogoPicker: React.FC<BankLogoPickerProps> = ({
           </span>
         </button>
 
-        {/* All Bank Logos */}
-        {BANK_LOGOS.map((bank) => {
+        {/* 1. Open Source Finance Icon Pack Icons */}
+        {filteredFinanceIcons.map((fi) => {
+          const isSelected = selectedId === fi.id;
+          const IconComp = fi.icon;
+          return (
+            <button
+              type="button"
+              key={fi.id}
+              onClick={() => onSelect(fi.id)}
+              className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition ${
+                isSelected
+                  ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/40'
+                  : 'border-slate-800 bg-[#121820] hover:border-slate-700'
+              }`}
+              title={`${fi.label} (${fi.group})`}
+            >
+              <div 
+                className={`mb-1 w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br ${fi.bgGradient} border border-slate-700/50 shadow-sm`}
+                style={{ color: fi.accentColor }}
+              >
+                <IconComp size={16} strokeWidth={2.2} />
+              </div>
+              <span className={`text-[10px] font-medium leading-tight truncate w-full ${
+                isSelected ? 'text-amber-300 font-bold' : 'text-slate-300'
+              }`}>
+                {fi.label}
+              </span>
+            </button>
+          );
+        })}
+
+        {/* 2. Bank Logos */}
+        {filteredBanks.map((bank) => {
           const isSelected = selectedId === bank.id;
           return (
             <button
@@ -516,8 +647,8 @@ export const BankLogoPicker: React.FC<BankLogoPickerProps> = ({
               }`}
               title={bank.name}
             >
-              <div className="mb-1 flex items-center justify-center">
-                {bank.renderLogo(28)}
+              <div className="mb-1 flex items-center justify-center w-7 h-7">
+                {bank.renderLogo(26)}
               </div>
               <span className={`text-[10px] font-medium leading-tight truncate w-full ${
                 isSelected ? 'text-amber-300 font-bold' : 'text-slate-300'

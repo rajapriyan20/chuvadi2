@@ -28,7 +28,43 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [accountNumber, setAccountNumber] = useState('');
   const [color, setColor] = useState('#0284c7');
   const [icon, setIcon] = useState('none');
+  const [categoryId, setCategoryId] = useState('BANK');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Available categories list (custom or default)
+  const availableCategories = useMemo(() => {
+    let list = [
+      { id: 'BANK', title: 'Bank Accounts', type: 'BANK' },
+      { id: 'CASH', title: 'Cash & Wallets', type: 'CASH' },
+      { id: 'CREDIT_CARD', title: 'Credit Cards', type: 'CREDIT_CARD' },
+      { id: 'INVESTMENT', title: 'Investments & Wealth', type: 'INVESTMENT' },
+      { id: 'LOAN', title: 'Loans & Borrowings', type: 'LOAN' },
+      { id: 'OTHER', title: 'Other Accounts', type: 'OTHER' }
+    ];
+    try {
+      const saved = localStorage.getItem('chuvadi_custom_categories_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed;
+        }
+      }
+    } catch {}
+
+    // Apply custom category names if any
+    try {
+      const savedNames = localStorage.getItem('chuvadi_custom_category_names');
+      if (savedNames) {
+        const namesMap = JSON.parse(savedNames);
+        list = list.map(c => ({
+          ...c,
+          title: namesMap[c.id || c.type] || c.title
+        }));
+      }
+    } catch {}
+
+    return list;
+  }, [isOpen]);
 
   const colors = [
     '#0284c7', // Sky blue
@@ -44,7 +80,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   useEffect(() => {
     if (initialData) {
       setName(initialData.name);
-      setIsLiability(initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN');
+      const isLiab = initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN';
+      setIsLiability(isLiab);
       const op = typeof initialData.openingBalance === 'number'
         ? initialData.openingBalance
         : (typeof initialData.balance === 'number' ? initialData.balance : 0);
@@ -53,6 +90,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setAccountNumber(initialData.accountNumber || '');
       setColor(initialData.color || '#0284c7');
       setIcon(initialData.icon || resolveBankLogoId(initialData.icon, initialData.name, initialData.institution));
+      setCategoryId(initialData.categoryId || initialData.type || 'BANK');
     } else {
       setName('');
       setIsLiability(false);
@@ -61,6 +99,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setAccountNumber('');
       setColor('#0284c7');
       setIcon('none');
+      setCategoryId('BANK');
     }
   }, [initialData, isOpen]);
 
@@ -92,17 +131,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    // Preserve initial type if matching liability nature, otherwise derive
-    let resolvedType: AccountType = 'BANK';
-    if (initialData?.type) {
-      const origIsLiab = initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN';
-      if (origIsLiab === isLiability) {
-        resolvedType = initialData.type;
-      } else {
-        resolvedType = isLiability ? 'LOAN' : 'BANK';
+    const chosenCat = availableCategories.find((c: any) => (c.id || c.type) === categoryId);
+    let resolvedType: AccountType = chosenCat ? (chosenCat.type as AccountType) : (isLiability ? 'LOAN' : 'BANK');
+    if (isLiability) {
+      if (resolvedType !== 'CREDIT_CARD' && resolvedType !== 'LOAN') {
+        resolvedType = 'LOAN';
       }
     } else {
-      resolvedType = isLiability ? 'LOAN' : 'BANK';
+      if (resolvedType === 'CREDIT_CARD' || resolvedType === 'LOAN') {
+        resolvedType = 'BANK';
+      }
     }
 
     const opNum = parseFloat(openingBalance) || 0;
@@ -114,6 +152,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         id: initialData?.id ? initialData.id : undefined,
         name: name.trim(),
         type: resolvedType,
+        categoryId: categoryId || resolvedType,
         openingBalance: opNum,
         balance: finalBalance,
         institution: institution.trim() || undefined,
@@ -154,7 +193,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
               Account Name *
@@ -167,6 +206,35 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
             />
+          </div>
+
+          {/* Account Category */}
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              Account Category *
+            </label>
+            <select
+              value={categoryId}
+              onChange={(e) => {
+                const chosenId = e.target.value;
+                setCategoryId(chosenId);
+                const c = availableCategories.find((cat: any) => (cat.id || cat.type) === chosenId);
+                if (c) {
+                  setIsLiability(c.type === 'CREDIT_CARD' || c.type === 'LOAN');
+                }
+              }}
+              className="w-full bg-[#0e131a] border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white font-medium focus:outline-none focus:border-amber-500 cursor-pointer"
+            >
+              {availableCategories.map((c: any) => {
+                const isSub = !!c.parentId && c.parentId !== 'MAIN';
+                const isLiab = c.type === 'CREDIT_CARD' || c.type === 'LOAN';
+                return (
+                  <option key={c.id || c.type} value={c.id || c.type}>
+                    {isSub ? `↳ ${c.title} (Subcategory)` : c.title}{isLiab ? ' [Liability]' : ''}
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           <div>
@@ -204,7 +272,20 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               <input
                 type="checkbox"
                 checked={isLiability}
-                onChange={(e) => setIsLiability(e.target.checked)}
+                onChange={(e) => {
+                  const newIsLiab = e.target.checked;
+                  setIsLiability(newIsLiab);
+                  // Auto-switch category if incompatible
+                  const curCat = availableCategories.find((c: any) => (c.id || c.type) === categoryId);
+                  if (curCat) {
+                    const curIsLiab = curCat.type === 'CREDIT_CARD' || curCat.type === 'LOAN';
+                    if (newIsLiab && !curIsLiab) {
+                      setCategoryId('LOAN');
+                    } else if (!newIsLiab && curIsLiab) {
+                      setCategoryId('BANK');
+                    }
+                  }
+                }}
                 className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
               />
               <div className="flex-1">

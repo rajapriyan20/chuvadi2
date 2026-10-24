@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp } from 'lucide-react';
-import { DEFAULT_CATEGORIES, formatCurrency } from '../../utils/formatters';
+import { DEFAULT_CATEGORIES, formatCurrency, getTodayLocalDateString } from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
 
 interface TransactionModalProps {
@@ -28,7 +28,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [category, setCategory] = useState<string>('Fuel');
   const [fromAccountId, setFromAccountId] = useState<string>('');
   const [toAccountId, setToAccountId] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getTodayLocalDateString());
   const [vehicleId, setVehicleId] = useState<string>('');
   const [isFuel, setIsFuel] = useState<boolean>(false);
   const [fuelLiters, setFuelLiters] = useState<string>('');
@@ -44,7 +44,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCategory(initialData.category || 'Other');
       setFromAccountId(initialData.fromAccountId || '');
       setToAccountId(initialData.toAccountId || '');
-      setDate(initialData.date || new Date().toISOString().split('T')[0]);
+      setDate(initialData.date || getTodayLocalDateString());
       setVehicleId(initialData.vehicleId || '');
       setIsFuel(!!initialData.isFuel);
       setFuelLiters(initialData.fuelLiters ? String(initialData.fuelLiters) : '');
@@ -57,7 +57,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCategory('Food & Dining');
       setFromAccountId(accounts[0]?.id || '');
       setToAccountId(accounts[1]?.id || '');
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getTodayLocalDateString());
       setVehicleId('');
       setIsFuel(false);
       setFuelLiters('');

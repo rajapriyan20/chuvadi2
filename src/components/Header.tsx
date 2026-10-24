@@ -5,7 +5,6 @@ import {
   User as UserIcon,
   Menu,
   Eye,
-  ArrowLeft,
   X,
   Bell
 } from 'lucide-react';
@@ -23,6 +22,7 @@ interface HeaderProps {
   isOnline: boolean;
   isGuestMode?: boolean;
   activeTab?: ActiveTab;
+  isRootTab?: boolean;
   onBackToDashboard?: () => void;
   onCloseApp?: () => void;
   onOpenQuickAdd?: () => void;
@@ -46,7 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   isOnline,
   isGuestMode = false,
   activeTab = 'dashboard',
-  onBackToDashboard,
+  isRootTab = activeTab === 'dashboard',
+  onBackToDashboard: _onBackToDashboard,
   onCloseApp,
   onOpenQuickAdd,
   onOpenAi,
@@ -109,8 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const isNotDashboard = activeTab !== 'dashboard';
-
   return (
     <header className="sticky top-0 z-30 transition-colors">
       {/* Top Credit & WhatsApp Announcement Bar */}
@@ -171,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Main Header Bar */}
       <div className="bg-[#0d1218]/95 backdrop-blur-md border-b border-amber-950/20 px-3 sm:px-6 lg:px-8 py-2.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
-          {/* Hamburger Menu Trigger, Back Button & Logo */}
+          {/* Hamburger Menu Trigger & Logo */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             <button
               id="header-side-menu-trigger-btn"
@@ -185,21 +184,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-[#0d1218]" />
               )}
             </button>
-
-            {/* In-App Back Button (navigates back to Dashboard when on another tab) */}
-            {isNotDashboard && onBackToDashboard && (
-              <button
-                id="header-back-btn"
-                type="button"
-                onClick={onBackToDashboard}
-                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition active:scale-95 cursor-pointer flex items-center gap-1.5"
-                title="Back to Dashboard"
-                aria-label="Back to Dashboard"
-              >
-                <ArrowLeft size={18} />
-                <span className="hidden sm:inline text-xs font-bold">Dashboard</span>
-              </button>
-            )}
 
             <div className="flex items-center gap-2.5 sm:gap-3">
               {/* Clickable Logo with WhatsApp DP-style popup trigger */}
@@ -256,8 +240,8 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Exit/Close App Button (when on dashboard) */}
-            {!isNotDashboard && onCloseApp && (
+            {/* Exit/Close App Button (when on root tab) */}
+            {isRootTab && onCloseApp && (
               <button
                 id="header-close-btn"
                 type="button"

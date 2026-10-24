@@ -185,50 +185,50 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
       {/* Tabulated Accounts Table */}
       <div className="bg-[#131922] rounded-2xl sm:rounded-3xl border border-slate-800/90 overflow-hidden shadow-sm">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-800">
-          <table className="w-full text-left border-collapse min-w-[650px]">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-800/80 bg-[#0e141c] text-[11px] font-semibold text-slate-400 uppercase tracking-wider select-none">
+              <tr className="border-b border-slate-800/80 bg-[#0e141c] text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider select-none">
                 <th 
                   onClick={() => handleSort('name')}
-                  className="py-3 px-4 cursor-pointer hover:text-white transition"
+                  className="py-2 px-2.5 sm:px-3 cursor-pointer hover:text-white transition"
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <span>Account Name</span>
                     {renderSortIcon('name')}
                   </div>
                 </th>
                 <th 
                   onClick={() => handleSort('category')}
-                  className="py-3 px-3 cursor-pointer hover:text-white transition"
+                  className="py-2 px-2 cursor-pointer hover:text-white transition"
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <span>Category</span>
                     {renderSortIcon('category')}
                   </div>
                 </th>
                 <th 
                   onClick={() => handleSort('type')}
-                  className="py-3 px-3 cursor-pointer hover:text-white transition"
+                  className="py-2 px-2 cursor-pointer hover:text-white transition"
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <span>Nature</span>
                     {renderSortIcon('type')}
                   </div>
                 </th>
                 <th 
                   onClick={() => handleSort('reconciledDate')}
-                  className="py-3 px-3 cursor-pointer hover:text-white transition min-w-[115px]"
+                  className="py-2 px-2 cursor-pointer hover:text-white transition whitespace-nowrap"
                 >
-                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                  <div className="flex items-center gap-1 whitespace-nowrap">
                     <span>Date of Reco</span>
                     {renderSortIcon('reconciledDate')}
                   </div>
                 </th>
                 <th 
                   onClick={() => handleSort('balance')}
-                  className="py-3 px-4 text-right cursor-pointer hover:text-white transition"
+                  className="py-2 px-2.5 sm:px-3 text-right cursor-pointer hover:text-white transition whitespace-nowrap"
                 >
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                     <span>Current Balance</span>
                     {renderSortIcon('balance')}
                   </div>
@@ -239,12 +239,12 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
             <tbody className="divide-y divide-slate-800/40 text-xs">
               {sortedAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-500 italic">
+                  <td colSpan={5} className="py-6 text-center text-slate-500 italic">
                     <p>No accounts found matching your filter criteria.</p>
                     <button
                       type="button"
                       onClick={onOpenNewAccount}
-                      className="mt-3 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold transition"
+                      className="mt-2.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold transition"
                     >
                       + Add New Account
                     </button>
@@ -265,18 +265,18 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                       {/* Column 1: Account Name (Clicking opens Account Details Popup) */}
                       <td 
                         onClick={() => onOpenAccount(acc)}
-                        className="py-2.5 px-4"
+                        className="py-1.5 px-2.5 sm:px-3"
                         title="Click to view account details, reco date, passbook, edit, or delete"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
                           <BankLogo
                             iconId={acc.icon}
                             name={acc.name}
                             institution={acc.institution}
-                            size={22}
+                            size={20}
                           />
                           <div className="min-w-0">
-                            <span className="font-semibold text-white group-hover:text-amber-300 transition truncate block">
+                            <span className="font-semibold text-xs text-white group-hover:text-amber-300 transition truncate block max-w-[140px] sm:max-w-none">
                               {acc.name}
                             </span>
                             {(acc.institution || acc.accountNumber) && (
@@ -290,7 +290,7 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                       </td>
 
                       {/* Column 2: Category Badge (Clicking opens Category Details Popup) */}
-                      <td className="py-2.5 px-3">
+                      <td className="py-1.5 px-2">
                         {cat ? (
                           <button
                             type="button"
@@ -298,25 +298,25 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                               e.stopPropagation();
                               onOpenCategory(cat);
                             }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#0a0e14] hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-amber-300 transition text-[11px] font-medium max-w-[180px] truncate"
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#0a0e14] hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-amber-300 transition text-[10px] sm:text-[11px] font-medium max-w-[130px] truncate"
                             title="Click to view category details, icon, or edit"
                           >
                             <span 
-                              className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                              className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0"
                               style={{ backgroundColor: `${cat.color}25`, color: cat.color }}
                             >
-                              <CatIcon size={10} />
+                              <CatIcon size={9} />
                             </span>
                             <span className="truncate">{catTitle}</span>
                           </button>
                         ) : (
-                          <span className="text-slate-500 text-[11px]">—</span>
+                          <span className="text-slate-500 text-[10px]">—</span>
                         )}
                       </td>
 
                       {/* Column 3: Account Nature */}
-                      <td className="py-2.5 px-3" onClick={() => onOpenAccount(acc)}>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      <td className="py-1.5 px-2" onClick={() => onOpenAccount(acc)}>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold border ${
                           isLiability
                             ? 'bg-rose-500/10 text-rose-300 border-rose-500/20'
                             : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
@@ -326,29 +326,29 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
                       </td>
 
                       {/* Column 4: Date of Reco */}
-                      <td className="py-2.5 px-3" onClick={() => onOpenAccount(acc)}>
+                      <td className="py-1.5 px-2 whitespace-nowrap" onClick={() => onOpenAccount(acc)}>
                         {acc.reconciledDate ? (
-                          <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px]">
-                            <Calendar size={12} className="text-slate-500" />
+                          <div className="flex items-center gap-1 text-slate-300 font-mono text-[10px] sm:text-[11px] whitespace-nowrap">
+                            <Calendar size={11} className="text-slate-500 shrink-0" />
                             <span>{formatDate(acc.reconciledDate)}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500 text-[11px] italic">Not set</span>
+                          <span className="text-slate-500 text-[10px] italic">Not set</span>
                         )}
                       </td>
 
-                      {/* Column 5: Balance */}
+                      {/* Column 5: Balance (Guaranteed single line, compact) */}
                       <td 
                         onClick={() => onOpenAccount(acc)}
-                        className="py-2.5 px-4 text-right"
+                        className="py-1.5 px-2.5 sm:px-3 text-right whitespace-nowrap"
                       >
-                        <div className="flex items-center justify-end gap-1.5">
-                          <span className={`font-mono font-bold text-xs sm:text-sm ${
+                        <div className="flex items-center justify-end gap-1 whitespace-nowrap shrink-0">
+                          <span className={`font-mono font-bold text-xs whitespace-nowrap tabular-nums shrink-0 ${
                             isLiability ? 'text-amber-300' : 'text-amber-100'
                           }`}>
                             {formatCurrency(acc.balance)}
                           </span>
-                          <ChevronRight size={13} className="text-slate-600 group-hover:text-slate-400 transition shrink-0" />
+                          <ChevronRight size={12} className="text-slate-600 group-hover:text-slate-400 transition shrink-0" />
                         </div>
                       </td>
                     </tr>
@@ -361,13 +361,13 @@ export const CoaTableView: React.FC<CoaTableViewProps> = ({
             {sortedAccounts.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-slate-700 bg-[#0e141c] text-xs font-bold text-white">
-                  <td colSpan={3} className="py-3 px-4">
+                  <td colSpan={3} className="py-2 px-2.5 sm:px-3">
                     <span className="text-slate-400 uppercase text-[10px] tracking-wider">Total ({sortedAccounts.length} Accounts):</span>
                   </td>
-                  <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
+                  <td className="py-2 px-2 text-slate-400 font-mono text-[10px] sm:text-[11px] whitespace-nowrap">
                     Net Sum
                   </td>
-                  <td className="py-3 px-4 text-right font-mono text-sm text-amber-200 font-bold">
+                  <td className="py-2 px-2.5 sm:px-3 text-right font-mono text-xs sm:text-sm text-amber-200 font-bold whitespace-nowrap tabular-nums">
                     {formatCurrency(totalFilteredBalance)}
                   </td>
                 </tr>

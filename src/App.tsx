@@ -84,6 +84,7 @@ import { ExportModal } from './components/modals/ExportModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NotificationSettingsModal } from './components/modals/NotificationSettingsModal';
 import { NotificationsModal } from './components/modals/NotificationsModal';
+import { ExitConfirmModal } from './components/modals/ExitConfirmModal';
 import { 
   checkAndTriggerDueNotifications,
   getStoredNotificationSettings,
@@ -127,9 +128,67 @@ import type {
   TabVisibilityMap
 } from './types';
 
+export const APP_TAB_ORDER: ActiveTab[] = [
+  'dashboard',
+  'finance',
+  'garage',
+  'todos',
+  'calendar',
+  'exercise',
+  'menstrual',
+  'ai'
+];
+
+/**
+ * Resolves the default opening tab.
+ * If dashboard is hidden, opens on the next available visible tab (e.g. finance).
+ */
+export function getResolvedDefaultTab(visibility?: TabVisibilityMap | null): ActiveTab {
+  if (!visibility || visibility.dashboard !== false) {
+    return 'dashboard';
+  }
+  for (const tab of APP_TAB_ORDER) {
+    if (tab !== 'dashboard' && visibility[tab as keyof TabVisibilityMap] !== false) {
+      return tab;
+    }
+  }
+  return 'finance';
+}
+
 export function App() {
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  // Menu Tab Visibility Customization
+  const [tabVisibility, setTabVisibility] = useState<TabVisibilityMap>(() => {
+    const saved = localStorage.getItem('chuvadi_tab_visibility');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch {}
+    }
+    return {
+      dashboard: true,
+      finance: true,
+      garage: true,
+      todos: true,
+      calendar: true,
+      exercise: true,
+      menstrual: true,
+      reports: true,
+      ai: true
+    };
+  });
+
+  // Navigation State (defaults to dashboard if visible, else next available tab)
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const saved = localStorage.getItem('chuvadi_tab_visibility');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return getResolvedDefaultTab(parsed);
+      } catch {}
+    }
+    return 'dashboard';
+  });
   const [financeSubTab, setFinanceSubTab] = useState<'coa' | 'transactions' | 'reports' | 'inbox'>('coa');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState<boolean>(false);
 
@@ -177,23 +236,6 @@ export function App() {
     }
     return DEMO_BODY_PROFILES;
   });
-  const [tabVisibility, setTabVisibility] = useState<TabVisibilityMap>(() => {
-    const saved = localStorage.getItem('chuvadi_tab_visibility');
-    if (saved) {
-      try { return JSON.parse(saved); } catch {}
-    }
-    return {
-      dashboard: true,
-      finance: true,
-      garage: true,
-      todos: true,
-      calendar: true,
-      exercise: true,
-      menstrual: true,
-      reports: true,
-      ai: true
-    };
-  });
   const [nonPrimaryBannerDismissed, setNonPrimaryBannerDismissed] = useState<boolean>(false);
 
   // Modals Visibility & Editing State
@@ -222,6 +264,7 @@ export function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isNotificationsListOpen, setIsNotificationsListOpen] = useState(false);
+  const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 
   // Notifications State & Settings
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getStoredNotificationSettings());
@@ -234,11 +277,18 @@ export function App() {
   const activeTabRef = React.useRef<ActiveTab>(activeTab);
   activeTabRef.current = activeTab;
 
+  const tabVisibilityRef = React.useRef<TabVisibilityMap>(tabVisibility);
+  tabVisibilityRef.current = tabVisibility;
+
   const lastBackPressTimeRef = React.useRef<number>(0);
   const exitToastTimerRef = React.useRef<any>(null);
 
   // Helper to close whichever modal/drawer is open
   const closeOpenModalOrDrawer = () => {
+    if (isExitModalOpen) {
+      setIsExitModalOpen(false);
+      return true;
+    }
     if (isSideMenuOpen) {
       setIsSideMenuOpen(false);
       return true;
@@ -308,23 +358,14 @@ export function App() {
   handleCloseAppRef.current = handleCloseApp;
 
   const handleCloseAppClick = () => {
-    const now = Date.now();
-    if (now - lastBackPressTimeRef.current < 2500) {
-      handleCloseApp();
-    } else {
-      lastBackPressTimeRef.current = now;
-      setShowExitToast(true);
-      if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
-      exitToastTimerRef.current = setTimeout(() => {
-        setShowExitToast(false);
-      }, 2500);
-    }
+    setIsExitModalOpen(true);
   };
 
   // Intercept Device / Browser Back Button (popstate)
   useEffect(() => {
+    const initialDefaultTab = getResolvedDefaultTab(tabVisibilityRef.current);
     try {
-      window.history.replaceState({ tab: 'dashboard', modal: null }, '', window.location.href);
+      window.history.replaceState({ tab: initialDefaultTab, modal: null }, '', window.location.href);
     } catch {}
 
     const handlePopState = () => {
@@ -336,30 +377,33 @@ export function App() {
         return;
       }
 
-      // 2. If not on dashboard, navigate to dashboard!
-      if (activeTabRef.current !== 'dashboard') {
-        setActiveTab('dashboard');
-        try {
-          window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
-        } catch {}
-        return;
+      const isDashboardVisible = tabVisibilityRef.current.dashboard !== false;
+
+      // 2. If dashboard is visible:
+      if (isDashboardVisible) {
+        if (activeTabRef.current !== 'dashboard') {
+          // Navigating back to dashboard screen
+          setActiveTab('dashboard');
+          try {
+            window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+          } catch {}
+          return;
+        } else {
+          // User is on Dashboard screen only -> ask whether to close the app!
+          setIsExitModalOpen(true);
+          try {
+            window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+          } catch {}
+          return;
+        }
       }
 
-      // 3. User is already on Dashboard and no modal is open -> Double back to exit!
-      const now = Date.now();
-      if (now - lastBackPressTimeRef.current < 2500) {
-        handleCloseAppRef.current();
-      } else {
-        lastBackPressTimeRef.current = now;
-        setShowExitToast(true);
-        if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
-        exitToastTimerRef.current = setTimeout(() => {
-          setShowExitToast(false);
-        }, 2500);
-        try {
-          window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
-        } catch {}
-      }
+      // 3. If dashboard is hidden:
+      // "If dashboard is hidden, it should straight away ask whether to close the app."
+      setIsExitModalOpen(true);
+      try {
+        window.history.pushState({ tab: activeTabRef.current, modal: null }, '', window.location.href);
+      } catch {}
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -982,9 +1026,9 @@ export function App() {
       }
       const next = { ...prev, [tabId]: !prev[tabId] };
       localStorage.setItem('chuvadi_tab_visibility', JSON.stringify(next));
-      if (!next[activeTab]) {
-        const firstVisible = (Object.keys(next) as ActiveTab[]).find(k => next[k]);
-        if (firstVisible) setActiveTab(firstVisible);
+      if (next[activeTab] === false) {
+        const nextTab = getResolvedDefaultTab(next);
+        setActiveTab(nextTab);
       }
       return next;
     });
@@ -1201,7 +1245,7 @@ export function App() {
         <button
           onClick={() => {
             setIsAppClosed(false);
-            setActiveTab('dashboard');
+            setActiveTab(getResolvedDefaultTab(tabVisibility));
           }}
           className="px-6 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 shadow-lg shadow-amber-500/20 cursor-pointer"
         >
@@ -1249,6 +1293,7 @@ export function App() {
         isOnline={isOnline}
         isGuestMode={isCurrentGuest}
         activeTab={activeTab}
+        isRootTab={tabVisibility.dashboard !== false ? activeTab === 'dashboard' : activeTab === getResolvedDefaultTab(tabVisibility)}
         onBackToDashboard={() => handleSelectTab('dashboard')}
         onCloseApp={handleCloseAppClick}
         onOpenQuickAdd={() => {
@@ -1674,6 +1719,16 @@ export function App() {
           setIsNotificationSettingsOpen(true);
         }}
         onSelectTab={handleSelectTab}
+      />
+
+      {/* Exit App Confirmation Modal */}
+      <ExitConfirmModal
+        isOpen={isExitModalOpen}
+        onClose={() => setIsExitModalOpen(false)}
+        onConfirmExit={() => {
+          setIsExitModalOpen(false);
+          handleCloseApp();
+        }}
       />
 
       {/* 12. Floating Double-Back / Close App Toast */}

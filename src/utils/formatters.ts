@@ -6,11 +6,14 @@ export function formatCurrency(amount: number | undefined | null): string {
   if (amount === undefined || amount === null || isNaN(amount)) {
     return '₹0';
   }
-  return new Intl.NumberFormat('en-IN', {
+  const formatted = new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0
   }).format(amount);
+  // Replace all spaces (including narrow spaces) with non-breaking spaces (\u00A0)
+  // so negative currency like -₹ 500 never splits the minus sign onto a separate line
+  return formatted.replace(/[\s\u2000-\u200B\u202F\u205F]/g, '\u00A0');
 }
 
 export function formatDate(dateStr: string | number | undefined | null): string {
@@ -26,6 +29,23 @@ export function formatDate(dateStr: string | number | undefined | null): string 
   } catch (e) {
     return typeof dateStr === 'string' ? dateStr : '';
   }
+}
+
+/**
+ * Formats a Date object to 'YYYY-MM-DD' using local timezone (avoiding UTC timezone shift bugs).
+ */
+export function formatDateToLocalYMD(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns today's date in local device timezone formatted as 'YYYY-MM-DD'.
+ */
+export function getTodayLocalDateString(): string {
+  return formatDateToLocalYMD(new Date());
 }
 
 export function formatDateTime(timestamp: string | number | undefined | null): string {

@@ -37,7 +37,7 @@ import {
   Table,
   GitFork
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, getTodayLocalDateString } from '../../utils/formatters';
 import type { Account, AccountType, Transaction } from '../../types';
 import { BankLogo, BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
 import { CoaTableView } from './CoaTableView';
@@ -100,6 +100,17 @@ export const AVAILABLE_CATEGORY_ICONS = [
   { id: 'Folder', label: 'Folder', icon: Folder },
   { id: 'ShieldCheck', label: 'Safety', icon: ShieldCheck },
   { id: 'CircleDollarSign', label: 'Dollar', icon: CircleDollarSign }
+];
+
+export const ACCOUNT_COLORS = [
+  '#0284c7', // Sky blue
+  '#ea580c', // Orange
+  '#10b981', // Emerald
+  '#6366f1', // Indigo
+  '#8b5cf6', // Violet
+  '#ec4899', // Pink
+  '#f59e0b', // Amber
+  '#64748b'  // Slate
 ];
 
 const DEFAULT_CATEGORIES: CategoryDefinition[] = [
@@ -259,9 +270,25 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [popupAccountCategoryId, setPopupAccountCategoryId] = useState<string>('BANK');
   const [popupAccountIcon, setPopupAccountIcon] = useState<string>('none');
   const [popupAccountOpeningBalance, setPopupAccountOpeningBalance] = useState<string>('0');
+  const [popupAccountInstitution, setPopupAccountInstitution] = useState<string>('');
+  const [popupAccountAccountNumber, setPopupAccountAccountNumber] = useState<string>('');
+  const [popupAccountColor, setPopupAccountColor] = useState<string>('#0284c7');
+  const [popupAccountIsLiability, setPopupAccountIsLiability] = useState<boolean>(false);
   const [popupTxnSearch, setPopupTxnSearch] = useState<string>('');
   const [isSavingAccountPopup, setIsSavingAccountPopup] = useState<boolean>(false);
   const [isDeletingAccountPopup, setIsDeletingAccountPopup] = useState<boolean>(false);
+
+  // Add Account Modal State (Triggered by + New -> Add Account)
+  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState<boolean>(false);
+  const [newAccountName, setNewAccountName] = useState<string>('');
+  const [newAccountCategoryId, setNewAccountCategoryId] = useState<string>('BANK');
+  const [newAccountOpeningBalance, setNewAccountOpeningBalance] = useState<string>('0');
+  const [newAccountInstitution, setNewAccountInstitution] = useState<string>('');
+  const [newAccountAccountNumber, setNewAccountAccountNumber] = useState<string>('');
+  const [newAccountIcon, setNewAccountIcon] = useState<string>('none');
+  const [newAccountColor, setNewAccountColor] = useState<string>('#0284c7');
+  const [newAccountIsLiability, setNewAccountIsLiability] = useState<boolean>(false);
+  const [isSavingNewAccount, setIsSavingNewAccount] = useState<boolean>(false);
 
   // Category Heading Pop-up State (Triggered by clicking on category heading)
   const [selectedCategoryForPopup, setSelectedCategoryForPopup] = useState<CategoryDefinition | null>(null);
@@ -399,13 +426,18 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   // -------------------------------------------------------------
   const handleOpenAccountPopup = (acc: Account) => {
     setSelectedAccountForPopup(acc);
-    setPopupAccountName(acc.name);
+    setPopupAccountName(acc.name || '');
     setPopupAccountType(acc.type || 'BANK');
+    const isLiab = acc.type === 'CREDIT_CARD' || acc.type === 'LOAN';
+    setPopupAccountIsLiability(isLiab);
     const matchedCat = categoriesList.find(c => (c.id || c.type) === acc.categoryId)
       || categoriesList.find(c => (!c.parentId || c.parentId === 'MAIN') && c.type === acc.type)
       || categoriesList[0];
     setPopupAccountCategoryId(acc.categoryId || (matchedCat ? (matchedCat.id || matchedCat.type) : 'BANK'));
     setPopupAccountIcon(acc.icon || resolveBankLogoId(acc.icon, acc.name, acc.institution));
+    setPopupAccountInstitution(acc.institution || '');
+    setPopupAccountAccountNumber(acc.accountNumber || '');
+    setPopupAccountColor(acc.color || '#0284c7');
     const op = typeof acc.openingBalance === 'number'
       ? acc.openingBalance
       : (typeof acc.balance === 'number' ? acc.balance : 0);
@@ -500,7 +532,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setIsSavingAccountPopup(true);
     try {
       const chosenCat = categoriesList.find(c => (c.id || c.type) === popupAccountCategoryId);
-      const chosenType = chosenCat ? chosenCat.type : popupAccountType;
+      let chosenType: AccountType = chosenCat ? chosenCat.type : popupAccountType;
+      if (popupAccountIsLiability) {
+        if (chosenType !== 'CREDIT_CARD' && chosenType !== 'LOAN') {
+          chosenType = 'LOAN';
+        }
+      } else {
+        if (chosenType === 'CREDIT_CARD' || chosenType === 'LOAN') {
+          chosenType = 'BANK';
+        }
+      }
       const opNum = parseFloat(popupAccountOpeningBalance) || 0;
       const finalBalance = opNum + netTransactions;
 
@@ -509,6 +550,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         name: popupAccountName.trim(),
         type: chosenType,
         categoryId: popupAccountCategoryId,
+        institution: popupAccountInstitution.trim() || undefined,
+        accountNumber: popupAccountAccountNumber.trim() || undefined,
+        color: popupAccountColor,
         icon: popupAccountIcon,
         openingBalance: opNum,
         balance: finalBalance,
@@ -538,6 +582,62 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       console.error('Failed to delete account:', err);
     } finally {
       setIsDeletingAccountPopup(false);
+    }
+  };
+
+  // Handlers for Add Account in Chart of Accounts
+  const handleOpenAddAccountModal = (defaultCatId?: string) => {
+    const chosenId = defaultCatId || (categoriesList[0] ? (categoriesList[0].id || categoriesList[0].type) : 'BANK');
+    const cat = categoriesList.find(c => (c.id || c.type) === chosenId);
+    const isLiab = cat ? (cat.type === 'CREDIT_CARD' || cat.type === 'LOAN') : false;
+    setNewAccountName('');
+    setNewAccountCategoryId(chosenId);
+    setNewAccountOpeningBalance('0');
+    setNewAccountInstitution('');
+    setNewAccountAccountNumber('');
+    setNewAccountIcon('none');
+    setNewAccountColor(cat?.color || '#0284c7');
+    setNewAccountIsLiability(isLiab);
+    setIsAddAccountModalOpen(true);
+  };
+
+  const handleSaveNewAccount = async () => {
+    if (!newAccountName.trim()) return;
+    setIsSavingNewAccount(true);
+    try {
+      const chosenCat = categoriesList.find(c => (c.id || c.type) === newAccountCategoryId);
+      let chosenType: AccountType = chosenCat ? chosenCat.type : (newAccountIsLiability ? 'LOAN' : 'BANK');
+      if (newAccountIsLiability) {
+        if (chosenType !== 'CREDIT_CARD' && chosenType !== 'LOAN') {
+          chosenType = 'LOAN';
+        }
+      } else {
+        if (chosenType === 'CREDIT_CARD' || chosenType === 'LOAN') {
+          chosenType = 'BANK';
+        }
+      }
+      const opNum = parseFloat(newAccountOpeningBalance) || 0;
+      const newId = `acc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newAccount: Account = {
+        id: newId,
+        name: newAccountName.trim(),
+        type: chosenType,
+        categoryId: newAccountCategoryId,
+        openingBalance: opNum,
+        balance: opNum,
+        institution: newAccountInstitution.trim() || undefined,
+        accountNumber: newAccountAccountNumber.trim() || undefined,
+        icon: newAccountIcon,
+        color: newAccountColor,
+        reconciledDate: undefined,
+        updatedAt: Date.now()
+      };
+      await onSaveAccount(newAccount);
+      setIsAddAccountModalOpen(false);
+    } catch (err) {
+      console.error('Failed to create new account:', err);
+    } finally {
+      setIsSavingNewAccount(false);
     }
   };
 
@@ -803,7 +903,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     id="coa-add-account-option"
                     onClick={() => {
                       setIsNewMenuOpen(false);
-                      onOpenNewAccount();
+                      handleOpenAddAccountModal();
                     }}
                     className="w-full px-3.5 py-2.5 flex items-center gap-3 text-xs text-slate-200 hover:text-amber-300 hover:bg-slate-800/90 transition text-left"
                   >
@@ -1289,7 +1389,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           setSearchTerm={setSearchTerm}
           onOpenAccount={handleOpenAccountPopup}
           onOpenCategory={handleOpenCategoryPopup}
-          onOpenNewAccount={() => onOpenNewAccount()}
+          onOpenNewAccount={() => handleOpenAddAccountModal()}
         />
       )}
 
@@ -1307,6 +1407,227 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           setSearchTerm={setSearchTerm}
           getCategoryTitle={getCategoryTitle}
         />
+      )}
+
+      {/* ============================================================= */}
+      {/* 0. Add Account Pop-up Modal                                   */}
+      {/* ============================================================= */}
+      {isAddAccountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#121820] w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+            <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-800 flex items-center justify-between bg-[#161d26] shrink-0 gap-3">
+              <div className="text-amber-300 font-bold text-sm sm:text-base flex items-center gap-2">
+                <Plus size={16} strokeWidth={2.5} />
+                <span>New Account</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddAccountModalOpen(false)}
+                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                title="Close"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 max-h-[75vh]">
+              {/* Field 1: Account Name */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Account Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder="e.g. HDFC Salary, Cash in Hand, SBI Savings"
+                  autoFocus
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition shadow-inner"
+                />
+              </div>
+
+              {/* Field 2: Account Category */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Account Category *
+                </label>
+                <select
+                  value={newAccountCategoryId}
+                  onChange={(e) => {
+                    const chosenId = e.target.value;
+                    setNewAccountCategoryId(chosenId);
+                    const c = categoriesList.find(cat => (cat.id || cat.type) === chosenId);
+                    if (c) {
+                      setNewAccountIsLiability(c.type === 'CREDIT_CARD' || c.type === 'LOAN');
+                    }
+                  }}
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer"
+                >
+                  {categoriesList.map((c) => {
+                    const title = getCategoryTitle(c);
+                    const isSub = !!c.parentId && c.parentId !== 'MAIN';
+                    const isLiab = c.type === 'CREDIT_CARD' || c.type === 'LOAN';
+                    return (
+                      <option key={c.id || c.type} value={c.id || c.type}>
+                        {isSub ? `↳ ${title} (Subcategory)` : title}{isLiab ? ' [Liability]' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Field 3: Opening Balance */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Opening Balance (₹)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={newAccountOpeningBalance}
+                  onChange={(e) => setNewAccountOpeningBalance(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none transition shadow-inner"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Initial ledger balance before any recorded transactions.
+                </p>
+              </div>
+
+              {/* Current Balance Calculation Preview */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    Opening ({formatCurrency(parseFloat(newAccountOpeningBalance) || 0)}) + Inflows (₹0) - Outflows (₹0)
+                  </div>
+                </div>
+                <div className="text-sm font-extrabold font-mono text-amber-200">
+                  {formatCurrency(parseFloat(newAccountOpeningBalance) || 0)}
+                </div>
+              </div>
+
+              {/* Field 4: Debt / Liability Account Toggle Card */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newAccountIsLiability}
+                    onChange={(e) => {
+                      const newIsLiab = e.target.checked;
+                      setNewAccountIsLiability(newIsLiab);
+                      const curCat = categoriesList.find(c => (c.id || c.type) === newAccountCategoryId);
+                      if (curCat) {
+                        const curIsLiab = curCat.type === 'CREDIT_CARD' || curCat.type === 'LOAN';
+                        if (newIsLiab && !curIsLiab) {
+                          setNewAccountCategoryId('LOAN');
+                        } else if (!newIsLiab && curIsLiab) {
+                          setNewAccountCategoryId('BANK');
+                        }
+                      }
+                    }}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
+                  />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2">
+                      <span>This is a Debt / Liability account</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                        newAccountIsLiability 
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}>
+                        {newAccountIsLiability ? 'Liability' : 'Asset'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {newAccountIsLiability 
+                        ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
+                        : 'Balances in this account add positively to your Total Funds & Net Worth.'}
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Bank / Provider
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFC, SBI"
+                    value={newAccountInstitution}
+                    onChange={(e) => setNewAccountInstitution(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Last 4 Digits
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 4589"
+                    maxLength={4}
+                    value={newAccountAccountNumber}
+                    onChange={(e) => setNewAccountAccountNumber(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Field 6: Bank Logo & Open Source Finance Icon Selection */}
+              <div>
+                <BankLogoPicker
+                  selectedId={newAccountIcon}
+                  onSelect={setNewAccountIcon}
+                />
+              </div>
+
+              {/* Field 7: Card Color Accent */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Card Color Accent
+                </label>
+                <div className="flex items-center gap-2">
+                  {ACCOUNT_COLORS.map((c) => (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setNewAccountColor(c)}
+                      className={`w-6 h-6 rounded-full transition-transform ${newAccountColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-3 bg-[#161d26] border-t border-slate-800 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAddAccountModalOpen(false)}
+                disabled={isSavingNewAccount}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNewAccount}
+                disabled={isSavingNewAccount || !newAccountName.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition disabled:opacity-50"
+              >
+                <Check size={14} strokeWidth={2.5} />
+                <span>{isSavingNewAccount ? 'Creating...' : 'Add Account'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ============================================================= */}
@@ -1420,25 +1741,26 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
             {/* Modal Body */}
             {isEditingAccountInPopup ? (
-              /* Edit Mode Form */
+              /* Edit Mode Form: Matching Add Account Screen with all options */
               <>
-                <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+                <div className="p-4 sm:p-6 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 max-h-[75vh]">
                   {/* Field 1: Account Name */}
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                      Name of the Account
+                      Account Name *
                     </label>
                     <input
                       type="text"
+                      required
                       value={popupAccountName}
                       onChange={(e) => setPopupAccountName(e.target.value)}
-                      placeholder="e.g. HDFC Salary Account"
+                      placeholder="e.g. HDFC Salary, Cash in Hand"
                       autoFocus
-                      className="w-full bg-[#0a0e14] border border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-medium focus:outline-none shadow-inner"
+                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition shadow-inner"
                     />
                   </div>
 
-                  {/* Field 2: Account Category */}
+                  {/* Field 2: Account Category Dropdown */}
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
                       Account Category
@@ -1451,9 +1773,10 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         const c = categoriesList.find(cat => (cat.id || cat.type) === chosenId);
                         if (c) {
                           setPopupAccountType(c.type);
+                          setPopupAccountIsLiability(c.type === 'CREDIT_CARD' || c.type === 'LOAN');
                         }
                       }}
-                      className="w-full bg-[#0a0e14] border border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-medium focus:outline-none cursor-pointer"
+                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer"
                     >
                       {categoriesList.map((c) => {
                         const title = getCategoryTitle(c);
@@ -1479,15 +1802,15 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       value={popupAccountOpeningBalance}
                       onChange={(e) => setPopupAccountOpeningBalance(e.target.value)}
                       placeholder="0"
-                      className="w-full bg-[#0a0e14] border border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none shadow-inner"
+                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none transition shadow-inner"
                     />
                     <p className="text-[10px] text-slate-400 mt-1">
                       Initial ledger balance before any recorded transactions.
                     </p>
                   </div>
 
-                  {/* Calculated Current Balance Preview in Edit Mode */}
-                  <div className="p-3 bg-[#0d131a] rounded-xl border border-slate-800 flex items-center justify-between">
+                  {/* Current Balance Calculation Preview */}
+                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800 flex items-center justify-between">
                     <div>
                       <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
                       <div className="text-[10px] text-slate-500 font-mono mt-0.5">
@@ -1499,7 +1822,79 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     </div>
                   </div>
 
-                  {/* Field 4: Bank Logo Selection */}
+                  {/* Field 4: Debt / Liability Account Toggle Card */}
+                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={popupAccountIsLiability}
+                        onChange={(e) => {
+                          const newIsLiab = e.target.checked;
+                          setPopupAccountIsLiability(newIsLiab);
+                          const curCat = categoriesList.find(c => (c.id || c.type) === popupAccountCategoryId);
+                          if (curCat) {
+                            const curIsLiab = curCat.type === 'CREDIT_CARD' || curCat.type === 'LOAN';
+                            if (newIsLiab && !curIsLiab) {
+                              setPopupAccountCategoryId('LOAN');
+                              setPopupAccountType('LOAN');
+                            } else if (!newIsLiab && curIsLiab) {
+                              setPopupAccountCategoryId('BANK');
+                              setPopupAccountType('BANK');
+                            }
+                          }
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
+                      />
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-white flex items-center gap-2">
+                          <span>This is a Debt / Liability account</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                            popupAccountIsLiability 
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          }`}>
+                            {popupAccountIsLiability ? 'Liability' : 'Asset'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {popupAccountIsLiability 
+                            ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
+                            : 'Balances in this account add positively to your Total Funds & Net Worth.'}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                        Bank / Provider
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. HDFC, SBI"
+                        value={popupAccountInstitution}
+                        onChange={(e) => setPopupAccountInstitution(e.target.value)}
+                        className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                        Last 4 Digits
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 4589"
+                        maxLength={4}
+                        value={popupAccountAccountNumber}
+                        onChange={(e) => setPopupAccountAccountNumber(e.target.value)}
+                        className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Field 6: Bank Logo Selection */}
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
                       Bank / Financial Institution Logo
@@ -1509,34 +1904,70 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       onSelect={setPopupAccountIcon}
                     />
                   </div>
+
+                  {/* Field 7: Card Color Accent */}
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                      Card Color Accent
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {ACCOUNT_COLORS.map((c) => (
+                        <button
+                          type="button"
+                          key={c}
+                          onClick={() => setPopupAccountColor(c)}
+                          className={`w-6 h-6 rounded-full transition-transform ${popupAccountColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Edit Mode Footer */}
-                <div className="px-4 py-3 bg-[#161d26] border-t border-slate-800 flex items-center justify-end gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPopupAccountName(selectedAccountForPopup.name);
-                      setPopupAccountType(selectedAccountForPopup.type);
-                      setPopupAccountCategoryId(selectedAccountForPopup.categoryId || selectedAccountForPopup.type);
-                      setPopupAccountIcon(selectedAccountForPopup.icon || 'none');
-                      setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
-                      setIsEditingAccountInPopup(false);
-                    }}
-                    disabled={isSavingAccountPopup}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveAccountPopup}
-                    disabled={isSavingAccountPopup || !popupAccountName.trim()}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition disabled:opacity-50"
-                  >
-                    <Check size={14} strokeWidth={2.5} />
-                    <span>{isSavingAccountPopup ? 'Saving...' : 'Save Changes'}</span>
-                  </button>
+                <div className="px-4 py-3 bg-[#161d26] border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
+                  {onDeleteAccount && !hasTransactions ? (
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccountFromPopup}
+                      disabled={isDeletingAccountPopup}
+                      className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold transition"
+                      title="Delete this account (0 transactions)"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  ) : <div />}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPopupAccountName(selectedAccountForPopup.name);
+                        setPopupAccountType(selectedAccountForPopup.type);
+                        setPopupAccountCategoryId(selectedAccountForPopup.categoryId || selectedAccountForPopup.type);
+                        setPopupAccountIcon(selectedAccountForPopup.icon || 'none');
+                        setPopupAccountInstitution(selectedAccountForPopup.institution || '');
+                        setPopupAccountAccountNumber(selectedAccountForPopup.accountNumber || '');
+                        setPopupAccountColor(selectedAccountForPopup.color || '#0284c7');
+                        setPopupAccountIsLiability(selectedAccountForPopup.type === 'CREDIT_CARD' || selectedAccountForPopup.type === 'LOAN');
+                        setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
+                        setIsEditingAccountInPopup(false);
+                      }}
+                      disabled={isSavingAccountPopup}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveAccountPopup}
+                      disabled={isSavingAccountPopup || !popupAccountName.trim()}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition disabled:opacity-50"
+                    >
+                      <Check size={14} strokeWidth={2.5} />
+                      <span>{isSavingAccountPopup ? 'Saving...' : 'Save Changes'}</span>
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (
@@ -1594,7 +2025,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={() => handleUpdateRecoDate(new Date().toISOString().split('T')[0])}
+                        onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
                         className="px-2 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-semibold transition active:scale-95 shrink-0"
                         title="Set Date of reco to today"
                       >

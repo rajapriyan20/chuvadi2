@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Trash2, Wrench, Fuel, ShieldCheck, FileCheck } from 'lucide-react';
 import type { Vehicle, VehicleLog, VehicleLogType } from '../../types';
+import { getTodayLocalDateString } from '../../utils/formatters';
 
 interface ServiceLogModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export const ServiceLogModal: React.FC<ServiceLogModalProps> = ({
   const [vehicleId, setVehicleId] = useState(initialVehicleId || vehicles[0]?.id || '');
   const [type, setType] = useState<VehicleLogType>('FUEL');
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayLocalDateString());
   const [odometer, setOdometer] = useState('');
   const [cost, setCost] = useState('');
   const [fuelLiters, setFuelLiters] = useState('');
@@ -48,7 +49,7 @@ export const ServiceLogModal: React.FC<ServiceLogModalProps> = ({
       setVehicleId(vid);
       setType('FUEL');
       setTitle('Petrol Refuel');
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getTodayLocalDateString());
       const selVeh = vehicles.find(v => v.id === vid);
       setOdometer(selVeh?.currentOdometer ? String(selVeh.currentOdometer) : '');
       setCost('');
