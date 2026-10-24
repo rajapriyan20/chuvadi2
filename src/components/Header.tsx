@@ -5,7 +5,6 @@ import {
   User as UserIcon,
   Menu,
   Eye,
-  X,
   Bell
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
@@ -239,20 +238,6 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               )}
             </button>
-
-            {/* Exit/Close App Button (when on root tab) */}
-            {isRootTab && onCloseApp && (
-              <button
-                id="header-close-btn"
-                type="button"
-                onClick={onCloseApp}
-                className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition active:scale-95 cursor-pointer"
-                title="Exit / Close App"
-                aria-label="Close App"
-              >
-                <X size={16} />
-              </button>
-            )}
 
             {/* Auth State Button */}
             {isGuestMode ? (

@@ -88,9 +88,27 @@ export const CoaDiagramView: React.FC<CoaDiagramViewProps> = ({
     return sum;
   };
 
-  // Sorted and filtered main categories
+  // Compute total account count for any category (including subcategories)
+  const getCategoryAccountCount = (cat: CategoryDefinition): number => {
+    const catKey = cat.id || cat.type;
+    const directAccs = groupedAccounts.get(catKey) || [];
+    let count = directAccs.length;
+
+    const subs = subCategoriesByParent.get(catKey) || [];
+    for (const sub of subs) {
+      const subKey = sub.id || sub.type;
+      const subAccs = groupedAccounts.get(subKey) || [];
+      count += subAccs.length;
+    }
+    return count;
+  };
+
+  // Sorted and filtered main categories (empty categories with 0 accounts are hidden)
   const displayedCategories = useMemo(() => {
     let list = [...mainCategories];
+
+    // Hide categories that are empty (0 accounts)
+    list = list.filter(cat => getCategoryAccountCount(cat) > 0);
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -135,10 +153,13 @@ export const CoaDiagramView: React.FC<CoaDiagramViewProps> = ({
     return categoriesList.find(c => (c.id || c.type) === selectedCatId) || null;
   }, [selectedCatId, categoriesList]);
 
-  // Subcategories of selected category (if any)
+  // Subcategories of selected category (empty subcategories with 0 accounts are hidden)
   const activeSubCategories = useMemo(() => {
     if (!selectedCatId) return [];
-    const subs = subCategoriesByParent.get(selectedCatId) || [];
+    const subs = (subCategoriesByParent.get(selectedCatId) || []).filter(sub => {
+      const count = (groupedAccounts.get(sub.id || sub.type) || []).length;
+      return count > 0;
+    });
     return [...subs].sort((a, b) => {
       if (sortBy === 'balance') {
         const balA = (groupedAccounts.get(a.id || a.type) || []).reduce((s, acc) => s + (acc.balance || 0), 0);

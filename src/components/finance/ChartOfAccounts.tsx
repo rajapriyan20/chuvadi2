@@ -997,7 +997,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             }`}
           >
             <GitFork size={13} className="rotate-180" />
-            <span>Diagram view</span>
+            <span>Visual view</span>
           </button>
         </div>
       </div>
@@ -1110,6 +1110,11 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             allAccountsInMain.push(...(groupedAccounts.get(scKey) || []));
           });
 
+          // Skip empty categories (do not show categories that have 0 accounts)
+          if (allAccountsInMain.length === 0) {
+            return null;
+          }
+
           // Filter logic for search
           const filterAcc = (a: Account) => {
             if (!searchTerm) return true;
@@ -1122,7 +1127,15 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           };
 
           const matchedDirectAccounts = directAccounts.filter(filterAcc);
-          const matchedSubCats = subCats.map(sc => {
+
+          // Filter out empty subcategories (0 accounts)
+          const nonZeroSubCats = subCats.filter(sc => {
+            const scKey = sc.id || sc.type;
+            const scAccounts = groupedAccounts.get(scKey) || [];
+            return scAccounts.length > 0;
+          });
+
+          const matchedSubCats = nonZeroSubCats.map(sc => {
             const scKey = sc.id || sc.type;
             const scAccounts = groupedAccounts.get(scKey) || [];
             const filteredScAccs = scAccounts.filter(filterAcc);
@@ -1375,6 +1388,28 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
           );
         })}
+
+        {/* Empty state when all categories have 0 accounts */}
+        {mainCategories.every(mc => {
+          const direct = groupedAccounts.get(mc.id || mc.type) || [];
+          const subs = subCategoriesByParent.get(mc.id || mc.type) || [];
+          let total = direct.length;
+          subs.forEach(s => { total += (groupedAccounts.get(s.id || s.type) || []).length; });
+          return total === 0;
+        }) && (
+          <div className="bg-[#131922] p-8 rounded-2xl border border-slate-800 text-center">
+            <Layers className="mx-auto text-slate-600 mb-2" size={32} />
+            <p className="text-slate-300 font-semibold text-sm">No accounts created yet</p>
+            <p className="text-slate-500 text-xs mt-1">Categories with no accounts are hidden.</p>
+            <button
+              type="button"
+              onClick={() => handleOpenAddAccountModal()}
+              className="mt-3.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition"
+            >
+              + Add New Account
+            </button>
+          </div>
+        )}
       </div>
         </>
       )}
