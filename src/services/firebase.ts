@@ -349,6 +349,14 @@ async function seedSampleDataForUser(user: User): Promise<void> {
   await seedUserStarterData(user);
 }
 
+export function createDocId(colName: string, user?: User | null): string {
+  const uid = resolveUserUid(user);
+  if (uid) {
+    return doc(collection(db, 'users', uid, colName)).id;
+  }
+  return `${colName}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 // ==========================================
 // ATOMIC TRANSACTION HANDLERS (runTransaction)
 // ==========================================
@@ -362,6 +370,13 @@ export async function saveTransactionAtomic(
   const cacheKey = getUserCacheKey('transactions', user);
   const accCacheKey = getUserCacheKey('accounts', user);
 
+  // If existingTxn not explicitly passed, try to look it up in cache
+  let resolvedExisting = existingTxn;
+  if (!resolvedExisting && txnData.id) {
+    const cachedTxns = getCached<Transaction[]>(cacheKey, []);
+    resolvedExisting = cachedTxns.find(t => t.id === txnData.id) || null;
+  }
+
   if (!uid) {
     // Guest fallback
     const txnId = txnData.id || 'txn-' + Date.now();
@@ -372,7 +387,7 @@ export async function saveTransactionAtomic(
       timestamp: txnData.timestamp || Date.now(),
       amount: Number(txnData.amount) || 0
     };
-    const updated = existingTxn 
+    const updated = resolvedExisting 
       ? localTxns.map(t => t.id === txnId ? payload : t)
       : [payload, ...localTxns];
     setCached(cacheKey, updated);
@@ -385,9 +400,9 @@ export async function saveTransactionAtomic(
   try {
     await runTransaction(db, async (t) => {
       const accountIdsToFetch = new Set<string>();
-      if (existingTxn) {
-        if (existingTxn.fromAccountId) accountIdsToFetch.add(existingTxn.fromAccountId);
-        if (existingTxn.toAccountId) accountIdsToFetch.add(existingTxn.toAccountId);
+      if (resolvedExisting) {
+        if (resolvedExisting.fromAccountId) accountIdsToFetch.add(resolvedExisting.fromAccountId);
+        if (resolvedExisting.toAccountId) accountIdsToFetch.add(resolvedExisting.toAccountId);
       }
       if (txnData.fromAccountId) accountIdsToFetch.add(txnData.fromAccountId);
       if (txnData.toAccountId) accountIdsToFetch.add(txnData.toAccountId);
@@ -402,21 +417,21 @@ export async function saveTransactionAtomic(
       }
 
       // Revert old transaction effects if editing
-      if (existingTxn) {
-        const oldAmt = Number(existingTxn.amount) || 0;
-        if (existingTxn.type === 'EXPENSE' && existingTxn.fromAccountId) {
-          const acc = accountDocs.get(existingTxn.fromAccountId);
+      if (resolvedExisting) {
+        const oldAmt = Number(resolvedExisting.amount) || 0;
+        if (resolvedExisting.type === 'EXPENSE' && resolvedExisting.fromAccountId) {
+          const acc = accountDocs.get(resolvedExisting.fromAccountId);
           if (acc) acc.data.balance = (acc.data.balance || 0) + oldAmt;
-        } else if (existingTxn.type === 'INCOME' && existingTxn.toAccountId) {
-          const acc = accountDocs.get(existingTxn.toAccountId);
+        } else if (resolvedExisting.type === 'INCOME' && resolvedExisting.toAccountId) {
+          const acc = accountDocs.get(resolvedExisting.toAccountId);
           if (acc) acc.data.balance = (acc.data.balance || 0) - oldAmt;
-        } else if (existingTxn.type === 'TRANSFER') {
-          if (existingTxn.fromAccountId) {
-            const acc = accountDocs.get(existingTxn.fromAccountId);
+        } else if (resolvedExisting.type === 'TRANSFER') {
+          if (resolvedExisting.fromAccountId) {
+            const acc = accountDocs.get(resolvedExisting.fromAccountId);
             if (acc) acc.data.balance = (acc.data.balance || 0) + oldAmt;
           }
-          if (existingTxn.toAccountId) {
-            const acc = accountDocs.get(existingTxn.toAccountId);
+          if (resolvedExisting.toAccountId) {
+            const acc = accountDocs.get(resolvedExisting.toAccountId);
             if (acc) acc.data.balance = (acc.data.balance || 0) - oldAmt;
           }
         }
@@ -470,6 +485,19 @@ export async function saveTransactionAtomic(
       t.set(txnRef, payload);
     });
 
+    // Mirror to local cache immediately on commit
+    const localTxns = getCached<Transaction[]>(cacheKey, []);
+    const payload: Transaction = {
+      ...txnData,
+      id: txnId,
+      timestamp: txnData.timestamp || Date.now(),
+      amount: Number(txnData.amount) || 0
+    };
+    const updatedTxns = localTxns.some(t => t.id === txnId)
+      ? localTxns.map(t => t.id === txnId ? payload : t)
+      : [payload, ...localTxns];
+    setCached(cacheKey, updatedTxns);
+
     return txnId;
   } catch (err) {
     console.error('Atomic transaction failed on Firestore, writing to user local cache fallback:', err);
@@ -480,7 +508,7 @@ export async function saveTransactionAtomic(
       timestamp: txnData.timestamp || Date.now(),
       amount: Number(txnData.amount) || 0
     };
-    const updated = existingTxn 
+    const updated = resolvedExisting 
       ? localTxns.map(t => t.id === txnId ? payload : t)
       : [payload, ...localTxns];
     setCached(cacheKey, updated);

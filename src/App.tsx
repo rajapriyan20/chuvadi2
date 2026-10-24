@@ -40,7 +40,8 @@ import {
   clearLocalCache,
   loginWithGoogle,
   logoutUser,
-  subscribeAuth
+  subscribeAuth,
+  createDocId
 } from './services/firebase';
 import type { User } from 'firebase/auth';
 
@@ -82,7 +83,20 @@ import { EntityModal } from './components/modals/EntityModal';
 import { ExportModal } from './components/modals/ExportModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { NotificationSettingsModal } from './components/modals/NotificationSettingsModal';
-import { checkAndTriggerDueNotifications } from './services/notificationService';
+import { NotificationsModal } from './components/modals/NotificationsModal';
+import { 
+  checkAndTriggerDueNotifications,
+  getStoredNotificationSettings,
+  getStoredNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  deleteNotification,
+  clearAllNotifications,
+  syncAndGenerateAppNotifications,
+  type NotificationSettings,
+  type AppNotification
+} from './services/notificationService';
+import { ChuvadiLogo } from './components/ChuvadiLogo';
 
 // Components & Tabs
 import { Navigation } from './components/Navigation';
@@ -126,6 +140,9 @@ export function App() {
     } else {
       setActiveTab(tab);
     }
+    try {
+      window.history.pushState({ tab, modal: null }, '', window.location.href);
+    } catch {}
   };
 
   // Auth & Network State
@@ -204,6 +221,218 @@ export function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
+  const [isNotificationsListOpen, setIsNotificationsListOpen] = useState(false);
+
+  // Notifications State & Settings
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => getStoredNotificationSettings());
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>(() => getStoredNotifications());
+
+  // Back Button Navigation & Exit State
+  const [showExitToast, setShowExitToast] = useState(false);
+  const [isAppClosed, setIsAppClosed] = useState(false);
+
+  const activeTabRef = React.useRef<ActiveTab>(activeTab);
+  activeTabRef.current = activeTab;
+
+  const lastBackPressTimeRef = React.useRef<number>(0);
+  const exitToastTimerRef = React.useRef<any>(null);
+
+  // Helper to close whichever modal/drawer is open
+  const closeOpenModalOrDrawer = () => {
+    if (isSideMenuOpen) {
+      setIsSideMenuOpen(false);
+      return true;
+    }
+    if (isNotificationsListOpen) {
+      setIsNotificationsListOpen(false);
+      return true;
+    }
+    if (isNotificationSettingsOpen) {
+      setIsNotificationSettingsOpen(false);
+      return true;
+    }
+    if (isSettingsModalOpen) {
+      setIsSettingsModalOpen(false);
+      return true;
+    }
+    if (isExportModalOpen) {
+      setIsExportModalOpen(false);
+      return true;
+    }
+    if (isEntityModalOpen) {
+      setIsEntityModalOpen(false);
+      return true;
+    }
+    if (isTodoModalOpen) {
+      setIsTodoModalOpen(false);
+      setEditingTodo(null);
+      return true;
+    }
+    if (isServiceLogModalOpen) {
+      setIsServiceLogModalOpen(false);
+      setEditingServiceLog(null);
+      return true;
+    }
+    if (isVehicleModalOpen) {
+      setIsVehicleModalOpen(false);
+      setEditingVehicle(null);
+      return true;
+    }
+    if (isPassbookOpen) {
+      setIsPassbookOpen(false);
+      setPassbookAccount(null);
+      return true;
+    }
+    if (isAccountModalOpen) {
+      setIsAccountModalOpen(false);
+      setEditingAccount(null);
+      return true;
+    }
+    if (isTxnModalOpen) {
+      setIsTxnModalOpen(false);
+      setEditingTxn(null);
+      return true;
+    }
+    return false;
+  };
+  const closeOpenModalOrDrawerRef = React.useRef(closeOpenModalOrDrawer);
+  closeOpenModalOrDrawerRef.current = closeOpenModalOrDrawer;
+
+  const handleCloseApp = () => {
+    try {
+      window.close();
+    } catch {}
+    setIsAppClosed(true);
+  };
+  const handleCloseAppRef = React.useRef(handleCloseApp);
+  handleCloseAppRef.current = handleCloseApp;
+
+  const handleCloseAppClick = () => {
+    const now = Date.now();
+    if (now - lastBackPressTimeRef.current < 2500) {
+      handleCloseApp();
+    } else {
+      lastBackPressTimeRef.current = now;
+      setShowExitToast(true);
+      if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
+      exitToastTimerRef.current = setTimeout(() => {
+        setShowExitToast(false);
+      }, 2500);
+    }
+  };
+
+  // Intercept Device / Browser Back Button (popstate)
+  useEffect(() => {
+    try {
+      window.history.replaceState({ tab: 'dashboard', modal: null }, '', window.location.href);
+    } catch {}
+
+    const handlePopState = () => {
+      // 1. If any modal or drawer is open, close it!
+      if (closeOpenModalOrDrawerRef.current()) {
+        try {
+          window.history.pushState({ tab: activeTabRef.current, modal: null }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 2. If not on dashboard, navigate to dashboard!
+      if (activeTabRef.current !== 'dashboard') {
+        setActiveTab('dashboard');
+        try {
+          window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 3. User is already on Dashboard and no modal is open -> Double back to exit!
+      const now = Date.now();
+      if (now - lastBackPressTimeRef.current < 2500) {
+        handleCloseAppRef.current();
+      } else {
+        lastBackPressTimeRef.current = now;
+        setShowExitToast(true);
+        if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
+        exitToastTimerRef.current = setTimeout(() => {
+          setShowExitToast(false);
+        }, 2500);
+        try {
+          window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+        } catch {}
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (exitToastTimerRef.current) clearTimeout(exitToastTimerRef.current);
+    };
+  }, []);
+
+  // Synchronize In-App Notifications with user data
+  useEffect(() => {
+    if (notificationSettings.enabled) {
+      const generated = syncAndGenerateAppNotifications({
+        vehicles,
+        todos,
+        calendarEvents,
+        bodyProfileLogs,
+        menstrualLogs,
+        transactions
+      });
+      setAppNotifications(generated);
+    }
+  }, [vehicles, todos, calendarEvents, bodyProfileLogs, menstrualLogs, transactions, notificationSettings.enabled]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    if (!notificationSettings.enabled) return 0;
+    return appNotifications.filter(n => !n.read).length;
+  }, [notificationSettings.enabled, appNotifications]);
+
+  const handleMarkNotificationAsRead = (id: string) => {
+    const updated = markNotificationAsRead(id);
+    setAppNotifications(updated);
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    const updated = markAllNotificationsAsRead();
+    setAppNotifications(updated);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    const updated = deleteNotification(id);
+    setAppNotifications(updated);
+  };
+
+  const handleClearAllNotifications = () => {
+    const updated = clearAllNotifications();
+    setAppNotifications(updated);
+  };
+
+  const handleNotificationSettingsUpdated = () => {
+    const fresh = getStoredNotificationSettings();
+    setNotificationSettings(fresh);
+    if (fresh.enabled) {
+      const generated = syncAndGenerateAppNotifications({
+        vehicles,
+        todos,
+        calendarEvents,
+        bodyProfileLogs,
+        menstrualLogs,
+        transactions
+      });
+      setAppNotifications(generated);
+    }
+    checkAndTriggerDueNotifications({
+      vehicles,
+      vehicleLogs,
+      todos,
+      calendarEvents,
+      bodyProfileLogs,
+      menstrualLogs,
+      menstrualSettings
+    });
+  };
 
   // Check and trigger due local notifications based on user's configured frequency & alert rules
   useEffect(() => {
@@ -344,191 +573,219 @@ export function App() {
 
   // Transaction Handlers (ATOMIC FIRESTORE TRANSACTIONS when logged in, local-state when Guest)
   const handleSaveTransaction = async (txn: Omit<Transaction, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = txn.id || 'demo-txn-' + Date.now();
-      const newAmt = Number(txn.amount) || 0;
-      const existing = transactions.find(t => t.id === id);
-      const oldAmt = existing ? Number(existing.amount) || 0 : 0;
+    const id = txn.id || createDocId('transactions', user);
+    const newAmt = Number(txn.amount) || 0;
+    const existing = transactions.find(t => t.id === id);
+    const oldAmt = existing ? Number(existing.amount) || 0 : 0;
 
-      const payload: Transaction = {
-        ...txn,
-        id,
-        timestamp: txn.timestamp || Date.now(),
-        amount: newAmt
-      };
+    const payload: Transaction = {
+      ...txn,
+      id,
+      timestamp: txn.timestamp || Date.now(),
+      amount: newAmt
+    };
 
-      setTransactions(prev => {
-        const idx = prev.findIndex(t => t.id === id);
-        return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
-      });
+    // Immediate optimistic update of transactions
+    setTransactions(prev => {
+      const idx = prev.findIndex(t => t.id === id);
+      return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
+    });
 
-      // Update account balances locally in Guest Mode
-      setAccounts(prev => prev.map(acc => {
-        let bal = acc.balance;
-        if (existing) {
-          if (existing.type === 'EXPENSE' && existing.fromAccountId === acc.id) bal += oldAmt;
-          if (existing.type === 'INCOME' && existing.toAccountId === acc.id) bal -= oldAmt;
-          if (existing.type === 'TRANSFER') {
-            if (existing.fromAccountId === acc.id) bal += oldAmt;
-            if (existing.toAccountId === acc.id) bal -= oldAmt;
-          }
+    // Immediate optimistic update of account balances
+    setAccounts(prev => prev.map(acc => {
+      let bal = acc.balance;
+      if (existing) {
+        if (existing.type === 'EXPENSE' && existing.fromAccountId === acc.id) bal += oldAmt;
+        if (existing.type === 'INCOME' && existing.toAccountId === acc.id) bal -= oldAmt;
+        if (existing.type === 'TRANSFER') {
+          if (existing.fromAccountId === acc.id) bal += oldAmt;
+          if (existing.toAccountId === acc.id) bal -= oldAmt;
         }
-        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal -= newAmt;
-        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal += newAmt;
-        if (txn.type === 'TRANSFER') {
-          if (txn.fromAccountId === acc.id) bal -= newAmt;
-          if (txn.toAccountId === acc.id) bal += newAmt;
-        }
-        return { ...acc, balance: bal, updatedAt: Date.now() };
-      }));
-
-      // Update vehicle odometer if higher
-      if (txn.vehicleId && txn.odometer) {
-        setVehicles(prev => prev.map(v => 
-          v.id === txn.vehicleId && txn.odometer! > v.currentOdometer
-            ? { ...v, currentOdometer: txn.odometer! }
-            : v
-        ));
       }
-
-      if (pendingEmailImportId) {
-        markEmailAsAdded(pendingEmailImportId, id, 'guest');
-        setPendingEmailImportId(null);
+      if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal -= newAmt;
+      if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal += newAmt;
+      if (txn.type === 'TRANSFER') {
+        if (txn.fromAccountId === acc.id) bal -= newAmt;
+        if (txn.toAccountId === acc.id) bal += newAmt;
       }
-      return;
+      return { ...acc, balance: bal, updatedAt: Date.now() };
+    }));
+
+    // Update vehicle odometer if higher
+    if (txn.vehicleId && txn.odometer) {
+      setVehicles(prev => prev.map(v => 
+        v.id === txn.vehicleId && txn.odometer! > v.currentOdometer
+          ? { ...v, currentOdometer: txn.odometer! }
+          : v
+      ));
     }
 
-    const savedId = await saveTransactionAtomic(txn);
-
     if (pendingEmailImportId) {
-      markEmailAsAdded(pendingEmailImportId, savedId, user?.email || user?.uid || (guestMode ? 'guest' : null));
+      markEmailAsAdded(pendingEmailImportId, id, user?.email || user?.uid || (guestMode ? 'guest' : null));
       setPendingEmailImportId(null);
     }
 
-    // If transaction had a vehicle link & odometer update, sync vehicle's current odometer
-    if (txn.vehicleId && txn.odometer) {
-      const veh = vehicles.find(v => v.id === txn.vehicleId);
-      if (veh && txn.odometer > veh.currentOdometer) {
-        await saveVehicle({ ...veh, currentOdometer: txn.odometer });
+    if (guestMode && !user) {
+      return;
+    }
+
+    try {
+      await saveTransactionAtomic(payload, existing, user);
+      if (txn.vehicleId && txn.odometer) {
+        const veh = vehicles.find(v => v.id === txn.vehicleId);
+        if (veh && txn.odometer > veh.currentOdometer) {
+          await saveVehicle({ ...veh, currentOdometer: txn.odometer }, user);
+        }
       }
+    } catch (err) {
+      console.error('Error committing atomic transaction:', err);
     }
   };
 
   const handleDeleteTransaction = async (txn: Transaction) => {
+    // Immediate optimistic update
+    setTransactions(prev => prev.filter(t => t.id !== txn.id));
+    const amt = Number(txn.amount) || 0;
+    setAccounts(prev => prev.map(acc => {
+      let bal = acc.balance;
+      if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal += amt;
+      if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal -= amt;
+      if (txn.type === 'TRANSFER') {
+        if (txn.fromAccountId === acc.id) bal += amt;
+        if (txn.toAccountId === acc.id) bal += amt;
+      }
+      return { ...acc, balance: bal, updatedAt: Date.now() };
+    }));
+
     if (guestMode && !user) {
-      setTransactions(prev => prev.filter(t => t.id !== txn.id));
-      const amt = Number(txn.amount) || 0;
-      setAccounts(prev => prev.map(acc => {
-        let bal = acc.balance;
-        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal += amt;
-        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal -= amt;
-        if (txn.type === 'TRANSFER') {
-          if (txn.fromAccountId === acc.id) bal += amt;
-          if (txn.toAccountId === acc.id) bal += amt;
-        }
-        return { ...acc, balance: bal, updatedAt: Date.now() };
-      }));
       return;
     }
 
-    await deleteTransactionAtomic(txn);
+    try {
+      await deleteTransactionAtomic(txn, user);
+    } catch (err) {
+      console.error('Error deleting transaction atomically:', err);
+    }
   };
 
   // Account Operations
   const handleSaveAccount = async (acc: Omit<Account, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = acc.id || 'demo-acc-' + Date.now();
-      const payload: Account = { ...acc, id, updatedAt: Date.now() };
-      setAccounts(prev => {
-        const idx = prev.findIndex(a => a.id === id);
-        return idx >= 0 ? prev.map(a => a.id === id ? payload : a) : [...prev, payload];
-      });
-      return;
+    const id = acc.id || createDocId('accounts', user);
+    const payload: Account = { ...acc, id, updatedAt: Date.now() };
+    setAccounts(prev => {
+      const idx = prev.findIndex(a => a.id === id);
+      return idx >= 0 ? prev.map(a => a.id === id ? payload : a) : [...prev, payload];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveAccount(payload, user);
+    } catch (err) {
+      console.error('Error saving account:', err);
     }
-    await saveAccount(acc);
   };
 
   const handleDeleteAccount = async (id: string) => {
-    if (guestMode && !user) {
-      setAccounts(prev => prev.filter(a => a.id !== id));
-      return;
+    setAccounts(prev => prev.filter(a => a.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteAccount(id, user);
+    } catch (err) {
+      console.error('Error deleting account:', err);
     }
-    await deleteAccount(id);
   };
 
   // Vehicle Operations
   const handleSaveVehicle = async (veh: Omit<Vehicle, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = veh.id || 'demo-veh-' + Date.now();
-      const payload: Vehicle = { ...veh, id, currentOdometer: Number(veh.currentOdometer) || 0 };
-      setVehicles(prev => {
-        const idx = prev.findIndex(v => v.id === id);
-        return idx >= 0 ? prev.map(v => v.id === id ? payload : v) : [...prev, payload];
-      });
-      return;
+    const id = veh.id || createDocId('vehicles', user);
+    const payload: Vehicle = { ...veh, id, currentOdometer: Number(veh.currentOdometer) || 0 };
+    setVehicles(prev => {
+      const idx = prev.findIndex(v => v.id === id);
+      return idx >= 0 ? prev.map(v => v.id === id ? payload : v) : [...prev, payload];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveVehicle(payload, user);
+    } catch (err) {
+      console.error('Error saving vehicle:', err);
     }
-    await saveVehicle(veh);
   };
 
   const handleDeleteVehicle = async (id: string) => {
-    if (guestMode && !user) {
-      setVehicles(prev => prev.filter(v => v.id !== id));
-      return;
+    setVehicles(prev => prev.filter(v => v.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteVehicle(id, user);
+    } catch (err) {
+      console.error('Error deleting vehicle:', err);
     }
-    await deleteVehicle(id);
   };
 
   // Vehicle Logs
   const handleSaveVehicleLog = async (log: Omit<VehicleLog, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = log.id || 'demo-log-' + Date.now();
-      const payload: VehicleLog = {
-        ...log,
-        id,
-        timestamp: log.timestamp || Date.now(),
-        cost: Number(log.cost) || 0,
-        odometer: Number(log.odometer) || 0
-      };
-      setVehicleLogs(prev => {
-        const idx = prev.findIndex(l => l.id === id);
-        return idx >= 0 ? prev.map(l => l.id === id ? payload : l) : [payload, ...prev];
-      });
-      if (payload.vehicleId && payload.odometer) {
-        setVehicles(prev => prev.map(v => 
-          v.id === payload.vehicleId && payload.odometer > v.currentOdometer 
-            ? { ...v, currentOdometer: payload.odometer } 
-            : v
-        ));
-      }
-      return;
+    const id = log.id || createDocId('vehicle_logs', user);
+    const payload: VehicleLog = {
+      ...log,
+      id,
+      timestamp: log.timestamp || Date.now(),
+      cost: Number(log.cost) || 0,
+      odometer: Number(log.odometer) || 0
+    };
+    setVehicleLogs(prev => {
+      const idx = prev.findIndex(l => l.id === id);
+      return idx >= 0 ? prev.map(l => l.id === id ? payload : l) : [payload, ...prev];
+    });
+    if (payload.vehicleId && payload.odometer) {
+      setVehicles(prev => prev.map(v => 
+        v.id === payload.vehicleId && payload.odometer > v.currentOdometer 
+          ? { ...v, currentOdometer: payload.odometer } 
+          : v
+      ));
     }
-    await saveVehicleLog(log);
-    const vehicle = vehicles.find(v => v.id === log.vehicleId);
-    if (vehicle && log.odometer && log.odometer > vehicle.currentOdometer) {
-      await saveVehicle({ ...vehicle, currentOdometer: log.odometer });
+
+    if (guestMode && !user) return;
+    try {
+      await saveVehicleLog(payload, user);
+      const vehicle = vehicles.find(v => v.id === log.vehicleId);
+      if (vehicle && log.odometer && log.odometer > vehicle.currentOdometer) {
+        await saveVehicle({ ...vehicle, currentOdometer: log.odometer }, user);
+      }
+    } catch (err) {
+      console.error('Error saving vehicle log:', err);
     }
   };
 
   // Todo Note Handlers
   const handleSaveTodo = async (todo: Omit<TodoNote, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = todo.id || 'demo-todo-' + Date.now();
-      const payload: TodoNote = { ...todo, id, updatedAt: Date.now() };
-      setTodos(prev => {
-        const idx = prev.findIndex(t => t.id === id);
-        return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
-      });
-      return;
+    const id = todo.id || createDocId('todos', user);
+    const payload: TodoNote = {
+      ...todo,
+      id,
+      createdAt: todo.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+    setTodos(prev => {
+      const idx = prev.findIndex(t => t.id === id);
+      return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveTodo(payload, user);
+    } catch (err) {
+      console.error('Error saving todo note:', err);
     }
-    await saveTodo(todo);
   };
 
   const handleDeleteTodo = async (id: string) => {
-    if (guestMode && !user) {
-      setTodos(prev => prev.filter(t => t.id !== id));
-      return;
+    setTodos(prev => prev.filter(t => t.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteTodo(id, user);
+    } catch (err) {
+      console.error('Error deleting todo note:', err);
     }
-    await deleteTodo(id);
   };
 
   const handleToggleTodoItem = async (noteId: string, itemId: string) => {
@@ -538,17 +795,20 @@ export function App() {
     const updatedItems = note.items.map(it => 
       it.id === itemId ? { ...it, completed: !it.completed } : it
     );
-
-    if (guestMode && !user) {
-      setTodos(prev => prev.map(t => t.id === noteId ? { ...t, items: updatedItems, updatedAt: Date.now() } : t));
-      return;
-    }
-
-    await saveTodo({
+    const updatedNote: TodoNote = {
       ...note,
       items: updatedItems,
       updatedAt: Date.now()
-    });
+    };
+
+    setTodos(prev => prev.map(t => t.id === noteId ? updatedNote : t));
+
+    if (guestMode && !user) return;
+    try {
+      await saveTodo(updatedNote, user);
+    } catch (err) {
+      console.error('Error updating todo checklist item:', err);
+    }
   };
 
   const handleUpdateTodoItemDate = async (noteId: string, itemId: string, date: string) => {
@@ -558,73 +818,91 @@ export function App() {
     const updatedItems = note.items.map(it => 
       it.id === itemId ? { ...it, date: date ? date : undefined } : it
     );
-
-    if (guestMode && !user) {
-      setTodos(prev => prev.map(t => t.id === noteId ? { ...t, items: updatedItems, updatedAt: Date.now() } : t));
-      return;
-    }
-
-    await saveTodo({
+    const updatedNote: TodoNote = {
       ...note,
       items: updatedItems,
       updatedAt: Date.now()
-    });
+    };
+
+    setTodos(prev => prev.map(t => t.id === noteId ? updatedNote : t));
+
+    if (guestMode && !user) return;
+    try {
+      await saveTodo(updatedNote, user);
+    } catch (err) {
+      console.error('Error updating todo item date:', err);
+    }
   };
 
   const handleTogglePin = async (todo: TodoNote) => {
-    if (guestMode && !user) {
-      setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, pinned: !t.pinned, updatedAt: Date.now() } : t));
-      return;
-    }
-    await saveTodo({
+    const updatedNote: TodoNote = {
       ...todo,
       pinned: !todo.pinned,
       updatedAt: Date.now()
-    });
+    };
+
+    setTodos(prev => prev.map(t => t.id === todo.id ? updatedNote : t));
+
+    if (guestMode && !user) return;
+    try {
+      await saveTodo(updatedNote, user);
+    } catch (err) {
+      console.error('Error toggling pin:', err);
+    }
   };
 
   // Entity Handlers
   const handleSaveEntity = async (entity: Omit<Entity, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = entity.id || 'demo-ent-' + Date.now();
-      const payload: Entity = { ...entity, id, amount: Number(entity.amount) || 0 };
-      setEntities(prev => {
-        const idx = prev.findIndex(e => e.id === id);
-        return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
-      });
-      return;
+    const id = entity.id || createDocId('receivables_payables', user);
+    const payload: Entity = { ...entity, id, amount: Number(entity.amount) || 0 };
+    setEntities(prev => {
+      const idx = prev.findIndex(e => e.id === id);
+      return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveEntity(payload, user);
+    } catch (err) {
+      console.error('Error saving entity:', err);
     }
-    await saveEntity(entity);
   };
 
   const handleDeleteEntity = async (id: string) => {
-    if (guestMode && !user) {
-      setEntities(prev => prev.filter(e => e.id !== id));
-      return;
+    setEntities(prev => prev.filter(e => e.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteEntity(id, user);
+    } catch (err) {
+      console.error('Error deleting entity:', err);
     }
-    await deleteEntity(id);
   };
 
   // Exercise Log Handlers
   const handleSaveExerciseLog = async (log: Omit<ExerciseLog, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = log.id || 'demo-ex-' + Date.now();
-      const payload: ExerciseLog = { ...log, id, updatedAt: Date.now() };
-      setExerciseLogs(prev => {
-        const idx = prev.findIndex(e => e.id === id);
-        return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
-      });
-      return;
+    const id = log.id || createDocId('exercise_logs', user);
+    const payload: ExerciseLog = { ...log, id, updatedAt: Date.now() };
+    setExerciseLogs(prev => {
+      const idx = prev.findIndex(e => e.id === id);
+      return idx >= 0 ? prev.map(e => e.id === id ? payload : e) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveExerciseLog(payload, user);
+    } catch (err) {
+      console.error('Error saving exercise log:', err);
     }
-    await saveExerciseLog(log, user);
   };
 
   const handleDeleteExerciseLog = async (id: string) => {
-    if (guestMode && !user) {
-      setExerciseLogs(prev => prev.filter(e => e.id !== id));
-      return;
+    setExerciseLogs(prev => prev.filter(e => e.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteExerciseLog(id, user);
+    } catch (err) {
+      console.error('Error deleting exercise log:', err);
     }
-    await deleteExerciseLog(id, user);
   };
 
   // Monthly Body Profile Handlers (Requirement 6)
@@ -671,67 +949,82 @@ export function App() {
 
   // Calendar Event Handlers
   const handleSaveCalendarEvent = async (event: Omit<CalendarEvent, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = event.id || 'demo-cal-' + Date.now();
-      const payload: CalendarEvent = { ...event, id, updatedAt: Date.now() };
-      setCalendarEvents(prev => {
-        const idx = prev.findIndex(c => c.id === id);
-        return idx >= 0 ? prev.map(c => c.id === id ? payload : c) : [...prev, payload];
-      });
-      return;
+    const id = event.id || createDocId('calendar_events', user);
+    const payload: CalendarEvent = { ...event, id, updatedAt: Date.now() };
+    setCalendarEvents(prev => {
+      const idx = prev.findIndex(c => c.id === id);
+      return idx >= 0 ? prev.map(c => c.id === id ? payload : c) : [...prev, payload];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveCalendarEvent(payload, user);
+    } catch (err) {
+      console.error('Error saving calendar event:', err);
     }
-    await saveCalendarEvent(event, user);
   };
 
   const handleDeleteCalendarEvent = async (id: string) => {
-    if (guestMode && !user) {
-      setCalendarEvents(prev => prev.filter(c => c.id !== id));
-      return;
+    setCalendarEvents(prev => prev.filter(c => c.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteCalendarEvent(id, user);
+    } catch (err) {
+      console.error('Error deleting calendar event:', err);
     }
-    await deleteCalendarEvent(id, user);
   };
 
   // Menstrual Tracker Handlers
   const handleSaveMenstrualLog = async (log: Omit<MenstrualLog, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = log.id || 'demo-mlog-' + Date.now();
-      const payload: MenstrualLog = { ...log, id, updatedAt: Date.now() };
-      setMenstrualLogs(prev => {
-        const idx = prev.findIndex(m => m.id === id);
-        return idx >= 0 ? prev.map(m => m.id === id ? payload : m) : [payload, ...prev];
-      });
-      return;
+    const id = log.id || createDocId('menstrual_logs', user);
+    const payload: MenstrualLog = { ...log, id, updatedAt: Date.now() };
+    setMenstrualLogs(prev => {
+      const idx = prev.findIndex(m => m.id === id);
+      return idx >= 0 ? prev.map(m => m.id === id ? payload : m) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveMenstrualLog(payload, user);
+    } catch (err) {
+      console.error('Error saving menstrual log:', err);
     }
-    await saveMenstrualLog(log, user);
   };
 
   const handleDeleteMenstrualLog = async (id: string) => {
-    if (guestMode && !user) {
-      setMenstrualLogs(prev => prev.filter(m => m.id !== id));
-      return;
+    setMenstrualLogs(prev => prev.filter(m => m.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteMenstrualLog(id, user);
+    } catch (err) {
+      console.error('Error deleting menstrual log:', err);
     }
-    await deleteMenstrualLog(id, user);
   };
 
   const handleSaveMenstrualPeriod = async (period: Omit<MenstrualPeriodRecord, 'id'> & { id?: string }) => {
-    if (guestMode && !user) {
-      const id = period.id || 'demo-period-' + Date.now();
-      const payload: MenstrualPeriodRecord = { ...period, id };
-      setMenstrualPeriods(prev => {
-        const idx = prev.findIndex(p => p.id === id);
-        return idx >= 0 ? prev.map(p => p.id === id ? payload : p) : [payload, ...prev];
-      });
-      return;
+    const id = period.id || createDocId('menstrual_periods', user);
+    const payload: MenstrualPeriodRecord = { ...period, id };
+    setMenstrualPeriods(prev => {
+      const idx = prev.findIndex(p => p.id === id);
+      return idx >= 0 ? prev.map(p => p.id === id ? payload : p) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveMenstrualPeriod(payload, user);
+    } catch (err) {
+      console.error('Error saving menstrual period:', err);
     }
-    await saveMenstrualPeriod(period, user);
   };
 
   const handleDeleteMenstrualPeriod = async (id: string) => {
-    if (guestMode && !user) {
-      setMenstrualPeriods(prev => prev.filter(p => p.id !== id));
-      return;
+    setMenstrualPeriods(prev => prev.filter(p => p.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteMenstrualPeriod(id, user);
+    } catch (err) {
+      console.error('Error deleting menstrual period:', err);
     }
-    await deleteMenstrualPeriod(id, user);
   };
 
   const handleSaveMenstrualSettings = async (newSettings: MenstrualCycleSettings) => {
@@ -851,6 +1144,30 @@ export function App() {
     sessionStorage.setItem('chuvadi_guest_mode', 'true');
   };
 
+  // If app was closed by user
+  if (isAppClosed) {
+    return (
+      <div className="min-h-screen bg-[#0a0d12] flex flex-col items-center justify-center p-6 text-center animate-fadeIn selection:bg-amber-500 selection:text-slate-950">
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4 shadow-xl">
+          <ChuvadiLogo size={42} />
+        </div>
+        <h1 className="text-xl font-bold text-white mb-2 tracking-tight">Chuvadi Closed</h1>
+        <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+          You have exited the application. You can safely close this browser tab, or tap below to reopen your Life OS.
+        </p>
+        <button
+          onClick={() => {
+            setIsAppClosed(false);
+            setActiveTab('dashboard');
+          }}
+          className="px-6 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition active:scale-95 shadow-lg shadow-amber-500/20 cursor-pointer"
+        >
+          Reopen Chuvadi
+        </button>
+      </div>
+    );
+  }
+
   // 1. Loading screen while Firebase Auth initializes
   if (!authInitialized) {
     return (
@@ -888,19 +1205,24 @@ export function App() {
         user={user}
         isOnline={isOnline}
         isGuestMode={isCurrentGuest}
+        activeTab={activeTab}
+        onBackToDashboard={() => handleSelectTab('dashboard')}
+        onCloseApp={handleCloseAppClick}
         onOpenQuickAdd={() => {
           setEditingTxn(null);
           setIsTxnModalOpen(true);
         }}
-        onOpenAi={() => setActiveTab('ai')}
+        onOpenAi={() => handleSelectTab('ai')}
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+        onOpenNotifications={() => setIsNotificationsListOpen(true)}
+        notificationsEnabled={notificationSettings.enabled}
         onLogin={loginWithGoogle}
         onLogout={handleLogout}
         onExitGuestMode={handleExitGuestMode}
         onToggleSideMenu={() => setIsSideMenuOpen(prev => !prev)}
-        unreadNotificationsCount={renewalsCount + pendingTodosCount}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
 
       {/* Open-Closable Side Navigation Menu */}
@@ -921,6 +1243,9 @@ export function App() {
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+        onOpenNotifications={() => setIsNotificationsListOpen(true)}
+        notificationsEnabled={notificationSettings.enabled}
+        unreadNotificationsCount={unreadNotificationsCount}
         tabVisibility={tabVisibility}
       />
 
@@ -1288,26 +1613,42 @@ export function App() {
       <NotificationSettingsModal
         isOpen={isNotificationSettingsOpen}
         onClose={() => setIsNotificationSettingsOpen(false)}
-        onSettingsUpdated={() => {
-          checkAndTriggerDueNotifications({
-            vehicles,
-            vehicleLogs,
-            todos,
-            calendarEvents,
-            bodyProfileLogs,
-            menstrualLogs,
-            menstrualSettings
-          });
-        }}
+        onSettingsUpdated={handleNotificationSettingsUpdated}
       />
 
-      {/* 11. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
+      {/* 11. In-App Notifications Tray Modal with Mark as Read */}
+      <NotificationsModal
+        isOpen={isNotificationsListOpen}
+        onClose={() => setIsNotificationsListOpen(false)}
+        notifications={appNotifications}
+        onMarkAsRead={handleMarkNotificationAsRead}
+        onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+        onDeleteNotification={handleDeleteNotification}
+        onClearAll={handleClearAllNotifications}
+        onOpenSettings={() => {
+          setIsNotificationsListOpen(false);
+          setIsNotificationSettingsOpen(true);
+        }}
+        onSelectTab={handleSelectTab}
+      />
+
+      {/* 12. Floating Double-Back / Close App Toast */}
+      {showExitToast && (
+        <div className="fixed bottom-16 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-none">
+          <div className="px-4 py-2.5 rounded-2xl bg-slate-900/95 border border-amber-500/40 text-amber-200 text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>Press back or close again to exit Chuvadi</span>
+          </div>
+        </div>
+      )}
+
+      {/* 13. Native PWA Install Banner (Triggered only when beforeinstallprompt is detected) */}
       <PWAInstallBanner />
 
-      {/* 12. Daily Floating 5-Second Install Toast (Only in browser mode, once a day) */}
+      {/* 14. Daily Floating 5-Second Install Toast (Only in browser mode, once a day) */}
       <DailyInstallToast />
 
-      {/* 13. Guest Mode Floating Overlay Action Pill */}
+      {/* 15. Guest Mode Floating Overlay Action Pill */}
       {isCurrentGuest && (
         <GuestModeOverlay 
           onExitGuestMode={handleExitGuestMode}

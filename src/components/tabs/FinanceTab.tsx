@@ -313,6 +313,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         transactions={transactions}
         accounts={accounts}
         vehicles={vehicles}
+        onSelectTxn={onSelectTxn}
       />
     </div>
   )}

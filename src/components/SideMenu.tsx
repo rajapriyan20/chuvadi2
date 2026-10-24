@@ -41,6 +41,9 @@ interface SideMenuProps {
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
   onOpenNotificationSettings?: () => void;
+  onOpenNotifications?: () => void;
+  notificationsEnabled?: boolean;
+  unreadNotificationsCount?: number;
   tabVisibility?: TabVisibilityMap;
 }
 
@@ -58,6 +61,9 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   onOpenExport,
   onOpenSettings,
   onOpenNotificationSettings,
+  onOpenNotifications,
+  notificationsEnabled = false,
+  unreadNotificationsCount = 0,
   tabVisibility
 }) => {
   const menuItems = [
@@ -236,17 +242,31 @@ export const SideMenu: React.FC<SideMenuProps> = ({
 
         {/* Quick Utility Bottom Section - ALWAYS visible & pinned without scrolling */}
         <div className="p-2.5 sm:p-3 border-t border-slate-800/80 bg-[#10151d] space-y-1.5 sm:space-y-2 shrink-0 mt-auto shadow-2xl">
-          {onOpenNotificationSettings && (
+          {(onOpenNotificationSettings || onOpenNotifications) && (
             <button
               id="sidemenu-notifications-btn"
               onClick={() => {
-                onOpenNotificationSettings();
                 onClose();
+                if (notificationsEnabled) {
+                  if (onOpenNotifications) onOpenNotifications();
+                  else if (onOpenNotificationSettings) onOpenNotificationSettings();
+                } else {
+                  if (onOpenNotificationSettings) onOpenNotificationSettings();
+                }
               }}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#151d28] hover:bg-[#1a2432] text-amber-300 text-xs font-semibold border border-amber-500/25 transition active:scale-95 cursor-pointer shadow-sm"
+              className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-[#151d28] hover:bg-[#1a2432] text-amber-300 text-xs font-semibold border border-amber-500/25 transition active:scale-95 cursor-pointer shadow-sm"
             >
-              <Bell size={13} className="text-amber-400" />
-              <span>Notification Settings</span>
+              <div className="flex items-center gap-2">
+                <Bell size={14} className="text-amber-400" />
+                <span>{notificationsEnabled ? 'Notifications' : 'Notification Settings'}</span>
+              </div>
+              {notificationsEnabled && unreadNotificationsCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px]">
+                  {unreadNotificationsCount} unread
+                </span>
+              ) : !notificationsEnabled ? (
+                <span className="text-[10px] text-amber-400/80 font-normal">Setup</span>
+              ) : null}
             </button>
           )}
 

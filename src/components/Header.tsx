@@ -14,6 +14,7 @@ import { WhatsAppLogo } from './common/WhatsAppLogo';
 import { LogoModal } from './common/LogoModal';
 import { LogoutConfirmModal } from './modals/LogoutConfirmModal';
 import type { User } from 'firebase/auth';
+import type { ActiveTab } from '../types';
 
 interface HeaderProps {
   totalNetWorth: number;
@@ -21,11 +22,16 @@ interface HeaderProps {
   user: User | null;
   isOnline: boolean;
   isGuestMode?: boolean;
+  activeTab?: ActiveTab;
+  onBackToDashboard?: () => void;
+  onCloseApp?: () => void;
   onOpenQuickAdd?: () => void;
   onOpenAi: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
   onOpenNotificationSettings?: () => void;
+  onOpenNotifications?: () => void;
+  notificationsEnabled?: boolean;
   onLogin: () => void;
   onLogout: () => void;
   onExitGuestMode?: () => void;
@@ -39,11 +45,16 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   isOnline,
   isGuestMode = false,
+  activeTab = 'dashboard',
+  onBackToDashboard,
+  onCloseApp,
   onOpenQuickAdd,
   onOpenAi,
   onOpenExport,
   onOpenSettings,
   onOpenNotificationSettings,
+  onOpenNotifications,
+  notificationsEnabled = false,
   onLogin,
   onLogout,
   onExitGuestMode,
@@ -88,6 +99,17 @@ export const Header: React.FC<HeaderProps> = ({
       setIsSigningIn(false);
     }
   };
+
+  const handleBellClick = () => {
+    if (!notificationsEnabled) {
+      if (onOpenNotificationSettings) onOpenNotificationSettings();
+    } else {
+      if (onOpenNotifications) onOpenNotifications();
+      else if (onOpenNotificationSettings) onOpenNotificationSettings();
+    }
+  };
+
+  const isNotDashboard = activeTab !== 'dashboard';
 
   return (
     <header className="sticky top-0 z-30 transition-colors">
@@ -149,20 +171,35 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Main Header Bar */}
       <div className="bg-[#0d1218]/95 backdrop-blur-md border-b border-amber-950/20 px-3 sm:px-6 lg:px-8 py-2.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
-          {/* Hamburger Menu Trigger & Logo */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Hamburger Menu Trigger, Back Button & Logo */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             <button
               id="header-side-menu-trigger-btn"
               onClick={onToggleSideMenu}
-              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-400 hover:text-amber-300 border border-slate-800 transition active:scale-95 relative"
+              className="p-2 rounded-xl bg-[#161c24] hover:bg-slate-800 text-amber-400 hover:text-amber-300 border border-slate-800 transition active:scale-95 relative cursor-pointer"
               title="Open Navigation Menu"
               aria-label="Toggle Side Menu Navigation"
             >
               <Menu size={20} />
-              {unreadNotificationsCount > 0 && (
+              {notificationsEnabled && unreadNotificationsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-[#0d1218]" />
               )}
             </button>
+
+            {/* In-App Back Button (navigates back to Dashboard when on another tab) */}
+            {isNotDashboard && onBackToDashboard && (
+              <button
+                id="header-back-btn"
+                type="button"
+                onClick={onBackToDashboard}
+                className="p-2 sm:px-2.5 sm:py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+                title="Back to Dashboard"
+                aria-label="Back to Dashboard"
+              >
+                <ArrowLeft size={18} />
+                <span className="hidden sm:inline text-xs font-bold">Dashboard</span>
+              </button>
+            )}
 
             <div className="flex items-center gap-2.5 sm:gap-3">
               {/* Clickable Logo with WhatsApp DP-style popup trigger */}
@@ -196,22 +233,40 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Action Buttons & Profile Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
-            {/* Notifications Button */}
-            {onOpenNotificationSettings && (
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Notification Bell: opens Settings if disabled, opens Notifications tray if enabled */}
+            <button
+              id="header-notifications-btn"
+              onClick={handleBellClick}
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700/60 transition active:scale-95 relative cursor-pointer"
+              title={notificationsEnabled ? "View Notifications" : "Setup Notification Settings"}
+              aria-label={notificationsEnabled ? "View Notifications" : "Setup Notification Settings"}
+            >
+              <Bell size={16} />
+              {notificationsEnabled && unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center shadow-sm">
+                  {unreadNotificationsCount}
+                </span>
+              )}
+              {!notificationsEnabled && (
+                <span 
+                  className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400/70 ring-2 ring-[#0d1218]" 
+                  title="Notifications not enabled. Tap to setup." 
+                />
+              )}
+            </button>
+
+            {/* Exit/Close App Button (when on dashboard) */}
+            {!isNotDashboard && onCloseApp && (
               <button
-                id="header-notifications-btn"
-                onClick={onOpenNotificationSettings}
-                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700/60 transition active:scale-95 relative cursor-pointer"
-                title="Notification Settings & Reminders"
-                aria-label="Notification Settings"
+                id="header-close-btn"
+                type="button"
+                onClick={onCloseApp}
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition active:scale-95 cursor-pointer"
+                title="Exit / Close App"
+                aria-label="Close App"
               >
-                <Bell size={16} />
-                {unreadNotificationsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-bold text-[9px] flex items-center justify-center shadow-sm">
-                    {unreadNotificationsCount}
-                  </span>
-                )}
+                <X size={16} />
               </button>
             )}
 

@@ -73,10 +73,14 @@ export const TodoModal: React.FC<TodoModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() && items.length === 0) return;
+    let allItems = [...items];
+    if (newItemText.trim()) {
+      allItems.push({ id: String(Date.now()), text: newItemText.trim(), completed: false });
+    }
 
     // Filter out empty items
-    const validItems = items.filter(it => it.text.trim().length > 0);
+    const validItems = allItems.filter(it => it.text.trim().length > 0);
+    if (!title.trim() && validItems.length === 0) return;
 
     setIsSaving(true);
     try {
