@@ -29,6 +29,25 @@
           e.preventDefault();
         }
       });
+
+      // Prevent pull-to-refresh swipe down in installed PWA while preserving normal scrolling
+      let pwaTouchStartY = 0;
+      window.addEventListener('touchstart', function (e) {
+        if (e.touches && e.touches.length === 1) {
+          pwaTouchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches.length === 1) {
+          const currentY = e.touches[0].clientY;
+          const deltaY = currentY - pwaTouchStartY;
+          // If at the top of the page and dragging downwards, prevent browser pull-to-refresh
+          if ((window.scrollY <= 0 || document.documentElement.scrollTop <= 0) && deltaY > 0) {
+            e.preventDefault();
+          }
+        }
+      }, { passive: false });
     </script>
     <title>Chuvadi - A Way of Life</title>
     <meta name="description" content="Personal Life OS & ledger for managing accounts, passbooks, vehicle logs, checklists, and AI-powered expense tracking." />

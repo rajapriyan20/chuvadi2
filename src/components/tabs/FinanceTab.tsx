@@ -10,7 +10,11 @@ import {
   Inbox,
   PieChart,
   ArrowUpDown,
-  Check
+  Check,
+  Filter,
+  Tag,
+  Landmark,
+  X
 } from 'lucide-react';
 import { formatCurrency, formatDate, getAllExpenseCategories } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
@@ -206,9 +210,6 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           {subTab === 'coa' && (
             <span>Categorised, Table & PowerBI Decomposition Views</span>
           )}
-          {subTab === 'transactions' && (
-            <span>Ledger History & Search</span>
-          )}
           {subTab === 'reports' && (
             <span>Visual Charts, Category Cash Flow & Analytics</span>
           )}
@@ -234,130 +235,245 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
 
       {/* View 2: Transactions Tab - Directly Starts from Transactions History */}
       {subTab === 'transactions' && (
-        <div className="space-y-4 pt-2">
-          {/* Transactions Search & Filter Bar */}
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
-                <p className="text-[11px] text-slate-400">
-                  {filteredTransactions.length} of {transactions.length} records • Sorted by {SORT_OPTIONS.find(o => o.id === sortBy)?.label}
-                </p>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {/* Sort Button with Popover */}
-                <div className="relative">
-                  <button
-                    id="transactions-sort-btn"
-                    type="button"
-                    onClick={() => setShowSortMenu(prev => !prev)}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-sm ${
-                      sortBy !== 'DATE_DESC'
-                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                        : 'bg-[#121820] hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
-                    }`}
-                    title="Change transaction sorting"
-                  >
-                    <ArrowUpDown size={14} className={sortBy !== 'DATE_DESC' ? 'text-amber-400' : 'text-slate-400'} />
-                    <span>Sort</span>
-                    <span className="text-[10px] text-amber-400/90 font-mono hidden sm:inline">
-                      ({SORT_OPTIONS.find(o => o.id === sortBy)?.label.split(':')[0]})
-                    </span>
-                  </button>
+        <div className="space-y-3 pt-1">
+          {/* Header Summary & Active Filter Tags */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400 mt-0.5">
+                <span className="font-medium text-slate-300">
+                  {filteredTransactions.length} of {transactions.length} records
+                </span>
+                <span>•</span>
+                <span className="text-amber-400 font-medium">
+                  Sorted by {SORT_OPTIONS.find(o => o.id === sortBy)?.label}
+                </span>
 
-                  {showSortMenu && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-30" 
-                        onClick={() => setShowSortMenu(false)} 
-                      />
-                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#161d26] border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 z-40 divide-y divide-slate-800/60 overflow-hidden animate-fadeIn">
-                        <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-900/40">
-                          Sort Transactions By
-                        </div>
-                        <div className="py-1">
-                          {SORT_OPTIONS.map((opt) => {
-                            const isSelected = sortBy === opt.id;
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => {
-                                  setSortBy(opt.id);
-                                  setShowSortMenu(false);
-                                }}
-                                className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-slate-800/60 transition ${
-                                  isSelected ? 'text-amber-400 font-bold bg-amber-500/10' : 'text-slate-300'
-                                }`}
-                              >
-                                <div>
-                                  <div className="text-xs">{opt.label}</div>
-                                  <div className="text-[10px] text-slate-500 font-normal">{opt.desc}</div>
-                                </div>
-                                {isSelected && <Check size={14} className="text-amber-400 shrink-0 ml-2" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  id="transactions-record-txn-btn"
-                  onClick={onOpenNewTxn}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-md"
-                >
-                  <Plus size={15} strokeWidth={2.5} />
-                  <span>Record Transaction</span>
-                </button>
+                {(searchTerm.trim() !== '' || typeFilter !== 'ALL' || categoryFilter !== 'ALL' || selectedAccountId !== 'ALL') && (
+                  <>
+                    <span>•</span>
+                    <span className="text-slate-400 font-medium">Filtered:</span>
+                    {typeFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-medium">
+                        Type: {typeFilter === 'EXPENSE' ? 'Expense' : typeFilter === 'INCOME' ? 'Income' : 'Transfer'}
+                        <button 
+                          type="button" 
+                          onClick={() => setTypeFilter('ALL')} 
+                          className="hover:text-white cursor-pointer ml-0.5"
+                          title="Remove type filter"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {categoryFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-medium">
+                        Category: {categoryFilter}
+                        <button 
+                          type="button" 
+                          onClick={() => setCategoryFilter('ALL')} 
+                          className="hover:text-white cursor-pointer ml-0.5"
+                          title="Remove category filter"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {selectedAccountId !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-medium">
+                        Account: {accounts.find(a => a.id === selectedAccountId)?.name || 'Account'}
+                        <button 
+                          type="button" 
+                          onClick={() => setSelectedAccountId('ALL')} 
+                          className="hover:text-white cursor-pointer ml-0.5"
+                          title="Remove account filter"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {searchTerm.trim() !== '' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-medium">
+                        "{searchTerm}"
+                        <button 
+                          type="button" 
+                          onClick={() => setSearchTerm('')} 
+                          className="hover:text-white cursor-pointer ml-0.5"
+                          title="Clear search"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setSearchTerm('');
+                        setTypeFilter('ALL');
+                        setCategoryFilter('ALL');
+                        setSelectedAccountId('ALL');
+                      }}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 underline font-semibold ml-1 cursor-pointer"
+                    >
+                      Clear all
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
-        {/* Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-          {/* Search */}
-          <div className="relative sm:col-span-2">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search description, category, amount..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#121820] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-            />
+            {/* Record Transaction Button */}
+            <button
+              id="transactions-record-txn-btn"
+              onClick={onOpenNewTxn}
+              className="self-start sm:self-center px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-md shrink-0 cursor-pointer"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Record Transaction</span>
+            </button>
           </div>
 
-          {/* Type Filter */}
-          <div>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="w-full bg-[#121820] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-            >
-              <option value="ALL">All Types</option>
-              <option value="EXPENSE">Expenses Only</option>
-              <option value="INCOME">Income Only</option>
-              <option value="TRANSFER">Transfers Only</option>
-            </select>
-          </div>
+          {/* Horizontally Stacked Filter & Sort Bar (Icon-first to maximize screen usage) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            {/* Search Input with Icon */}
+            <div className="relative flex-1 min-w-[130px] sm:min-w-[180px]">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#121820] border border-slate-800 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
 
-          {/* Category Filter */}
-          <div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full bg-[#121820] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-            >
-              <option value="ALL">All Categories</option>
-              {availableCategories.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            {/* Type Filter Select (Icon + compact options) */}
+            <div className="relative shrink-0">
+              <Filter size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${typeFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as any)}
+                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition ${
+                  typeFilter !== 'ALL'
+                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+                title="Filter by transaction type"
+              >
+                <option value="ALL">All Types</option>
+                <option value="EXPENSE">Expense</option>
+                <option value="INCOME">Income</option>
+                <option value="TRANSFER">Transfer</option>
+              </select>
+            </div>
+
+            {/* Category Filter Select (Icon + compact width) */}
+            <div className="relative shrink-0">
+              <Tag size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${categoryFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[130px] sm:max-w-[160px] truncate ${
+                  categoryFilter !== 'ALL'
+                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+                title="Filter by category"
+              >
+                <option value="ALL">All Categories</option>
+                {availableCategories.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Account Filter Select (Icon + compact width) */}
+            <div className="relative shrink-0">
+              <Landmark size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${selectedAccountId !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+              <select
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[120px] sm:max-w-[150px] truncate ${
+                  selectedAccountId !== 'ALL'
+                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                }`}
+                title="Filter by account"
+              >
+                <option value="ALL">All Accounts</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sort Button with Safe Popover Anchor */}
+            <div className="relative shrink-0">
+              <button
+                id="transactions-sort-btn"
+                type="button"
+                onClick={() => setShowSortMenu(prev => !prev)}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer ${
+                  sortBy !== 'DATE_DESC'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                    : 'bg-[#121820] hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
+                }`}
+                title="Change transaction sorting"
+              >
+                <ArrowUpDown size={13} className={sortBy !== 'DATE_DESC' ? 'text-amber-400' : 'text-slate-400'} />
+                <span className="hidden sm:inline">Sort</span>
+              </button>
+
+              {showSortMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-30" 
+                    onClick={() => setShowSortMenu(false)} 
+                  />
+                  {/* Anchored right-0 so it expands inside the viewport and never off-screen */}
+                  <div className="absolute right-0 top-full mt-1.5 w-60 max-w-[calc(100vw-2rem)] bg-[#161d26] border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 z-40 divide-y divide-slate-800/60 overflow-hidden animate-fadeIn">
+                    <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-900/40">
+                      Sort Transactions By
+                    </div>
+                    <div className="py-1">
+                      {SORT_OPTIONS.map((opt) => {
+                        const isSelected = sortBy === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setSortBy(opt.id);
+                              setShowSortMenu(false);
+                            }}
+                            className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-slate-800/60 transition cursor-pointer ${
+                              isSelected ? 'text-amber-400 font-bold bg-amber-500/10' : 'text-slate-300'
+                            }`}
+                          >
+                            <div>
+                              <div className="text-xs">{opt.label}</div>
+                              <div className="text-[10px] text-slate-500 font-normal">{opt.desc}</div>
+                            </div>
+                            {isSelected && <Check size={14} className="text-amber-400 shrink-0 ml-2" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Transactions Table / List */}
         <div className="bg-[#131922] rounded-3xl border border-slate-800 divide-y divide-slate-800/60 overflow-hidden">
@@ -422,8 +538,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           )}
         </div>
       </div>
-    </div>
-  )}
+    )}
 
   {/* View 3: Reports & Analytics Tab */}
   {subTab === 'reports' && (

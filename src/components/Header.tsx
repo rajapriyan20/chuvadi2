@@ -65,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [showLogoPopup, setShowLogoPopup] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const handleLogoutClick = async () => {
     setIsSigningOut(true);
@@ -252,29 +253,78 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Sign In</span>
               </button>
             ) : user ? (
-              <button
-                id="header-logout-btn"
-                type="button"
-                onClick={() => setShowLogoutConfirm(true)}
-                disabled={isSigningOut}
-                className="flex items-center gap-1.5 p-1.5 pr-2.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/40 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs border border-slate-700/60 transition active:scale-95 group cursor-pointer"
-                title={`Signed in as ${user.email || 'User'}. Click to view account & logout.`}
-              >
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt="User" 
-                    className="w-5 h-5 rounded-full object-cover border border-slate-600 group-hover:border-rose-400" 
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <UserIcon size={14} className="text-amber-400 group-hover:text-rose-400" />
+              <div className="relative shrink-0">
+                <button
+                  id="header-user-avatar-btn"
+                  type="button"
+                  onClick={() => setShowUserMenu(prev => !prev)}
+                  className="w-8 h-8 rounded-full border border-amber-500/40 hover:border-amber-400 transition active:scale-95 cursor-pointer overflow-hidden flex items-center justify-center bg-slate-800 shadow-sm"
+                  title={`Signed in as ${user.displayName || user.email || 'User'}. Click for account details & logout.`}
+                >
+                  {user.photoURL ? (
+                    <img 
+                      src={user.photoURL} 
+                      alt="User" 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <UserIcon size={16} className="text-amber-400" />
+                  )}
+                </button>
+
+                {showUserMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowUserMenu(false)} 
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-[#141b24] border border-slate-700/80 rounded-2xl shadow-2xl p-3 z-50 animate-fadeIn divide-y divide-slate-800/80">
+                      <div className="flex items-center gap-3 pb-3">
+                        {user.photoURL ? (
+                          <img 
+                            src={user.photoURL} 
+                            alt="User" 
+                            className="w-10 h-10 rounded-full object-cover border border-amber-500/40 shrink-0" 
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                            {(user.displayName || user.email || 'U')[0].toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white truncate">
+                            {user.displayName || 'Google Account'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {user.email || ''}
+                          </p>
+                          <span className="inline-block mt-0.5 text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            Cloud Sync Active
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          id="user-menu-logout-btn"
+                          type="button"
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            setShowLogoutConfirm(true);
+                          }}
+                          disabled={isSigningOut}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 text-xs font-semibold border border-rose-500/30 transition active:scale-95 cursor-pointer"
+                        >
+                          <LogOut size={14} />
+                          <span>Log Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
-                <span className="text-[11px] font-medium hidden sm:inline max-w-[90px] truncate">
-                  {user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'Account'}
-                </span>
-                <LogOut size={13} className="text-slate-400 group-hover:text-rose-400 transition" />
-              </button>
+              </div>
             ) : (
               <button
                 id="header-login-btn"

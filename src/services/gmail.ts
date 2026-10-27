@@ -23,8 +23,10 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly'
 ];
 
-// Session / memory token cache
+// Session & Persistent token caches
 const SESSION_TOKEN_PREFIX = 'chuvadi_gmail_token_session_';
+const PERSISTENT_TOKEN_PREFIX = 'chuvadi_gmail_token_persist_v3_';
+const PERSISTENT_STATUS_PREFIX = 'chuvadi_gmail_connected_status_';
 const CUSTOM_CLIENT_ID_KEY = 'chuvadi_custom_oauth_client_id';
 export const PRIMARY_GMAIL_USER = 'rajapriyan20@gmail.com';
 
@@ -94,9 +96,33 @@ if (typeof window !== 'undefined') {
   sanitizeAndPurgeContaminatedCaches();
 }
 
+interface StoredTokenData {
+  token: string;
+  expiresAt: number;
+  userScope: string;
+  savedAt: number;
+}
+
 export function getCachedGmailToken(userIdentifier?: string | null): string | null {
   const scope = getUserScopeKey(userIdentifier);
   if (inMemoryToken && inMemoryTokenUser === scope) return inMemoryToken;
+
+  // 1. Check persistent localStorage cache (survives PWA closes, tab closures, and app updates)
+  try {
+    const raw = localStorage.getItem(`${PERSISTENT_TOKEN_PREFIX}${scope}`);
+    if (raw) {
+      const parsed: StoredTokenData = JSON.parse(raw);
+      if (parsed?.token) {
+        inMemoryToken = parsed.token;
+        inMemoryTokenUser = scope;
+        return parsed.token;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // 2. Check session storage as fallback
   try {
     const fromSession = sessionStorage.getItem(`${SESSION_TOKEN_PREFIX}${scope}`);
     if (fromSession) {
@@ -110,34 +136,64 @@ export function getCachedGmailToken(userIdentifier?: string | null): string | nu
   return null;
 }
 
-export function setCachedGmailToken(token: string | null, userIdentifier?: string | null): void {
+export function setCachedGmailToken(
+  token: string | null, 
+  userIdentifier?: string | null,
+  expiresInSeconds: number = 3600
+): void {
   const scope = getUserScopeKey(userIdentifier);
   inMemoryToken = token;
   inMemoryTokenUser = token ? scope : null;
+
   try {
-    const key = `${SESSION_TOKEN_PREFIX}${scope}`;
+    const sessionKey = `${SESSION_TOKEN_PREFIX}${scope}`;
+    const persistKey = `${PERSISTENT_TOKEN_PREFIX}${scope}`;
+    const statusKey = `${PERSISTENT_STATUS_PREFIX}${scope}`;
+
     if (token) {
-      sessionStorage.setItem(key, token);
+      sessionStorage.setItem(sessionKey, token);
+      const data: StoredTokenData = {
+        token,
+        expiresAt: Date.now() + Math.max(300, expiresInSeconds) * 1000,
+        userScope: scope,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(persistKey, JSON.stringify(data));
+      localStorage.setItem(statusKey, 'true');
     } else {
-      sessionStorage.removeItem(key);
+      sessionStorage.removeItem(sessionKey);
+      localStorage.removeItem(persistKey);
+      localStorage.removeItem(statusKey);
     }
   } catch (e) {
     // ignore
   }
 }
 
-export function clearGmailSession(): void {
+export function clearGmailSession(userIdentifier?: string | null): void {
+  const scope = userIdentifier ? getUserScopeKey(userIdentifier) : null;
   inMemoryToken = null;
   inMemoryTokenUser = null;
+
   try {
-    // Remove any session token keys
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const k = sessionStorage.key(i);
-      if (k && k.startsWith(SESSION_TOKEN_PREFIX)) {
-        sessionStorage.removeItem(k);
+    if (scope) {
+      sessionStorage.removeItem(`${SESSION_TOKEN_PREFIX}${scope}`);
+      localStorage.removeItem(`${PERSISTENT_TOKEN_PREFIX}${scope}`);
+      localStorage.removeItem(`${PERSISTENT_STATUS_PREFIX}${scope}`);
+    } else {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(SESSION_TOKEN_PREFIX)) {
+          sessionStorage.removeItem(k);
+        }
+      }
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith(PERSISTENT_TOKEN_PREFIX) || k.startsWith(PERSISTENT_STATUS_PREFIX))) {
+          localStorage.removeItem(k);
+        }
       }
     }
-    sessionStorage.removeItem('chuvadi_gmail_token_session');
   } catch (e) {
     // ignore
   }
@@ -184,9 +240,9 @@ async function waitForGoogleIdentity(): Promise<boolean> {
 
 /**
  * Authenticate via Google Identity Services (GIS) Token Client
- * This is Google's official, direct client-side OAuth 2.0 flow for web applications.
+ * Supports both consent prompt (for initial auth) and silent renewal (for background refresh).
  */
-function authenticateWithGIS(clientId: string, userHint?: string | null): Promise<string> {
+function authenticateWithGIS(clientId: string, userHint?: string | null, silent = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const win = window as any;
     if (!win.google?.accounts?.oauth2) {
@@ -220,13 +276,32 @@ function authenticateWithGIS(clientId: string, userHint?: string | null): Promis
       const tokenClient = win.google.accounts.oauth2.initTokenClient(clientConfig);
 
       tokenClient.requestAccessToken({ 
-        prompt: 'consent',
+        prompt: silent ? '' : 'consent',
         hint: emailHint
       });
     } catch (err: any) {
       reject(err);
     }
   });
+}
+
+/**
+ * Attempts silent background token refresh without user interaction
+ */
+export async function trySilentTokenRefresh(userIdentifier?: string | null): Promise<string | null> {
+  const clientId = getEffectiveOAuthClientId();
+  const hasGIS = await waitForGoogleIdentity();
+  if (!hasGIS || !clientId) return null;
+  try {
+    const token = await authenticateWithGIS(clientId, userIdentifier, true);
+    if (token) {
+      setCachedGmailToken(token, userIdentifier);
+      return token;
+    }
+  } catch (err) {
+    // Silent renewal is best-effort
+  }
+  return null;
 }
 
 /**
@@ -866,12 +941,27 @@ export async function fetchExpenseEmailsFromGmail(
 
     const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=${encodeURIComponent(fullQuery)}`;
 
-    const listRes = await fetch(listUrl, {
+    let activeToken = token;
+    let listRes = await fetch(listUrl, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${activeToken}`,
         Accept: 'application/json'
       }
     });
+
+    if (!listRes.ok && listRes.status === 401) {
+      // Attempt silent renewal via GIS without prompting user
+      const freshToken = await trySilentTokenRefresh(userIdentifier);
+      if (freshToken) {
+        activeToken = freshToken;
+        listRes = await fetch(listUrl, {
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            Accept: 'application/json'
+          }
+        });
+      }
+    }
 
     if (!listRes.ok) {
       if (listRes.status === 401) {
@@ -897,7 +987,7 @@ export async function fetchExpenseEmailsFromGmail(
     const messagePromises = messages.slice(0, 30).map(async (msg: { id: string; threadId: string }) => {
       try {
         const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${activeToken}` }
         });
         if (!msgRes.ok) return null;
         return await msgRes.json();
