@@ -13,7 +13,7 @@ import {
   Lightbulb
 } from 'lucide-react';
 import type { Account, GmailFilterRule, FieldSuggestionRule } from '../../types';
-import { DEFAULT_CATEGORIES } from '../../utils/formatters';
+import { getAllExpenseCategories } from '../../utils/formatters';
 
 interface RulesTabProps {
   accounts: Account[];
@@ -30,6 +30,8 @@ export const RulesTab: React.FC<RulesTabProps> = ({
   onSaveFilterRules,
   onSaveFieldRules
 }) => {
+  const categories = getAllExpenseCategories();
+
   // New Filter Rule form state
   const [newFilterName, setNewFilterName] = useState('');
   const [newFilterQuery, setNewFilterQuery] = useState('');
@@ -92,7 +94,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({
 
     const targetVal = newTargetType === 'ACCOUNT' 
       ? (newTargetValue || accounts[0]?.id || '')
-      : (newTargetValue || DEFAULT_CATEGORIES[0]);
+      : (newTargetValue || categories[0] || 'Food & Dining');
 
     const targetName = newTargetType === 'ACCOUNT' 
       ? accounts.find(a => a.id === targetVal)?.name || 'Selected Account'
@@ -320,7 +322,7 @@ function processChuvadiBankingEmails() {
                     onChange={(e) => {
                       const type = e.target.value as 'ACCOUNT' | 'CATEGORY';
                       setNewTargetType(type);
-                      setNewTargetValue(type === 'ACCOUNT' ? (accounts[0]?.id || '') : DEFAULT_CATEGORIES[0]);
+                      setNewTargetValue(type === 'ACCOUNT' ? (accounts[0]?.id || '') : (categories[0] || 'Food & Dining'));
                     }}
                     className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
                   >
@@ -351,7 +353,7 @@ function processChuvadiBankingEmails() {
                       onChange={(e) => setNewTargetValue(e.target.value)}
                       className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
                     >
-                      {DEFAULT_CATEGORIES.map(cat => (
+                      {categories.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>

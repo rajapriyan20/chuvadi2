@@ -122,3 +122,95 @@ export const DEFAULT_CATEGORIES = [
   'Debt Settlement',
   'Other'
 ];
+
+export const CUSTOM_EXPENSE_CATEGORIES_KEY = 'chuvadi_custom_expense_categories_v1';
+
+/**
+ * Retrieves custom user-created expense categories stored locally.
+ */
+export function getCustomExpenseCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_EXPENSE_CATEGORIES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(c => typeof c === 'string' && c.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Saves custom expense categories list to persistent storage.
+ */
+export function saveCustomExpenseCategories(categories: string[]): void {
+  try {
+    const cleaned = Array.from(new Set(categories.map(c => c.trim()).filter(Boolean)));
+    localStorage.setItem(CUSTOM_EXPENSE_CATEGORIES_KEY, JSON.stringify(cleaned));
+  } catch (e) {
+    console.error('Failed to save custom expense categories:', e);
+  }
+}
+
+/**
+ * Adds a new custom expense category (case-insensitive deduplication).
+ */
+export function addCustomExpenseCategory(newCategory: string): string[] {
+  const trimmed = newCategory.trim();
+  if (!trimmed) return getAllExpenseCategories();
+  
+  const allCurrent = getAllExpenseCategories();
+  const alreadyExists = allCurrent.some(c => c.toLowerCase() === trimmed.toLowerCase());
+  if (alreadyExists) {
+    return allCurrent;
+  }
+  
+  const currentCustom = getCustomExpenseCategories();
+  const updated = [...currentCustom, trimmed];
+  saveCustomExpenseCategories(updated);
+  return getAllExpenseCategories();
+}
+
+/**
+ * Returns all available expense categories (DEFAULT_CATEGORIES + custom categories + any dynamic categories).
+ */
+export function getAllExpenseCategories(extraCategories: string[] = []): string[] {
+  const custom = getCustomExpenseCategories();
+  const combined = [...DEFAULT_CATEGORIES];
+  
+  for (const c of custom) {
+    if (!combined.some(item => item.toLowerCase() === c.toLowerCase())) {
+      combined.push(c);
+    }
+  }
+
+  for (const extra of extraCategories) {
+    if (extra && typeof extra === 'string' && extra.trim()) {
+      const trimmedExtra = extra.trim();
+      if (!combined.some(item => item.toLowerCase() === trimmedExtra.toLowerCase())) {
+        combined.push(trimmedExtra);
+      }
+    }
+  }
+
+  return combined;
+}
+
+/**
+ * Resolves color for any category, automatically generating a consistent vibrant accent for custom categories.
+ */
+export function getCategoryColor(category: string): string {
+  if (category && CATEGORY_COLORS[category]) {
+    return CATEGORY_COLORS[category];
+  }
+  const customPalette = [
+    '#06b6d4', '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', 
+    '#eab308', '#6366f1', '#10b981', '#f43f5e', '#a855f7'
+  ];
+  let hash = 0;
+  for (let i = 0; i < (category || '').length; i++) {
+    hash = category.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % customPalette.length;
+  return customPalette[index];
+}
+

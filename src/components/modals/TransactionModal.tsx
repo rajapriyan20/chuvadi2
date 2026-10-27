@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp } from 'lucide-react';
-import { DEFAULT_CATEGORIES, formatCurrency, getTodayLocalDateString } from '../../utils/formatters';
+import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus } from 'lucide-react';
+import { 
+  DEFAULT_CATEGORIES, 
+  getAllExpenseCategories, 
+  addCustomExpenseCategory, 
+  formatCurrency, 
+  getTodayLocalDateString 
+} from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
 
 interface TransactionModalProps {
@@ -26,6 +32,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [category, setCategory] = useState<string>('Fuel');
+  const [availableCategories, setAvailableCategories] = useState<string[]>(() => 
+    getAllExpenseCategories(initialData?.category ? [initialData.category] : [])
+  );
+  const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [categoryError, setCategoryError] = useState('');
   const [fromAccountId, setFromAccountId] = useState<string>('');
   const [toAccountId, setToAccountId] = useState<string>('');
   const [date, setDate] = useState<string>(getTodayLocalDateString());
@@ -37,6 +49,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    const cats = getAllExpenseCategories(initialData?.category ? [initialData.category] : []);
+    setAvailableCategories(cats);
+    setIsAddingNewCategory(false);
+    setNewCategoryInput('');
+    setCategoryError('');
+
     if (initialData) {
       setType(initialData.type);
       setAmount(String(initialData.amount || ''));
@@ -68,7 +86,27 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleConfirmNewCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) {
+      setCategoryError('Category name cannot be empty');
+      return;
+    }
+    const updated = addCustomExpenseCategory(trimmed);
+    setAvailableCategories(updated);
+    setCategory(trimmed);
+    setIsAddingNewCategory(false);
+    setNewCategoryInput('');
+    setCategoryError('');
+  };
+
   const handleCategoryChange = (cat: string) => {
+    if (cat === '__NEW_CATEGORY__') {
+      setIsAddingNewCategory(true);
+      setNewCategoryInput('');
+      setCategoryError('');
+      return;
+    }
     setCategory(cat);
     if (cat === 'Fuel') {
       setIsFuel(true);
@@ -328,18 +366,86 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
             {type !== 'TRANSFER' && (
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Category
-                </label>
-                <select
-                  value={category}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                >
-                  {DEFAULT_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Category
+                  </label>
+                  {!isAddingNewCategory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewCategory(true);
+                        setNewCategoryInput('');
+                        setCategoryError('');
+                      }}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 transition-colors"
+                    >
+                      <Plus size={11} />
+                      <span>Add New</span>
+                    </button>
+                  )}
+                </div>
+
+                {isAddingNewCategory ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="e.g. Subscriptions"
+                        value={newCategoryInput}
+                        onChange={(e) => {
+                          setNewCategoryInput(e.target.value);
+                          if (categoryError) setCategoryError('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleConfirmNewCategory();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setIsAddingNewCategory(false);
+                            setCategoryError('');
+                          }
+                        }}
+                        className="flex-1 min-w-0 bg-[#0e131a] border border-amber-500/80 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmNewCategory}
+                        title="Add Category"
+                        className="p-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shrink-0"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewCategory(false);
+                          setCategoryError('');
+                        }}
+                        title="Cancel"
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors shrink-0"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {categoryError && (
+                      <p className="text-[10px] text-rose-400 font-medium">{categoryError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    value={category}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {availableCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="__NEW_CATEGORY__">+ Add New Category...</option>
+                  </select>
+                )}
               </div>
             )}
           </div>

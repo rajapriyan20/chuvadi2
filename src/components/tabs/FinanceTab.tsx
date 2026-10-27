@@ -10,7 +10,7 @@ import {
   Inbox,
   PieChart
 } from 'lucide-react';
-import { formatCurrency, formatDate, DEFAULT_CATEGORIES } from '../../utils/formatters';
+import { formatCurrency, formatDate, getAllExpenseCategories } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
 import type { User } from 'firebase/auth';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
@@ -69,6 +69,10 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+
+  const availableCategories = useMemo(() => {
+    return getAllExpenseCategories(transactions.map(t => t.category));
+  }, [transactions]);
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
@@ -233,7 +237,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
               className="w-full bg-[#121820] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
             >
               <option value="ALL">All Categories</option>
-              {DEFAULT_CATEGORIES.map(c => (
+              {availableCategories.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
