@@ -2,7 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <script>
+      // Restrict pinch zoom, double-tap zoom, and Ctrl/Cmd +/- or Ctrl+wheel zoom
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener('gestureend', function (e) { e.preventDefault(); }, { passive: false });
+
+      // Prevent multi-touch pinch zoom
+      document.addEventListener('touchstart', function (e) {
+        if (e.touches && e.touches.length > 1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // Prevent trackpad / Ctrl+wheel zooming
+      document.addEventListener('wheel', function (e) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // Prevent Ctrl/Cmd + / - / 0 keyboard zoom shortcuts
+      document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+          e.preventDefault();
+        }
+      });
+    </script>
     <title>Chuvadi - A Way of Life</title>
     <meta name="description" content="Personal Life OS & ledger for managing accounts, passbooks, vehicle logs, checklists, and AI-powered expense tracking." />
     <link rel="icon" type="image/png" href="./favicon.png" />

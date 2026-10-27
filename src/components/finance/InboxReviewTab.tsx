@@ -23,7 +23,8 @@ import {
   loadCachedEmails, 
   saveCachedEmails, 
   fetchExpenseEmailsFromGmail, 
-  getCachedGmailToken 
+  getCachedGmailToken,
+  applyFieldSuggestionRules 
 } from '../../services/gmail';
 import { ReviewTab } from './ReviewTab';
 import { RulesTab } from './RulesTab';
@@ -183,13 +184,18 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
 
   // Action: Add Transaction
   const handleAddTransactionFromEmail = (email: GmailExpenseEmail) => {
+    // Dynamically evaluate suggestions with current fieldRules & accounts (1st pref: custom rules, 2nd pref: last 4 digits)
+    const liveSuggestions = applyFieldSuggestionRules(email, fieldRules, accounts);
+    const resolvedAccountId = liveSuggestions.suggestedAccountId || email.suggestedAccountId || (accounts[0]?.id || '');
+    const resolvedCategory = liveSuggestions.suggestedCategory || email.suggestedCategory || 'Food & Dining';
+
     // Open the new transaction modal with populated defaults
     onOpenNewTxnWithDefaults({
       type: email.suggestedType || 'EXPENSE',
       amount: email.suggestedAmount || 0,
       description: email.suggestedDescription || email.subject,
-      category: email.suggestedCategory || 'Food & Dining',
-      fromAccountId: email.suggestedAccountId || (accounts[0]?.id || ''),
+      category: resolvedCategory,
+      fromAccountId: resolvedAccountId,
       date: email.suggestedDate || email.date,
       notes: `Imported from Gmail email "${email.subject}" (${email.from})`
     }, email.id);
@@ -258,6 +264,7 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
         <ReviewTab
           accounts={accounts}
           emails={emails}
+          fieldRules={fieldRules}
           isLoading={isLoading}
           error={errorMessage}
           hasToken={!!getCachedGmailToken(userKey)}

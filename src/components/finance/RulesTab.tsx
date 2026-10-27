@@ -10,7 +10,8 @@ import {
   Copy, 
   ExternalLink,
   ChevronRight,
-  Lightbulb
+  Lightbulb,
+  Pencil
 } from 'lucide-react';
 import type { Account, GmailFilterRule, FieldSuggestionRule } from '../../types';
 import { getAllExpenseCategories } from '../../utils/formatters';
@@ -37,12 +38,13 @@ export const RulesTab: React.FC<RulesTabProps> = ({
   const [newFilterQuery, setNewFilterQuery] = useState('');
   const [showAddFilter, setShowAddFilter] = useState(false);
 
-  // New Field Suggestion Rule form state
+  // Field Suggestion Rule form state
   const [newKeyword, setNewKeyword] = useState('');
   const [newTargetType, setNewTargetType] = useState<'ACCOUNT' | 'CATEGORY'>('ACCOUNT');
   const [newTargetValue, setNewTargetValue] = useState(accounts[0]?.id || '');
   const [newLabel, setNewLabel] = useState('');
   const [showAddFieldRule, setShowAddFieldRule] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
 
   // Apps Script code copy state
   const [copiedScript, setCopiedScript] = useState(false);
@@ -86,9 +88,31 @@ export const RulesTab: React.FC<RulesTabProps> = ({
   const handleDeleteFieldRule = (id: string) => {
     const updated = fieldRules.filter(r => r.id !== id);
     onSaveFieldRules(updated);
+    if (editingRuleId === id) {
+      setEditingRuleId(null);
+      setShowAddFieldRule(false);
+    }
   };
 
-  const handleAddFieldRule = (e: React.FormEvent) => {
+  const handleOpenAddFieldRule = () => {
+    setEditingRuleId(null);
+    setNewKeyword('');
+    setNewTargetType('ACCOUNT');
+    setNewTargetValue(accounts[0]?.id || '');
+    setNewLabel('');
+    setShowAddFieldRule(true);
+  };
+
+  const handleStartEditFieldRule = (rule: FieldSuggestionRule) => {
+    setEditingRuleId(rule.id);
+    setNewKeyword(rule.keyword);
+    setNewTargetType(rule.targetType);
+    setNewTargetValue(rule.targetValue);
+    setNewLabel(rule.label || '');
+    setShowAddFieldRule(true);
+  };
+
+  const handleSaveFieldRule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyword.trim()) return;
 
@@ -100,17 +124,32 @@ export const RulesTab: React.FC<RulesTabProps> = ({
       ? accounts.find(a => a.id === targetVal)?.name || 'Selected Account'
       : targetVal;
 
-    const newRule: FieldSuggestionRule = {
-      id: `field_${Date.now()}`,
-      keyword: newKeyword.trim(),
-      targetType: newTargetType,
-      targetValue: targetVal,
-      label: newLabel.trim() || `"${newKeyword.trim()}" -> ${targetName}`,
-      enabled: true,
-      createdAt: Date.now()
-    };
+    if (editingRuleId) {
+      const updated = fieldRules.map(r => {
+        if (r.id !== editingRuleId) return r;
+        return {
+          ...r,
+          keyword: newKeyword.trim(),
+          targetType: newTargetType,
+          targetValue: targetVal,
+          label: newLabel.trim() || `"${newKeyword.trim()}" -> ${targetName}`
+        };
+      });
+      onSaveFieldRules(updated);
+    } else {
+      const newRule: FieldSuggestionRule = {
+        id: `field_${Date.now()}`,
+        keyword: newKeyword.trim(),
+        targetType: newTargetType,
+        targetValue: targetVal,
+        label: newLabel.trim() || `"${newKeyword.trim()}" -> ${targetName}`,
+        enabled: true,
+        createdAt: Date.now()
+      };
+      onSaveFieldRules([...fieldRules, newRule]);
+    }
 
-    onSaveFieldRules([...fieldRules, newRule]);
+    setEditingRuleId(null);
     setNewKeyword('');
     setNewLabel('');
     setShowAddFieldRule(false);
@@ -283,11 +322,7 @@ function processChuvadiBankingEmails() {
               </div>
             </div>
             <button
-              onClick={() => {
-                setNewTargetType('ACCOUNT');
-                setNewTargetValue(accounts[0]?.id || '');
-                setShowAddFieldRule(true);
-              }}
+              onClick={handleOpenAddFieldRule}
               className="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 transition shadow-sm"
             >
               <Plus size={14} />
@@ -295,10 +330,19 @@ function processChuvadiBankingEmails() {
             </button>
           </div>
 
-          {/* Add Field Rule Form */}
+          {/* Add / Edit Field Rule Form */}
           {showAddFieldRule && (
-            <form onSubmit={handleAddFieldRule} className="p-4 bg-[#0d1218] rounded-2xl border border-emerald-500/30 space-y-3">
-              <div className="text-xs font-bold text-emerald-300">Add Field Suggestion Rule</div>
+            <form onSubmit={handleSaveFieldRule} className="p-4 bg-[#0d1218] rounded-2xl border border-emerald-500/40 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-emerald-300">
+                  {editingRuleId ? 'Edit Field Suggestion Rule' : 'Add Field Suggestion Rule'}
+                </div>
+                {editingRuleId && (
+                  <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full font-semibold border border-amber-500/20">
+                    Editing Mode
+                  </span>
+                )}
+              </div>
               
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
@@ -375,16 +419,19 @@ function processChuvadiBankingEmails() {
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowAddFieldRule(false)}
+                  onClick={() => {
+                    setEditingRuleId(null);
+                    setShowAddFieldRule(false);
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400"
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition"
                 >
-                  Save Suggestion Rule
+                  {editingRuleId ? 'Update Rule' : 'Save Suggestion Rule'}
                 </button>
               </div>
             </form>
@@ -397,23 +444,28 @@ function processChuvadiBankingEmails() {
               const targetDisplayName = rule.targetType === 'ACCOUNT'
                 ? (matchedAccount ? matchedAccount.name : 'Account not found')
                 : rule.targetValue;
+              const isBeingEdited = editingRuleId === rule.id;
 
               return (
                 <div
                   key={rule.id}
                   className={`p-3 rounded-2xl border transition flex items-start justify-between gap-3 ${
-                    rule.enabled ? 'bg-[#161c26] border-slate-800' : 'bg-[#0d1218] border-slate-800/50 opacity-60'
+                    isBeingEdited
+                      ? 'bg-[#182230] border-emerald-500/60 ring-1 ring-emerald-500/40'
+                      : rule.enabled 
+                      ? 'bg-[#161c26] border-slate-800 hover:border-slate-700' 
+                      : 'bg-[#0d1218] border-slate-800/50 opacity-60'
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0">
                     <input
                       type="checkbox"
                       checked={rule.enabled}
                       onChange={() => handleToggleFieldRule(rule.id)}
-                      className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500"
+                      className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500 shrink-0"
                     />
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-white">contains "{rule.keyword}"</span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
                           rule.targetType === 'ACCOUNT'
@@ -423,27 +475,53 @@ function processChuvadiBankingEmails() {
                           {rule.targetType === 'ACCOUNT' ? 'Account' : 'Category'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
-                        <ChevronRight size={12} className="text-slate-500" />
-                        <span className="text-slate-200 font-semibold">{targetDisplayName}</span>
+                      <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                        <ChevronRight size={12} className="text-slate-500 shrink-0" />
+                        <span className="text-slate-200 font-semibold truncate">{targetDisplayName}</span>
                       </div>
+                      {rule.label && (
+                        <div className="text-[10px] text-slate-400 italic mt-0.5 truncate">
+                          {rule.label}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDeleteFieldRule(rule.id)}
-                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                    title="Delete rule"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditFieldRule(rule)}
+                      className={`p-1.5 rounded-lg transition ${
+                        isBeingEdited
+                          ? 'text-emerald-400 bg-emerald-500/10'
+                          : 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10'
+                      }`}
+                      title="Edit rule"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFieldRule(rule.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                      title="Delete rule"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="p-3 rounded-xl bg-[#0e141c] border border-slate-800/80 text-[11px] text-slate-400 flex items-center gap-2">
-            <Sparkles size={14} className="text-emerald-400 shrink-0" />
-            <span>Example: <code>biryani</code> automatically selects <strong>Food & Dining</strong>.</span>
+          <div className="p-3 rounded-xl bg-[#0e141c] border border-slate-800/80 text-[11px] text-slate-400 flex items-start gap-2">
+            <Sparkles size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <div><strong>Field Auto-Suggestion Hierarchy:</strong></div>
+              <p className="text-[10px] text-slate-400">
+                1st preference: Your custom rules above. In the absence of a custom rule, accounts are auto-suggested based on the bank account last 4 digits entered in Account Details.
+              </p>
+            </div>
           </div>
         </div>
       </div>

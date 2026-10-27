@@ -667,7 +667,66 @@ function detectTransactionType(text: string): TransactionType {
 }
 
 /**
- * Apply field suggestion rules to parsed email
+ * Extract the last 4 digits from an account's account number or name
+ */
+export function extractAccountLast4Digits(accountNumber?: string): string | null {
+  if (!accountNumber) return null;
+  const digits = accountNumber.replace(/\D/g, '');
+  if (digits.length >= 4) {
+    return digits.slice(-4);
+  }
+  if (digits.length > 0) {
+    return digits;
+  }
+  return null;
+}
+
+/**
+ * Match account based on bank/card account last 4 digits mentioned in email text.
+ * Handles patterns such as "Card ending 4091", "A/c **4091", "account ending in 4091", "XX4091", etc.
+ */
+export function matchAccountByLast4Digits(text: string, accounts: Account[]): string | undefined {
+  if (!text || !accounts || accounts.length === 0) return undefined;
+
+  const candidateAccounts = accounts
+    .map(acc => {
+      const last4 = extractAccountLast4Digits(acc.accountNumber);
+      return { account: acc, last4 };
+    })
+    .filter((item): item is { account: Account; last4: string } => !!item.last4 && item.last4.length >= 3);
+
+  if (candidateAccounts.length === 0) return undefined;
+
+  // Pass 1: High confidence contextual match (e.g. "ending 4091", "card ...4091", "a/c 4091", "xx4091", "**4091")
+  for (const { account, last4 } of candidateAccounts) {
+    const escaped = last4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const contextualRegex = new RegExp(
+      `(?:ending(?:\\s+with|\\s+in)?|a\\/c|acct|account|card(?:\\s+no\\.?)?|no\\.?)\\s*[:#-]?\\s*(?:[xX*#•-]+\\s*)?${escaped}\\b|(?:[xX*#•-]{2,}|\\.{2,})${escaped}\\b`,
+      'i'
+    );
+    if (contextualRegex.test(text)) {
+      return account.id;
+    }
+  }
+
+  // Pass 2: Word boundary match for the last 4 digits (e.g. \b4091\b)
+  for (const { account, last4 } of candidateAccounts) {
+    const escaped = last4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordBoundaryRegex = new RegExp(`\\b${escaped}\\b`);
+    if (wordBoundaryRegex.test(text)) {
+      return account.id;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Apply field suggestion rules to parsed email.
+ * Priority order:
+ * 1. User custom field suggestion rules
+ * 2. Bank account last 4 digit number added in account details
+ * 3. Default account heuristics (Credit Card / Bank)
  */
 export function applyFieldSuggestionRules(
   email: { subject: string; bodyText: string; snippet: string },
@@ -678,6 +737,7 @@ export function applyFieldSuggestionRules(
   let suggestedAccountId: string | undefined = undefined;
   let suggestedCategory: string | undefined = undefined;
 
+  // 1. FIRST PREFERENCE: User custom field suggestion rules
   for (const rule of rules) {
     if (!rule.enabled || !rule.keyword) continue;
     const kw = rule.keyword.toLowerCase().trim();
@@ -693,6 +753,12 @@ export function applyFieldSuggestionRules(
         suggestedCategory = rule.targetValue;
       }
     }
+  }
+
+  // 2. SECOND PREFERENCE (In the absence of user custom rule):
+  // Suggest based on the bank account last 4 digit number added during account details
+  if (!suggestedAccountId) {
+    suggestedAccountId = matchAccountByLast4Digits(text, accounts);
   }
 
   // Fallback category detection
@@ -716,7 +782,7 @@ export function applyFieldSuggestionRules(
     }
   }
 
-  // Fallback account
+  // 3. Fallback account (if still neither custom rule nor last 4 digits matched)
   if (!suggestedAccountId && accounts.length > 0) {
     if (text.includes('credit card') || text.includes('creditcard')) {
       const card = accounts.find(a => a.type === 'CREDIT_CARD');

@@ -57,8 +57,10 @@
   --color-amber-950: #172554;
 }
 
-body {
+html, body {
   background-color: var(--theme-bg, #0a0d12);
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 

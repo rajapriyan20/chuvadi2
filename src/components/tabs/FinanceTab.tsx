@@ -8,7 +8,9 @@ import {
   Layers,
   Receipt,
   Inbox,
-  PieChart
+  PieChart,
+  ArrowUpDown,
+  Check
 } from 'lucide-react';
 import { formatCurrency, formatDate, getAllExpenseCategories } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
@@ -16,6 +18,23 @@ import type { User } from 'firebase/auth';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
 import { InboxReviewTab } from '../finance/InboxReviewTab';
 import { ReportsTab } from './ReportsTab';
+
+export type TransactionSortOption = 
+  | 'DATE_DESC'
+  | 'DATE_ASC'
+  | 'AMOUNT_DESC'
+  | 'AMOUNT_ASC'
+  | 'ENTRY_DESC'
+  | 'ENTRY_ASC';
+
+const SORT_OPTIONS: { id: TransactionSortOption; label: string; desc: string }[] = [
+  { id: 'DATE_DESC', label: 'Date: Newest First', desc: 'Default calendar order' },
+  { id: 'DATE_ASC', label: 'Date: Oldest First', desc: 'Earliest transaction dates' },
+  { id: 'AMOUNT_DESC', label: 'Amount: High to Low', desc: 'Largest transaction values' },
+  { id: 'AMOUNT_ASC', label: 'Amount: Low to High', desc: 'Smallest transaction values' },
+  { id: 'ENTRY_DESC', label: 'Recently Added', desc: 'Order of record creation' },
+  { id: 'ENTRY_ASC', label: 'Oldest Added', desc: 'First records created' }
+];
 
 interface FinanceTabProps {
   accounts: Account[];
@@ -69,14 +88,16 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<TransactionSortOption>('DATE_DESC');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const availableCategories = useMemo(() => {
     return getAllExpenseCategories(transactions.map(t => t.category));
   }, [transactions]);
 
-  // Filter transactions
+  // Filter & sort transactions (by default in order of transaction date)
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((t) => {
+    const list = transactions.filter((t) => {
       if (typeFilter !== 'ALL' && t.type !== typeFilter) return false;
       if (categoryFilter !== 'ALL' && t.category !== categoryFilter) return false;
       if (selectedAccountId !== 'ALL') {
@@ -94,7 +115,37 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
       }
       return true;
     });
-  }, [transactions, typeFilter, categoryFilter, selectedAccountId, searchTerm]);
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'DATE_DESC') {
+        const cmp = (b.date || '').localeCompare(a.date || '');
+        if (cmp !== 0) return cmp;
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      if (sortBy === 'DATE_ASC') {
+        const cmp = (a.date || '').localeCompare(b.date || '');
+        if (cmp !== 0) return cmp;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      }
+      if (sortBy === 'AMOUNT_DESC') {
+        const cmp = (b.amount || 0) - (a.amount || 0);
+        if (cmp !== 0) return cmp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      if (sortBy === 'AMOUNT_ASC') {
+        const cmp = (a.amount || 0) - (b.amount || 0);
+        if (cmp !== 0) return cmp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      if (sortBy === 'ENTRY_DESC') {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      if (sortBy === 'ENTRY_ASC') {
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      }
+      return 0;
+    });
+  }, [transactions, typeFilter, categoryFilter, selectedAccountId, searchTerm, sortBy]);
 
   return (
     <div className="space-y-1.5 sm:space-y-2 pb-20 md:pb-8">
@@ -187,9 +238,73 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           {/* Transactions Search & Filter Bar */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
+              <div>
+                <h2 className="text-base font-bold text-white tracking-tight">Transactions History</h2>
+                <p className="text-[11px] text-slate-400">
+                  {filteredTransactions.length} of {transactions.length} records • Sorted by {SORT_OPTIONS.find(o => o.id === sortBy)?.label}
+                </p>
+              </div>
               
               <div className="flex items-center gap-2">
+                {/* Sort Button with Popover */}
+                <div className="relative">
+                  <button
+                    id="transactions-sort-btn"
+                    type="button"
+                    onClick={() => setShowSortMenu(prev => !prev)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-sm ${
+                      sortBy !== 'DATE_DESC'
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                        : 'bg-[#121820] hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
+                    }`}
+                    title="Change transaction sorting"
+                  >
+                    <ArrowUpDown size={14} className={sortBy !== 'DATE_DESC' ? 'text-amber-400' : 'text-slate-400'} />
+                    <span>Sort</span>
+                    <span className="text-[10px] text-amber-400/90 font-mono hidden sm:inline">
+                      ({SORT_OPTIONS.find(o => o.id === sortBy)?.label.split(':')[0]})
+                    </span>
+                  </button>
+
+                  {showSortMenu && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-30" 
+                        onClick={() => setShowSortMenu(false)} 
+                      />
+                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#161d26] border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 z-40 divide-y divide-slate-800/60 overflow-hidden animate-fadeIn">
+                        <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-900/40">
+                          Sort Transactions By
+                        </div>
+                        <div className="py-1">
+                          {SORT_OPTIONS.map((opt) => {
+                            const isSelected = sortBy === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => {
+                                  setSortBy(opt.id);
+                                  setShowSortMenu(false);
+                                }}
+                                className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-slate-800/60 transition ${
+                                  isSelected ? 'text-amber-400 font-bold bg-amber-500/10' : 'text-slate-300'
+                                }`}
+                              >
+                                <div>
+                                  <div className="text-xs">{opt.label}</div>
+                                  <div className="text-[10px] text-slate-500 font-normal">{opt.desc}</div>
+                                </div>
+                                {isSelected && <Check size={14} className="text-amber-400 shrink-0 ml-2" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 <button
                   id="transactions-record-txn-btn"
                   onClick={onOpenNewTxn}

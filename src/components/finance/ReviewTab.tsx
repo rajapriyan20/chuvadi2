@@ -21,18 +21,20 @@ import {
   Globe
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import type { Account, GmailExpenseEmail, Transaction } from '../../types';
+import type { Account, GmailExpenseEmail, Transaction, FieldSuggestionRule } from '../../types';
 import { 
   authenticateGmail, 
   getEffectiveOAuthClientId, 
   getCustomOAuthClientId, 
   setCustomOAuthClientId,
-  setCachedGmailToken
+  setCachedGmailToken,
+  applyFieldSuggestionRules
 } from '../../services/gmail';
 
 interface ReviewTabProps {
   accounts: Account[];
   emails: GmailExpenseEmail[];
+  fieldRules?: FieldSuggestionRule[];
   isLoading: boolean;
   error?: string;
   hasToken: boolean;
@@ -47,6 +49,7 @@ interface ReviewTabProps {
 export const ReviewTab: React.FC<ReviewTabProps> = ({
   accounts,
   emails,
+  fieldRules = [],
   isLoading,
   error,
   hasToken,
@@ -329,7 +332,10 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
       ) : (
         <div className="space-y-3">
           {filteredEmails.map((email) => {
-            const matchedAccount = accounts.find(a => a.id === email.suggestedAccountId);
+            const liveSuggestions = applyFieldSuggestionRules(email, fieldRules, accounts);
+            const resolvedAccountId = email.suggestedAccountId || liveSuggestions.suggestedAccountId;
+            const matchedAccount = accounts.find(a => a.id === resolvedAccountId);
+            const displayCategory = email.suggestedCategory || liveSuggestions.suggestedCategory || 'Other';
             const isAdded = email.status === 'ADDED';
             const isIgnored = email.status === 'IGNORED';
 
@@ -382,7 +388,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                   <div className="mt-2 p-2.5 bg-[#0e131b] rounded-2xl border border-slate-800/80 flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
                       <Tag size={12} className="text-amber-400" />
-                      <span className="text-amber-300 font-bold">{email.suggestedCategory || 'Other'}</span>
+                      <span className="text-amber-300 font-bold">{displayCategory}</span>
                     </div>
 
                     <div className="text-slate-600">•</div>

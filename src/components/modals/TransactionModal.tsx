@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus } from 'lucide-react';
+import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus, Pencil } from 'lucide-react';
 import { 
   DEFAULT_CATEGORIES, 
   getAllExpenseCategories, 
@@ -28,6 +28,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   accounts,
   vehicles
 }) => {
+  const [isEditing, setIsEditing] = useState<boolean>(!initialData);
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -54,6 +55,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setIsAddingNewCategory(false);
     setNewCategoryInput('');
     setCategoryError('');
+    setIsEditing(!initialData);
 
     if (initialData) {
       setType(initialData.type);
@@ -126,6 +128,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEditing) return;
     const numAmt = parseFloat(amount);
     if (!numAmt || numAmt <= 0) return;
 
@@ -177,9 +180,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
           <div className="flex items-center gap-2">
             <span className="text-amber-400 font-bold text-base">
-              {initialData ? 'Edit Entry' : 'New Transaction'}
+              {!initialData ? 'New Transaction' : isEditing ? 'Edit Transaction' : 'Transaction Details'}
             </span>
-            <span className="text-xs text-slate-400">| Chuvadi Ledger</span>
+            {initialData && !isEditing && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/80">
+                View Mode
+              </span>
+            )}
+            <span className="text-xs text-slate-400 hidden sm:inline">| Chuvadi Ledger</span>
           </div>
           <button
             onClick={onClose}
@@ -195,11 +203,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           <div className="grid grid-cols-3 gap-1 p-1 bg-slate-900 rounded-2xl border border-slate-800">
             <button
               type="button"
+              disabled={!isEditing}
               onClick={() => setType('EXPENSE')}
               className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition ${
                 type === 'EXPENSE'
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  : isEditing
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-500 opacity-40 cursor-default'
               }`}
             >
               <TrendingDown size={14} />
@@ -207,11 +218,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </button>
             <button
               type="button"
+              disabled={!isEditing}
               onClick={() => setType('INCOME')}
               className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition ${
                 type === 'INCOME'
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  : isEditing
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-500 opacity-40 cursor-default'
               }`}
             >
               <TrendingUp size={14} />
@@ -219,11 +233,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </button>
             <button
               type="button"
+              disabled={!isEditing}
               onClick={() => setType('TRANSFER')}
               className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition ${
                 type === 'TRANSFER'
                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+                  : isEditing
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-500 opacity-40 cursor-default'
               }`}
             >
               <ArrowRightLeft size={14} />
@@ -245,10 +262,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 type="number"
                 step="any"
                 required
+                disabled={!isEditing}
+                readOnly={!isEditing}
                 placeholder="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full bg-[#0e131a] border border-slate-700/80 rounded-2xl py-3 pl-10 pr-4 text-2xl font-bold text-white font-mono focus:outline-none focus:border-amber-500 transition"
+                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-2xl py-3 pl-10 pr-4 text-2xl font-bold text-white font-mono focus:outline-none focus:border-amber-500 transition disabled:cursor-default"
               />
             </div>
           </div>
@@ -262,10 +281,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               id="txn-modal-desc"
               type="text"
               required
+              disabled={!isEditing}
+              readOnly={!isEditing}
               placeholder="e.g. Petrol Shell, Supermarket, Monthly Rent"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition"
+              className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition disabled:cursor-default"
             />
           </div>
 
@@ -280,7 +301,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 value={fromAccountId}
                 onChange={(e) => setFromAccountId(e.target.value)}
                 required
-                className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition"
+                disabled={!isEditing}
+                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition disabled:cursor-default"
               >
                 <option value="">Select Account</option>
                 {accounts.map((a) => (
@@ -302,7 +324,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 value={toAccountId}
                 onChange={(e) => setToAccountId(e.target.value)}
                 required
-                className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                disabled={!isEditing}
+                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition disabled:cursor-default"
               >
                 <option value="">Select Account</option>
                 {accounts.map((a) => (
@@ -324,7 +347,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   value={fromAccountId}
                   onChange={(e) => setFromAccountId(e.target.value)}
                   required
-                  className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  disabled={!isEditing}
+                  className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 disabled:cursor-default"
                 >
                   <option value="">Source</option>
                   {accounts.map((a) => (
@@ -340,7 +364,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   value={toAccountId}
                   onChange={(e) => setToAccountId(e.target.value)}
                   required
-                  className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  disabled={!isEditing}
+                  className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 disabled:cursor-default"
                 >
                   <option value="">Destination</option>
                   {accounts.map((a) => (
@@ -360,8 +385,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <input
                 type="date"
                 value={date}
+                disabled={!isEditing}
+                readOnly={!isEditing}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 disabled:cursor-default"
               />
             </div>
             {type !== 'TRANSFER' && (
@@ -370,7 +397,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Category
                   </label>
-                  {!isAddingNewCategory && (
+                  {isEditing && !isAddingNewCategory && (
                     <button
                       type="button"
                       onClick={() => {
@@ -437,13 +464,16 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 ) : (
                   <select
                     value={category}
+                    disabled={!isEditing}
                     onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 disabled:cursor-default"
                   >
                     {availableCategories.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
-                    <option value="__NEW_CATEGORY__">+ Add New Category...</option>
+                    {isEditing && (
+                      <option value="__NEW_CATEGORY__">+ Add New Category...</option>
+                    )}
                   </select>
                 )}
               </div>
@@ -472,6 +502,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   </label>
                   <select
                     value={vehicleId}
+                    disabled={!isEditing}
                     onChange={(e) => {
                       const vId = e.target.value;
                       setVehicleId(vId);
@@ -480,7 +511,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         setOdometer(String(sel.currentOdometer));
                       }
                     }}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500 disabled:cursor-default"
                   >
                     <option value="">Select Vehicle (Optional)</option>
                     {vehicles.map((v) => (
@@ -495,10 +526,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    disabled={!isEditing}
+                    readOnly={!isEditing}
                     placeholder="e.g. 15400"
                     value={odometer}
                     onChange={(e) => setOdometer(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:cursor-default"
                   />
                 </div>
 
@@ -509,10 +542,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   <input
                     type="number"
                     step="any"
+                    disabled={!isEditing}
+                    readOnly={!isEditing}
                     placeholder="e.g. 15.5"
                     value={fuelLiters}
                     onChange={(e) => setFuelLiters(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 disabled:cursor-default"
                   />
                 </div>
               </div>
@@ -526,10 +561,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </label>
             <textarea
               rows={2}
+              disabled={!isEditing}
+              readOnly={!isEditing}
               placeholder="Additional remarks..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition resize-none"
+              className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition resize-none disabled:cursor-default"
             />
           </div>
 
@@ -549,20 +586,37 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                if (isEditing && initialData) {
+                  setIsEditing(false);
+                } else {
+                  onClose();
+                }
+              }}
               className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
             >
-              Cancel
+              {isEditing && initialData ? 'Cancel' : 'Close'}
             </button>
 
-            <button
-              type="submit"
-              disabled={isSaving || !amount}
-              className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
-            >
-              <Check size={16} strokeWidth={2.5} />
-              <span>{isSaving ? 'Committing...' : 'Save Record'}</span>
-            </button>
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
+              >
+                <Pencil size={15} strokeWidth={2.5} />
+                <span>Edit</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSaving || !amount}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
+              >
+                <Check size={16} strokeWidth={2.5} />
+                <span>{isSaving ? 'Committing...' : initialData ? 'Save Changes' : 'Save Record'}</span>
+              </button>
+            )}
           </div>
         </form>
       </div>
