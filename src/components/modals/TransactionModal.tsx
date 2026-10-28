@@ -48,43 +48,59 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [odometer, setOdometer] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const prevIsOpenRef = React.useRef(false);
+  const prevTxnIdRef = React.useRef<string | undefined>(undefined);
+  const justSwitchedToEditRef = React.useRef(0);
 
   useEffect(() => {
-    const cats = getAllExpenseCategories(initialData?.category ? [initialData.category] : []);
-    setAvailableCategories(cats);
-    setIsAddingNewCategory(false);
-    setNewCategoryInput('');
-    setCategoryError('');
-    setIsEditing(!initialData);
-
-    if (initialData) {
-      setType(initialData.type);
-      setAmount(String(initialData.amount || ''));
-      setDescription(initialData.description || '');
-      setCategory(initialData.category || 'Other');
-      setFromAccountId(initialData.fromAccountId || '');
-      setToAccountId(initialData.toAccountId || '');
-      setDate(initialData.date || getTodayLocalDateString());
-      setVehicleId(initialData.vehicleId || '');
-      setIsFuel(!!initialData.isFuel);
-      setFuelLiters(initialData.fuelLiters ? String(initialData.fuelLiters) : '');
-      setOdometer(initialData.odometer ? String(initialData.odometer) : '');
-      setNotes(initialData.notes || '');
-    } else {
-      setType('EXPENSE');
-      setAmount('');
-      setDescription('');
-      setCategory('Food & Dining');
-      setFromAccountId(accounts[0]?.id || '');
-      setToAccountId(accounts[1]?.id || '');
-      setDate(getTodayLocalDateString());
-      setVehicleId('');
-      setIsFuel(false);
-      setFuelLiters('');
-      setOdometer('');
-      setNotes('');
+    if (!isOpen) {
+      prevIsOpenRef.current = false;
+      return;
     }
-  }, [initialData, isOpen, accounts]);
+
+    const isNewlyOpening = !prevIsOpenRef.current;
+    const isDifferentTxn = initialData?.id !== prevTxnIdRef.current;
+
+    if (isNewlyOpening || isDifferentTxn) {
+      prevIsOpenRef.current = true;
+      prevTxnIdRef.current = initialData?.id;
+
+      const cats = getAllExpenseCategories(initialData?.category ? [initialData.category] : []);
+      setAvailableCategories(cats);
+      setIsAddingNewCategory(false);
+      setNewCategoryInput('');
+      setCategoryError('');
+      setIsEditing(!initialData);
+
+      if (initialData) {
+        setType(initialData.type);
+        setAmount(String(initialData.amount || ''));
+        setDescription(initialData.description || '');
+        setCategory(initialData.category || 'Other');
+        setFromAccountId(initialData.fromAccountId || '');
+        setToAccountId(initialData.toAccountId || '');
+        setDate(initialData.date || getTodayLocalDateString());
+        setVehicleId(initialData.vehicleId || '');
+        setIsFuel(!!initialData.isFuel);
+        setFuelLiters(initialData.fuelLiters ? String(initialData.fuelLiters) : '');
+        setOdometer(initialData.odometer ? String(initialData.odometer) : '');
+        setNotes(initialData.notes || '');
+      } else {
+        setType('EXPENSE');
+        setAmount('');
+        setDescription('');
+        setCategory('Food & Dining');
+        setFromAccountId(accounts[0]?.id || '');
+        setToAccountId(accounts[1]?.id || '');
+        setDate(getTodayLocalDateString());
+        setVehicleId('');
+        setIsFuel(false);
+        setFuelLiters('');
+        setOdometer('');
+        setNotes('');
+      }
+    }
+  }, [isOpen, initialData?.id]);
 
   if (!isOpen) return null;
 
@@ -128,7 +144,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+
+    // Guard: ignore if not in editing mode or if the edit button was tapped less than 400ms ago
     if (!isEditing) return;
+    if (Date.now() - justSwitchedToEditRef.current < 400) {
+      return;
+    }
+
     const numAmt = parseFloat(amount);
     if (!numAmt || numAmt <= 0) return;
 
@@ -574,44 +597,72 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           <div className="flex items-center gap-3 pt-2">
             {initialData && onDelete && (
               <button
+                key="delete-txn-btn"
                 type="button"
                 onClick={handleDelete}
                 disabled={isSaving}
-                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5"
+                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 size={15} />
                 <span>Delete</span>
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                if (isEditing && initialData) {
-                  setIsEditing(false);
-                } else {
+            {!isEditing && initialData ? (
+              <button
+                key="close-view-btn"
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   onClose();
-                }
-              }}
-              className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
-            >
-              {isEditing && initialData ? 'Cancel' : 'Close'}
-            </button>
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            ) : (
+              <button
+                key="cancel-edit-btn"
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (initialData) {
+                    setIsEditing(false);
+                  } else {
+                    onClose();
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                {initialData ? 'Cancel' : 'Close'}
+              </button>
+            )}
 
             {!isEditing ? (
               <button
+                key="enter-edit-mode-btn"
+                id="edit-transaction-btn"
                 type="button"
-                onClick={() => setIsEditing(true)}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  justSwitchedToEditRef.current = Date.now();
+                  setIsEditing(true);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
               >
                 <Pencil size={15} strokeWidth={2.5} />
                 <span>Edit</span>
               </button>
             ) : (
               <button
+                key="save-changes-submit-btn"
+                id="save-transaction-btn"
                 type="submit"
                 disabled={isSaving || !amount}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
               >
                 <Check size={16} strokeWidth={2.5} />
                 <span>{isSaving ? 'Committing...' : initialData ? 'Save Changes' : 'Save Record'}</span>
