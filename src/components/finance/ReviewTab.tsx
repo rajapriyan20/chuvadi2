@@ -1,35 +1,19 @@
 import React, { useState } from 'react';
 import { 
   Mail, 
-  RefreshCw, 
-  Check, 
-  X, 
-  ChevronRight, 
   Calendar, 
   CreditCard, 
   Tag, 
-  ArrowRight, 
   Edit3, 
   Eye, 
   AlertCircle,
-  ExternalLink,
-  ShieldCheck,
-  Filter,
   Settings as SettingsIcon,
-  Copy,
-  Key,
-  Globe
+  Check,
+  X
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import type { Account, GmailExpenseEmail, Transaction, FieldSuggestionRule } from '../../types';
-import { 
-  authenticateGmail, 
-  getEffectiveOAuthClientId, 
-  getCustomOAuthClientId, 
-  setCustomOAuthClientId,
-  setCachedGmailToken,
-  applyFieldSuggestionRules
-} from '../../services/gmail';
+import type { Account, GmailExpenseEmail, FieldSuggestionRule } from '../../types';
+import { applyFieldSuggestionRules } from '../../services/gmail';
 
 interface ReviewTabProps {
   accounts: Account[];
@@ -40,9 +24,10 @@ interface ReviewTabProps {
   hasToken: boolean;
   userKey?: string | null;
   onRefreshEmails: () => Promise<void>;
+  onConnectGmail?: () => Promise<void>;
   onAddTransactionFromEmail: (email: GmailExpenseEmail) => void;
   onIgnoreEmail: (emailId: string) => void;
-  onSwitchToRules: () => void;
+  onOpenSettings?: () => void;
   isGuestMode?: boolean;
 }
 
@@ -55,65 +40,14 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   hasToken,
   userKey,
   onRefreshEmails,
+  onConnectGmail,
   onAddTransactionFromEmail,
   onIgnoreEmail,
-  onSwitchToRules,
+  onOpenSettings,
   isGuestMode = false
 }) => {
   const [filterStatus, setFilterStatus] = useState<'PENDING' | 'ADDED' | 'IGNORED' | 'ALL'>('PENDING');
   const [selectedEmailForPreview, setSelectedEmailForPreview] = useState<GmailExpenseEmail | null>(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  // Settings & troubleshooting modal
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [customClientIdInput, setCustomClientIdInput] = useState(getCustomOAuthClientId());
-  const [manualTokenInput, setManualTokenInput] = useState('');
-  const [copiedOrigin, setCopiedOrigin] = useState(false);
-
-  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
-
-  const handleConnectGmail = async () => {
-    setIsAuthenticating(true);
-    setAuthError(null);
-    try {
-      await authenticateGmail(userKey);
-      await onRefreshEmails();
-    } catch (err: any) {
-      console.error('Connect Gmail failed:', err);
-      setAuthError(err?.message || 'Could not connect to Gmail. Please try again.');
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  const handleDisconnect = () => {
-    setCachedGmailToken(null, userKey);
-    window.location.reload();
-  };
-
-  const handleSaveCustomClientId = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCustomOAuthClientId(customClientIdInput.trim());
-    setShowConfigModal(false);
-    setAuthError(null);
-  };
-
-  const handleApplyManualToken = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualTokenInput.trim()) return;
-    setCachedGmailToken(manualTokenInput.trim(), userKey);
-    setShowConfigModal(false);
-    setAuthError(null);
-    onRefreshEmails();
-  };
-
-  const handleCopyOrigin = () => {
-    navigator.clipboard.writeText(currentOrigin);
-    setCopiedOrigin(true);
-    setTimeout(() => setCopiedOrigin(false), 2000);
-  };
 
   const filteredEmails = emails.filter(e => {
     if (filterStatus === 'ALL') return true;
@@ -125,175 +59,87 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
   const ignoredCount = emails.filter(e => e.status === 'IGNORED').length;
 
   return (
-    <div className="space-y-4 pt-2">
-      {/* Top Controls & Auth Banner */}
-      <div className="p-4 bg-[#121820] rounded-3xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Mail size={16} className="text-amber-400" />
-              <span>Gmail Inbox Expenses (Last 30 Days)</span>
-            </h3>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
-              {pendingCount} to review
-            </span>
-            {isGuestMode ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                Demo Preview Mode
-              </span>
-            ) : hasToken ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <Check size={10} /> Connected
-              </span>
-            ) : null}
-          </div>
-          <p className="text-xs text-slate-400 mt-1 max-w-xl">
-            {isGuestMode
-              ? "Review simulated expense receipts (Food delivery, Fuel, Shopping). Click 'Add Transaction' to see how email parsing populates directly into your ledger."
-              : "Review parsed transactions from bank alerts and orders from the last 30 days. Edit any field and click Add Transaction or Mark as Ignore."}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {isGuestMode ? (
-            <button
-              onClick={() => onRefreshEmails()}
-              disabled={isLoading}
-              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin text-slate-950' : 'text-slate-950'} />
-              <span>{isLoading ? 'Refreshing demo emails...' : 'Reset Demo Emails'}</span>
-            </button>
-          ) : !hasToken ? (
-            <button
-              onClick={handleConnectGmail}
-              disabled={isAuthenticating}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-2 transition active:scale-95 shadow-md"
-            >
-              <Mail size={15} />
-              <span>{isAuthenticating ? 'Connecting...' : 'Connect Gmail Account'}</span>
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => onRefreshEmails()}
-                disabled={isLoading}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition active:scale-95 border border-slate-700"
-              >
-                <RefreshCw size={14} className={isLoading ? 'animate-spin text-amber-400' : 'text-slate-400'} />
-                <span>{isLoading ? 'Scanning Gmail...' : 'Scan 30 Days'}</span>
-              </button>
-              <button
-                onClick={handleDisconnect}
-                className="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-300 text-xs transition border border-slate-800"
-                title="Disconnect Gmail session"
-              >
-                Disconnect
-              </button>
-            </>
-          )}
-
-          <button
-            onClick={() => setShowConfigModal(true)}
-            className="p-2 rounded-xl bg-[#161c26] hover:bg-slate-800 text-slate-400 hover:text-white transition border border-slate-800"
-            title="OAuth Settings & Domain Whitelisting Guide"
-          >
-            <SettingsIcon size={15} />
-          </button>
-
-          <button
-            onClick={onSwitchToRules}
-            className="px-3 py-2 rounded-xl bg-[#161c26] hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition border border-slate-800"
-          >
-            <Filter size={13} className="text-amber-400" />
-            <span>Configure Rules</span>
-          </button>
-        </div>
-      </div>
-
-      {authError && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-2 text-rose-300 text-xs">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" />
-            <div className="space-y-1">
-              <div className="font-bold text-rose-200">Gmail Connection Issue</div>
-              <p className="text-[11px] leading-relaxed text-rose-300/90">{authError}</p>
-            </div>
-          </div>
-          <div className="pl-6 flex items-center gap-2 flex-wrap pt-1">
-            <button
-              onClick={() => setShowConfigModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-bold text-[11px] border border-rose-500/30 flex items-center gap-1.5"
-            >
-              <SettingsIcon size={12} />
-              <span>Configure Domain & OAuth Settings</span>
-            </button>
-            <button
-              onClick={handleConnectGmail}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px]"
-            >
-              Retry Connection
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && !authError && (
-        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between gap-2 text-amber-200 text-xs">
-          <div className="flex items-center gap-2">
+    <div className="space-y-3">
+      {/* Error / Alert notice (if any) */}
+      {error && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 text-amber-200 text-xs animate-fadeIn">
+          <div className="flex items-center gap-2 min-w-0">
             <AlertCircle size={15} className="shrink-0 text-amber-400" />
-            <span>{error}</span>
+            <span className="truncate">{error}</span>
           </div>
-          {!hasToken && (
-            <button
-              onClick={handleConnectGmail}
-              className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-[11px] shrink-0"
-            >
-              Sign In
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition"
+              >
+                <SettingsIcon size={12} />
+                <span>OAuth Settings</span>
+              </button>
+            )}
+            {!hasToken && onConnectGmail && (
+              <button
+                type="button"
+                onClick={onConnectGmail}
+                className="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-bold text-[11px] hover:bg-amber-400 cursor-pointer transition"
+              >
+                Connect Gmail
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Filter Tabs: Pending, Added, Ignored, All */}
+      {/* Filter Status Bar: Pending Review, Added, Ignored, All */}
       <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
         <div className="inline-flex p-1 bg-[#121820] rounded-xl border border-slate-800 text-xs font-semibold">
           <button
+            type="button"
             onClick={() => setFilterStatus('PENDING')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               filterStatus === 'PENDING'
-                ? 'bg-amber-500 text-slate-950 font-bold'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <span>Pending Review</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20">{pendingCount}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-bold">
+              {pendingCount}
+            </span>
           </button>
           <button
+            type="button"
             onClick={() => setFilterStatus('ADDED')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               filterStatus === 'ADDED'
-                ? 'bg-emerald-500 text-slate-950 font-bold'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <span>Added</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20">{addedCount}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-bold">
+              {addedCount}
+            </span>
           </button>
           <button
+            type="button"
             onClick={() => setFilterStatus('IGNORED')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               filterStatus === 'IGNORED'
                 ? 'bg-slate-700 text-white font-bold'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <span>Ignored</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20">{ignoredCount}</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-bold">
+              {ignoredCount}
+            </span>
           </button>
           <button
+            type="button"
             onClick={() => setFilterStatus('ALL')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
               filterStatus === 'ALL'
                 ? 'bg-slate-700 text-white font-bold'
                 : 'text-slate-400 hover:text-white'
@@ -310,27 +156,28 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
 
       {/* Email Items List */}
       {filteredEmails.length === 0 ? (
-        <div className="bg-[#131922] rounded-3xl border border-slate-800 p-12 text-center space-y-3">
+        <div className="bg-[#131922] rounded-3xl border border-slate-800 p-10 text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-[#161d26] text-slate-400 flex items-center justify-center mx-auto border border-slate-800">
             <Mail size={22} />
           </div>
           <h4 className="text-sm font-bold text-white">No Emails Found</h4>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
             {emails.length === 0 
-              ? 'Connect your Gmail account and click "Scan 30 Days" to pull transaction alerts according to your rules.'
+              ? 'Connect your Gmail account and click "Scan Inbox" to pull transaction alerts according to your rules.'
               : `There are no emails currently marked as ${filterStatus.toLowerCase()}.`}
           </p>
-          {!hasToken && (
+          {!hasToken && onConnectGmail && (
             <button
-              onClick={handleConnectGmail}
-              className="mt-2 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+              type="button"
+              onClick={onConnectGmail}
+              className="mt-2 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition cursor-pointer"
             >
               Connect Gmail to Get Started
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filteredEmails.map((email) => {
             const liveSuggestions = applyFieldSuggestionRules(email, fieldRules, accounts);
             const resolvedAccountId = email.suggestedAccountId || liveSuggestions.suggestedAccountId;
@@ -376,8 +223,9 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                       {formatDate(email.date)}
                     </span>
                     <button
+                      type="button"
                       onClick={() => setSelectedEmailForPreview(email)}
-                      className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] ml-1 font-medium underline"
+                      className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] ml-1 font-medium underline cursor-pointer"
                     >
                       <Eye size={12} />
                       <span>View snippet</span>
@@ -424,8 +272,9 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                   <div className="flex items-center gap-2">
                     {email.status !== 'ADDED' && (
                       <button
+                        type="button"
                         onClick={() => onAddTransactionFromEmail(email)}
-                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
                         title="Open editable transaction dialog to record"
                       >
                         <Edit3 size={13} />
@@ -435,16 +284,18 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
 
                     {email.status !== 'IGNORED' ? (
                       <button
+                        type="button"
                         onClick={() => onIgnoreEmail(email.id)}
-                        className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-300 transition"
+                        className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-300 transition cursor-pointer"
                         title="Mark as Ignore"
                       >
                         <X size={15} />
                       </button>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => onAddTransactionFromEmail(email)}
-                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
                       >
                         Reopen
                       </button>
@@ -466,10 +317,11 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                 {selectedEmailForPreview.subject}
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedEmailForPreview(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-white"
+                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
             <div className="p-6 space-y-3 overflow-y-auto max-h-[70vh] text-xs">
@@ -494,136 +346,25 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             </div>
             <div className="p-4 border-t border-slate-800 flex items-center justify-between bg-[#161d26]">
               <button
+                type="button"
                 onClick={() => {
                   onIgnoreEmail(selectedEmailForPreview.id);
                   setSelectedEmailForPreview(null);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-rose-400 text-xs font-semibold"
+                className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-rose-400 text-xs font-semibold cursor-pointer"
               >
                 Mark as Ignore
               </button>
               <button
+                type="button"
                 onClick={() => {
                   onAddTransactionFromEmail(selectedEmailForPreview);
                   setSelectedEmailForPreview(null);
                 }}
-                className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400"
+                className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 cursor-pointer"
               >
                 Add Transaction
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* OAuth & Domain Configuration Modal */}
-      {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-[#121820] w-full max-w-xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
-              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                <Globe size={18} />
-                <span>Google OAuth & Domain Whitelist Guide</span>
-              </div>
-              <button
-                onClick={() => setShowConfigModal(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto text-xs text-slate-300">
-              {/* Domain Whitelisting Box */}
-              <div className="p-4 bg-[#0a0e14] rounded-2xl border border-slate-800 space-y-2">
-                <div className="font-bold text-white flex items-center justify-between">
-                  <span>Your Current Hosting Origin / Domain</span>
-                  <button
-                    onClick={handleCopyOrigin}
-                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold flex items-center gap-1 transition"
-                  >
-                    {copiedOrigin ? <Check size={11} /> : <Copy size={11} />}
-                    <span>{copiedOrigin ? 'Copied' : 'Copy'}</span>
-                  </button>
-                </div>
-                <code className="text-amber-300 font-mono text-[11px] block p-2 bg-[#141b24] rounded-xl border border-slate-800 select-all">
-                  {currentOrigin}
-                </code>
-                <p className="text-[11px] text-slate-400">
-                  If hosting on GitHub Pages (<code>{currentHostname}</code>), add this origin to <strong>Authorized JavaScript Origins</strong> in your Google Cloud Console OAuth 2.0 Client credentials.
-                </p>
-              </div>
-
-              {/* Option 1: Custom Google Cloud OAuth Client ID */}
-              <form onSubmit={handleSaveCustomClientId} className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
-                <div className="font-bold text-white flex items-center gap-1.5">
-                  <Key size={14} className="text-amber-400" />
-                  <span>Google Cloud OAuth Client ID</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  The client ID used for client-side Google Identity Services. Leave blank to use the default applet client.
-                </p>
-                <input
-                  type="text"
-                  placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
-                  value={customClientIdInput}
-                  onChange={(e) => setCustomClientIdInput(e.target.value)}
-                  className="w-full bg-[#0a0e14] border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
-                />
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomClientIdInput('');
-                      setCustomOAuthClientId('');
-                    }}
-                    className="text-[11px] text-slate-400 hover:text-white underline"
-                  >
-                    Reset to Default
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400"
-                  >
-                    Save Client ID
-                  </button>
-                </div>
-              </form>
-
-              {/* Option 2: Direct Bearer Token for Testing */}
-              <form onSubmit={handleApplyManualToken} className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
-                <div className="font-bold text-white flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-emerald-400" />
-                  <span>Direct OAuth Token (Quick Test / Bypass)</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Paste a temporary Google OAuth access token (e.g. from Google OAuth Playground) to immediately test email scanning without popup authentication.
-                </p>
-                <input
-                  type="password"
-                  placeholder="Paste access token (ya29....)"
-                  value={manualTokenInput}
-                  onChange={(e) => setManualTokenInput(e.target.value)}
-                  className="w-full bg-[#0a0e14] border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
-                />
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs hover:bg-emerald-400"
-                  >
-                    Apply Token
-                  </button>
-                </div>
-              </form>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => setShowConfigModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700 transition"
-                >
-                  Close
-                </button>
-              </div>
             </div>
           </div>
         </div>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Inbox, 
   Filter, 
   CheckCircle2, 
   Mail, 
-  Layers, 
-  AlertCircle 
+  Settings as SettingsIcon,
+  RefreshCw,
+  X
 } from 'lucide-react';
 import type { 
   Account, 
@@ -24,10 +24,13 @@ import {
   saveCachedEmails, 
   fetchExpenseEmailsFromGmail, 
   getCachedGmailToken,
+  setCachedGmailToken,
+  authenticateGmail,
   applyFieldSuggestionRules 
 } from '../../services/gmail';
 import { ReviewTab } from './ReviewTab';
 import { RulesTab } from './RulesTab';
+import { OAuthSettingsModal } from './OAuthSettingsModal';
 
 interface InboxReviewTabProps {
   accounts: Account[];
@@ -105,6 +108,10 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   const [emails, setEmails] = useState<GmailExpenseEmail[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
+  const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
+
+  const hasToken = isGuestMode ? true : !!getCachedGmailToken(userKey);
 
   // Initialize rules and cached emails for THIS specific user
   useEffect(() => {
@@ -121,7 +128,6 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
       setEmails(DEMO_GMAIL_EXPENSES);
       saveCachedEmails(DEMO_GMAIL_EXPENSES, userKey);
     } else {
-      // Clean isolated state for newly logged-in user!
       setEmails([]);
     }
   }, [accounts, isGuestMode, userKey]);
@@ -138,6 +144,27 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
     saveFieldSuggestionRules(updatedRules, userKey);
   };
 
+  // Connect Gmail account
+  const handleConnectGmail = async () => {
+    setIsAuthenticating(true);
+    setErrorMessage(undefined);
+    try {
+      await authenticateGmail(userKey);
+      await handleScanGmail();
+    } catch (err: any) {
+      console.error('Connect Gmail failed:', err);
+      setErrorMessage(err?.message || 'Could not connect to Gmail. Please check popup permissions.');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  // Disconnect Gmail
+  const handleDisconnect = () => {
+    setCachedGmailToken(null, userKey);
+    window.location.reload();
+  };
+
   // Refresh / Scan emails from Gmail
   const handleScanGmail = async () => {
     if (isGuestMode) {
@@ -152,7 +179,7 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
 
     const token = getCachedGmailToken(userKey);
     if (!token) {
-      setErrorMessage('Gmail is not connected. Please click "Connect Gmail Account" to authorize.');
+      setErrorMessage('Gmail is not connected. Please click "Connect Gmail" to authorize.');
       return;
     }
 
@@ -184,12 +211,10 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
 
   // Action: Add Transaction
   const handleAddTransactionFromEmail = (email: GmailExpenseEmail) => {
-    // Dynamically evaluate suggestions with current fieldRules & accounts (1st pref: custom rules, 2nd pref: last 4 digits)
     const liveSuggestions = applyFieldSuggestionRules(email, fieldRules, accounts);
     const resolvedAccountId = liveSuggestions.suggestedAccountId || email.suggestedAccountId || (accounts[0]?.id || '');
     const resolvedCategory = liveSuggestions.suggestedCategory || email.suggestedCategory || 'Food & Dining';
 
-    // Open the new transaction modal with populated defaults
     onOpenNewTxnWithDefaults({
       type: email.suggestedType || 'EXPENSE',
       amount: email.suggestedAmount || 0,
@@ -211,55 +236,122 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
   const pendingCount = emails.filter(e => e.status === 'PENDING').length;
 
   return (
-    <div className="space-y-4">
-      {/* 2 Tabs: "Review" and "Rules" */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
-        <div className="inline-flex p-1 bg-[#121820] rounded-2xl border border-slate-800">
-          <button
-            onClick={() => setActiveSubTab('review')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-              activeSubTab === 'review'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <CheckCircle2 size={15} />
-            <span>Review</span>
-            {pendingCount > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeSubTab === 'review' ? 'bg-black/20 text-slate-950' : 'bg-amber-500/20 text-amber-300'
-              }`}>
-                {pendingCount}
+    <div className="space-y-3">
+      {/* Top Header: Sub-tabs (Review | Rules) + Settings Icon + Relocated Action Buttons */}
+      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 gap-2 flex-wrap">
+        {/* Left: Tab Switcher + Settings Icon directly next to Rules tab */}
+        <div className="flex items-center gap-1.5">
+          <div className="inline-flex p-1 bg-[#121820] rounded-2xl border border-slate-800">
+            <button
+              id="subtab-review-btn"
+              type="button"
+              onClick={() => setActiveSubTab('review')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubTab === 'review'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <CheckCircle2 size={14} />
+              <span>Review</span>
+              {pendingCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeSubTab === 'review' ? 'bg-black/20 text-slate-950' : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              id="subtab-rules-btn"
+              type="button"
+              onClick={() => setActiveSubTab('rules')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubTab === 'rules'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Filter size={14} />
+              <span>Rules</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300">
+                {filterRules.filter(r => r.enabled).length + fieldRules.filter(r => r.enabled).length}
               </span>
-            )}
-          </button>
+            </button>
+          </div>
 
+          {/* Settings Button moved directly next to the Rules tab */}
           <button
-            onClick={() => setActiveSubTab('rules')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-              activeSubTab === 'rules'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
+            id="gmail-settings-btn"
+            type="button"
+            onClick={() => setShowConfigModal(true)}
+            className="p-2 rounded-xl bg-[#121820] hover:bg-slate-800 text-slate-400 hover:text-white transition border border-slate-800 cursor-pointer shadow-sm active:scale-95"
+            title="Gmail OAuth & Domain Settings"
           >
-            <Filter size={15} />
-            <span>Rules</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300">
-              {filterRules.filter(r => r.enabled).length + fieldRules.filter(r => r.enabled).length}
-            </span>
+            <SettingsIcon size={15} />
           </button>
         </div>
 
-        <div className="text-xs text-slate-400 flex items-center gap-1.5">
-          {activeSubTab === 'review' ? (
-            <span>Review suggested expenses & add directly to ledger</span>
-          ) : (
-            <span>Manage Gmail query filters & field suggestion rules</span>
-          )}
-        </div>
+        {/* Right: Relocated Action Buttons (Clean & Compact) */}
+        {activeSubTab === 'review' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {isGuestMode ? (
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Demo Mode
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleScanGmail()}
+                  disabled={isLoading}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+                >
+                  <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
+                  <span>{isLoading ? 'Resetting...' : 'Reset Demo'}</span>
+                </button>
+              </div>
+            ) : !hasToken ? (
+              <button
+                type="button"
+                onClick={handleConnectGmail}
+                disabled={isAuthenticating}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer"
+              >
+                <Mail size={14} />
+                <span>{isAuthenticating ? 'Connecting...' : 'Connect Gmail'}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Connected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleScanGmail()}
+                  disabled={isLoading}
+                  className="px-3 py-1.5 rounded-xl bg-[#121820] hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 border border-slate-800 cursor-pointer"
+                  title="Scan emails from the last 30 days"
+                >
+                  <RefreshCw size={13} className={isLoading ? 'animate-spin text-amber-400' : 'text-slate-400'} />
+                  <span>{isLoading ? 'Scanning...' : 'Scan Inbox'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="px-2.5 py-1.5 rounded-xl bg-[#121820] hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs transition border border-slate-800 cursor-pointer"
+                  title="Disconnect Gmail session"
+                >
+                  Disconnect
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Tab 1: Review */}
+      {/* View: Review Email Items */}
       {activeSubTab === 'review' && (
         <ReviewTab
           accounts={accounts}
@@ -267,17 +359,18 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
           fieldRules={fieldRules}
           isLoading={isLoading}
           error={errorMessage}
-          hasToken={!!getCachedGmailToken(userKey)}
+          hasToken={hasToken}
           userKey={userKey}
           onRefreshEmails={handleScanGmail}
+          onConnectGmail={handleConnectGmail}
           onAddTransactionFromEmail={handleAddTransactionFromEmail}
           onIgnoreEmail={handleIgnoreEmail}
-          onSwitchToRules={() => setActiveSubTab('rules')}
+          onOpenSettings={() => setShowConfigModal(true)}
           isGuestMode={isGuestMode}
         />
       )}
 
-      {/* Tab 2: Rules */}
+      {/* View: Rules Tab */}
       {activeSubTab === 'rules' && (
         <RulesTab
           accounts={accounts}
@@ -287,6 +380,14 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
           onSaveFieldRules={handleSaveFieldRules}
         />
       )}
+
+      {/* Global OAuth & Whitelist Settings Modal */}
+      <OAuthSettingsModal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        userKey={userKey}
+        onTokenUpdated={handleScanGmail}
+      />
     </div>
   );
 };

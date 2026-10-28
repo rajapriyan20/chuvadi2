@@ -334,95 +334,101 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           </div>
 
           {/* Horizontally Stacked Filter & Sort Bar (Icon-first to maximize screen usage) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-            {/* Search Input with Icon */}
-            <div className="relative flex-1 min-w-[130px] sm:min-w-[180px]">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-[#121820] border border-slate-800 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
-                  title="Clear search"
+          <div className="flex items-center gap-2">
+            {/* Scrollable Filter Inputs Container */}
+            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+              {/* Search Input with Icon */}
+              <div className="relative flex-1 min-w-[130px] sm:min-w-[180px]">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-[#121820] border border-slate-800 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 transition"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Type Filter Select (Icon + compact options) */}
+              <div className="relative shrink-0">
+                <Filter size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${typeFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as any)}
+                  className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition ${
+                    typeFilter !== 'ALL'
+                      ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                      : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                  title="Filter by transaction type"
                 >
-                  <X size={12} />
-                </button>
-              )}
+                  <option value="ALL">All Types</option>
+                  <option value="EXPENSE">Expense</option>
+                  <option value="INCOME">Income</option>
+                  <option value="TRANSFER">Transfer</option>
+                </select>
+              </div>
+
+              {/* Category Filter Select (Icon + compact width) */}
+              <div className="relative shrink-0">
+                <Tag size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${categoryFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[130px] sm:max-w-[160px] truncate ${
+                    categoryFilter !== 'ALL'
+                      ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                      : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                  title="Filter by category"
+                >
+                  <option value="ALL">All Categories</option>
+                  {availableCategories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Account Filter Select (Icon + compact width) */}
+              <div className="relative shrink-0">
+                <Landmark size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${selectedAccountId !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[120px] sm:max-w-[150px] truncate ${
+                    selectedAccountId !== 'ALL'
+                      ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
+                      : 'border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                  title="Filter by account"
+                >
+                  <option value="ALL">All Accounts</option>
+                  {accounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Type Filter Select (Icon + compact options) */}
-            <div className="relative shrink-0">
-              <Filter size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${typeFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as any)}
-                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition ${
-                  typeFilter !== 'ALL'
-                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
-                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-                title="Filter by transaction type"
-              >
-                <option value="ALL">All Types</option>
-                <option value="EXPENSE">Expense</option>
-                <option value="INCOME">Income</option>
-                <option value="TRANSFER">Transfer</option>
-              </select>
-            </div>
-
-            {/* Category Filter Select (Icon + compact width) */}
-            <div className="relative shrink-0">
-              <Tag size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${categoryFilter !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[130px] sm:max-w-[160px] truncate ${
-                  categoryFilter !== 'ALL'
-                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
-                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-                title="Filter by category"
-              >
-                <option value="ALL">All Categories</option>
-                {availableCategories.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Account Filter Select (Icon + compact width) */}
-            <div className="relative shrink-0">
-              <Landmark size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${selectedAccountId !== 'ALL' ? 'text-amber-400' : 'text-slate-400'}`} />
-              <select
-                value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className={`bg-[#121820] border rounded-xl pl-7 pr-3 py-2 text-xs focus:outline-none cursor-pointer transition max-w-[120px] sm:max-w-[150px] truncate ${
-                  selectedAccountId !== 'ALL'
-                    ? 'border-amber-500/50 text-amber-300 font-semibold bg-amber-500/10'
-                    : 'border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-                title="Filter by account"
-              >
-                <option value="ALL">All Accounts</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Sort Button with Safe Popover Anchor */}
+            {/* Sort Button with Safe Popover Anchor (Outside overflow container so popover is never clipped) */}
             <div className="relative shrink-0">
               <button
                 id="transactions-sort-btn"
                 type="button"
-                onClick={() => setShowSortMenu(prev => !prev)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSortMenu(prev => !prev);
+                }}
                 className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-sm cursor-pointer ${
                   sortBy !== 'DATE_DESC'
                     ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
@@ -437,12 +443,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
               {showSortMenu && (
                 <>
                   <div 
-                    className="fixed inset-0 z-30" 
+                    className="fixed inset-0 z-40" 
                     onClick={() => setShowSortMenu(false)} 
                   />
-                  {/* Anchored right-0 so it expands inside the viewport and never off-screen */}
-                  <div className="absolute right-0 top-full mt-1.5 w-60 max-w-[calc(100vw-2rem)] bg-[#161d26] border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 z-40 divide-y divide-slate-800/60 overflow-hidden animate-fadeIn">
-                    <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-900/40">
+                  <div className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] bg-[#161d26] border border-slate-700/90 rounded-2xl shadow-2xl py-1.5 z-50 divide-y divide-slate-800/80 animate-fadeIn">
+                    <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-900/60">
                       Sort Transactions By
                     </div>
                     <div className="py-1">
