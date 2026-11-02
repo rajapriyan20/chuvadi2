@@ -2430,20 +2430,20 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
           </div>
 
-          {/* Account Balance Strip: Show only Current Balance and Date of Reco */}
-          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-3 shrink-0 flex items-center justify-between gap-3 flex-wrap">
+          {/* Account Balance & Reco Strip: Space-saving compact row with Date of Reco adjacent */}
+          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-2.5 shrink-0 flex items-center gap-3 sm:gap-4 flex-wrap">
             {/* Current Balance */}
-            <div className="bg-[#0a0e14] p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 min-w-[200px]">
-              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Current Balance</span>
-              <span className="text-lg sm:text-xl font-extrabold text-amber-200 font-mono tabular-nums block mt-0.5">
+            <div className="flex items-center gap-2.5 bg-[#0a0e14] px-3.5 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Current Balance:</span>
+              <span className="text-base sm:text-lg font-extrabold text-amber-200 font-mono tabular-nums">
                 {formatCurrency(currentAccountBalance)}
               </span>
             </div>
 
-            {/* Date of Reco */}
-            <div className="bg-[#0a0e14] p-2.5 sm:p-3 rounded-xl border border-slate-800/80 flex items-center gap-3">
+            {/* Date of Reco (directly adjacent to current balance) */}
+            <div className="flex items-center gap-2 bg-[#0a0e14] px-3 py-1.5 rounded-xl border border-slate-800">
               <label htmlFor="account-reco-date" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-                Date of Reco
+                Date of Reco:
               </label>
               <div className="flex items-center gap-1.5">
                 <input
@@ -2456,7 +2456,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 <button
                   type="button"
                   onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
-                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition"
+                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition cursor-pointer"
                 >
                   Today
                 </button>
@@ -2464,9 +2464,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
           </div>
 
-          {/* Subheader: Search & Mapping Group Toggle (Passbook & count labels removed) */}
-          <div className="px-4 sm:px-8 py-2.5 bg-[#0e141c] border-b border-slate-800/60 flex items-center justify-between gap-3 shrink-0 flex-wrap">
-            <div className="relative w-48 sm:w-72">
+          {/* Subheader: Search bar and adjacent icon-only view mode toggle */}
+          <div className="px-4 sm:px-8 py-2 bg-[#0e141c] border-b border-slate-800/60 flex items-center gap-2 shrink-0">
+            <div className="relative flex-1 max-w-sm">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
@@ -2482,26 +2482,28 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 <button
                   type="button"
                   onClick={() => setPopupPassbookViewMode('chronological')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  title="Chronological View"
+                  aria-label="Chronological View"
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
                     popupPassbookViewMode === 'chronological'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <Clock size={13} />
-                  <span>Chronological</span>
+                  <Clock size={15} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setPopupPassbookViewMode('mapped')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  title="Grouped by Mapping View"
+                  aria-label="Grouped by Mapping View"
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
                     popupPassbookViewMode === 'mapped'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <Link2 size={13} />
-                  <span>Grouped by Mapping</span>
+                  <Link2 size={15} />
                 </button>
               </div>
             )}
@@ -2532,35 +2534,38 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                   const parentFromAcc = accounts?.find(a => a.id === parent.fromAccountId)?.name || 'Source Account';
                   const parentToAcc = accounts?.find(a => a.id === parent.toAccountId)?.name || 'Destination Account';
                   const parentRunningBal = popupRunningBalancesMap.get(parent.id);
+                  const isSingleSettledGroup = group.status.isSettled && group.settlements.length === 1;
 
                   return (
                     <div key={parent.id} className="bg-[#121820] rounded-2xl border border-slate-800/90 overflow-hidden shadow-sm">
-                      {/* Group Header */}
-                      <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <Link2 size={13} className="text-amber-400" />
-                          <span className="font-bold text-slate-200">Mapped Group</span>
-                          {group.status.isSettled ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                              <CheckCircle2 size={11} /> Settled
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                              <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
-                            </span>
-                          )}
+                      {/* Group Header (Omitted if only one settlement entry and group is settled) */}
+                      {!isSingleSettledGroup && (
+                        <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <Link2 size={13} className="text-amber-400" />
+                            <span className="font-bold text-slate-200">Mapped Group</span>
+                            {group.status.isSettled ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                <CheckCircle2 size={11} /> Settled
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                                <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-400">
+                            Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
+                          </div>
                         </div>
-                        <div className="text-[11px] font-mono text-slate-400">
-                          Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
-                        </div>
-                      </div>
+                      )}
 
-                      {/* First Instance: Primary / Parent Transaction */}
+                      {/* Primary / Parent Transaction */}
                       <div
                         onClick={() => {
                           if (onSelectTxn) onSelectTxn(parent);
                         }}
-                        className={`p-3.5 bg-[#0e141c] hover:bg-slate-800/50 transition flex items-center justify-between gap-3 border-b border-slate-800/50 ${
+                        className={`p-3 sm:p-3.5 bg-[#0e141c] hover:bg-slate-800/50 transition flex items-center justify-between gap-3 border-b border-slate-800/50 ${
                           onSelectTxn ? 'cursor-pointer' : ''
                         }`}
                         title={onSelectTxn ? "Click to view transaction dossier" : undefined}
@@ -2586,9 +2591,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                First Instance
-                              </span>
                               {isParentTransfer ? (
                                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
                                   <span className="text-slate-200">{parentFromAcc}</span>
@@ -2645,11 +2647,13 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
                       {/* Settlement Entries Down Below */}
                       {group.settlements.length > 0 ? (
-                        <div className="p-3 pl-6 sm:pl-8 space-y-2 bg-[#121820]">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
-                            <ArrowDownLeft size={12} className="text-emerald-400" />
-                            <span>Settlement Entries ({group.settlements.length})</span>
-                          </div>
+                        <div className={`space-y-2 bg-[#121820] ${isSingleSettledGroup ? 'p-2 sm:p-2.5 pl-4 sm:pl-6' : 'p-3 pl-6 sm:pl-8'}`}>
+                          {!isSingleSettledGroup && (
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                              <ArrowDownLeft size={12} className="text-emerald-400" />
+                              <span>Settlement Entries ({group.settlements.length})</span>
+                            </div>
+                          )}
                           {group.settlements.map((child) => {
                             const isChildTransfer = child.type === 'TRANSFER';
                             const isChildDebit = child.fromAccountId === selectedAccountForPopup.id;

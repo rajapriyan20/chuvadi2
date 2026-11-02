@@ -584,14 +584,20 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         </div>
 
-        {/* Metric Card: Show only the current balance */}
-        <div className="px-4 sm:px-8 py-3 bg-[#0d1217] border-b border-slate-800/80 shrink-0">
-          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-amber-500/30 bg-amber-500/5 max-w-xs">
-            <div className="text-[10px] uppercase font-bold text-amber-400">Current Balance</div>
-            <div className="text-base sm:text-lg font-extrabold text-amber-200 font-mono mt-0.5">
+        {/* Metric Card: Show current balance and adjacent reco date */}
+        <div className="px-4 sm:px-8 py-2.5 bg-[#0d1217] border-b border-slate-800/80 shrink-0 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 bg-[#161c24] px-3.5 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
+            <span className="text-[10px] uppercase font-bold text-amber-400">Current Balance:</span>
+            <span className="text-base sm:text-lg font-extrabold text-amber-200 font-mono">
               {formatCurrency(currentBalance)}
-            </div>
+            </span>
           </div>
+          {account.reconciledDate && (
+            <div className="flex items-center gap-2 bg-[#121820] px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Date of Reco:</span>
+              <span className="text-slate-200 font-mono">{formatDate(account.reconciledDate)}</span>
+            </div>
+          )}
         </div>
 
         {/* Mapping Summary Bar (if account has enableMapping enabled) */}
@@ -614,9 +620,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         )}
 
-        {/* Toolbar: Search & Mapped Group Toggle */}
-        <div className="px-4 sm:px-8 py-2.5 border-b border-slate-800/80 bg-[#121820] flex items-center justify-between gap-3 shrink-0 flex-wrap">
-          <div className="relative flex-1 min-w-[180px] max-w-md">
+        {/* Toolbar: Search & Adjacent Icon-Only Mapped Group Toggle */}
+        <div className="px-4 sm:px-8 py-2 border-b border-slate-800/80 bg-[#121820] flex items-center gap-2 shrink-0">
+          <div className="relative flex-1 max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
@@ -632,26 +638,28 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
               <button
                 type="button"
                 onClick={() => setPassbookViewMode('chronological')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                title="Chronological View"
+                aria-label="Chronological View"
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
                   passbookViewMode === 'chronological'
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Clock size={13} />
-                <span>Chronological</span>
+                <Clock size={15} />
               </button>
               <button
                 type="button"
                 onClick={() => setPassbookViewMode('mapped')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                title="Grouped by Mapping View"
+                aria-label="Grouped by Mapping View"
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
                   passbookViewMode === 'mapped'
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Link2 size={13} />
-                <span>Grouped by Mapping</span>
+                <Link2 size={15} />
               </button>
             </div>
           )}
@@ -674,30 +682,33 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                 const parentFromAcc = accounts?.find(a => a.id === parent.fromAccountId)?.name || 'Source Account';
                 const parentToAcc = accounts?.find(a => a.id === parent.toAccountId)?.name || 'Destination Account';
                 const runningBal = runningBalancesMap.get(parent.id);
+                const isSingleSettledGroup = group.status.isSettled && group.settlements.length === 1;
 
                 return (
                   <div key={parent.id} className="bg-[#121820] rounded-2xl border border-slate-800/90 overflow-hidden shadow-sm">
-                    {/* Mapped Group Header: Status & Total Settled */}
-                    <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <Link2 size={13} className="text-amber-400" />
-                        <span className="font-bold text-slate-200">Mapped Group</span>
-                        {group.status.isSettled ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                            <CheckCircle2 size={11} /> Settled
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                            <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
-                          </span>
-                        )}
+                    {/* Mapped Group Header: Status & Total Settled (Omitted if only one settlement entry and group is settled) */}
+                    {!isSingleSettledGroup && (
+                      <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Link2 size={13} className="text-amber-400" />
+                          <span className="font-bold text-slate-200">Mapped Group</span>
+                          {group.status.isSettled ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                              <CheckCircle2 size={11} /> Settled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                              <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-400">
+                          Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
+                        </div>
                       </div>
-                      <div className="text-[11px] font-mono text-slate-400">
-                        Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
-                      </div>
-                    </div>
+                    )}
 
-                    {/* First Instance: Primary / Parent Transaction */}
+                    {/* Primary / Parent Transaction */}
                     <div
                       onClick={() => onSelectTxn(parent)}
                       className="p-3.5 bg-[#0e141c] hover:bg-slate-800/50 cursor-pointer transition flex items-center justify-between gap-3 border-b border-slate-800/50"
@@ -724,9 +735,6 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              First Instance
-                            </span>
                             {isParentTransfer ? (
                               <div className="text-xs font-bold text-white flex items-center gap-1.5">
                                 <span className="text-slate-200">{parentFromAcc}</span>
@@ -783,11 +791,13 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
                     {/* Settlement Entries Down Below */}
                     {group.settlements.length > 0 ? (
-                      <div className="p-3 pl-6 sm:pl-8 space-y-2 bg-[#121820]">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
-                          <ArrowDownLeft size={12} className="text-emerald-400" />
-                          <span>Settlement Entries ({group.settlements.length})</span>
-                        </div>
+                      <div className={`space-y-2 bg-[#121820] ${isSingleSettledGroup ? 'p-2 sm:p-2.5 pl-4 sm:pl-6' : 'p-3 pl-6 sm:pl-8'}`}>
+                        {!isSingleSettledGroup && (
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                            <ArrowDownLeft size={12} className="text-emerald-400" />
+                            <span>Settlement Entries ({group.settlements.length})</span>
+                          </div>
+                        )}
                         {group.settlements.map((child) => {
                           const isChildTransfer = child.type === 'TRANSFER';
                           const isChildDebit = child.fromAccountId === account.id;
