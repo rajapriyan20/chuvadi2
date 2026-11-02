@@ -160,7 +160,10 @@ export const SideMenu: React.FC<SideMenuProps> = ({
         <div className="px-3.5 py-2 sm:px-4 sm:py-2.5 bg-[#131922] border-b border-slate-800/60 flex items-center justify-between gap-2 shrink-0">
           <div className="min-w-0">
             <div className="text-[10px] text-slate-400 font-medium">Developed by</div>
-            <div className="text-xs font-bold text-slate-200 truncate">Rajapriyan</div>
+            <div className="text-xs font-bold text-slate-200 truncate flex items-center gap-1.5">
+              <span>Rajapriyan</span>
+              <span className="text-[10px] text-slate-500 font-mono font-normal">v1.2.0</span>
+            </div>
           </div>
           <a
             href="https://wa.me/919600001118"

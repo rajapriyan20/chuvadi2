@@ -116,8 +116,9 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="bg-[#090d13] border-b border-slate-800/80 px-3 sm:px-6 lg:px-8 py-1.5 text-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-slate-400 text-xs">
-              developed by <strong className="text-slate-200 font-semibold">Rajapriyan</strong>
+            <span className="text-slate-400 text-xs flex items-center gap-1.5">
+              <span>developed by <strong className="text-slate-200 font-semibold">Rajapriyan</strong></span>
+              <span className="text-[10px] text-slate-500 font-mono tracking-tight select-none">v1.2.0</span>
             </span>
             <a
               href="https://wa.me/919600001118"

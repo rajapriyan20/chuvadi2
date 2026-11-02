@@ -38,9 +38,10 @@ import {
   GitFork,
   Clock,
   FileText,
-  Download
+  Download,
+  Link2
 } from 'lucide-react';
-import { formatCurrency, formatDate, getTodayLocalDateString } from '../../utils/formatters';
+import { formatCurrency, formatDate, getTodayLocalDateString, getTransferFlowStyle } from '../../utils/formatters';
 import type { Account, AccountType, Transaction } from '../../types';
 import { BankLogo, BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
 import { CoaTableView } from './CoaTableView';
@@ -468,16 +469,19 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setPopupTxnSearch('');
   };
 
-  // Transactions involving the currently selected account for the popup
+  const [popupPassbookViewMode, setPopupPassbookViewMode] = useState<'chronological' | 'mapped'>('chronological');
+
+  // Transactions involving the currently selected account for the popup, sorted strictly by transaction date
   const selectedAccountTxns = useMemo(() => {
     if (!selectedAccountForPopup) return [];
     const accId = selectedAccountForPopup.id;
     return (transactions || [])
       .filter((t) => t.fromAccountId === accId || t.toAccountId === accId)
       .sort((a, b) => {
-        const timeA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
-        const timeB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
-        return timeB - timeA;
+        // Strict sort based on transaction date
+        const dateComp = (b.date || '').localeCompare(a.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (b.timestamp || 0) - (a.timestamp || 0);
       });
   }, [selectedAccountForPopup, transactions]);
 
@@ -508,6 +512,35 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     return openingAccountBalance + netTransactions;
   }, [openingAccountBalance, netTransactions]);
 
+  // Running balance calculated strictly chronologically based on transaction date
+  const popupRunningBalancesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!selectedAccountForPopup) return map;
+    const accId = selectedAccountForPopup.id;
+
+    const chronologicalTxns = (transactions || [])
+      .filter((t) => t.fromAccountId === accId || t.toAccountId === accId)
+      .sort((a, b) => {
+        const dateComp = (a.date || '').localeCompare(b.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+
+    let current = openingAccountBalance;
+    for (const t of chronologicalTxns) {
+      const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId);
+      const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId);
+      const amt = Number(t.amount) || 0;
+      if (isCredit) {
+        current += amt;
+      } else if (isDebit) {
+        current -= amt;
+      }
+      map.set(t.id, current);
+    }
+    return map;
+  }, [selectedAccountForPopup, transactions, openingAccountBalance]);
+
   const liveEditingCurrentBalance = useMemo(() => {
     const op = parseFloat(popupAccountOpeningBalance) || 0;
     return op + netTransactions;
@@ -527,6 +560,61 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       String(t.amount).includes(query)
     );
   }, [popupTxnSearch, selectedAccountTxns]);
+
+  // Grouped transactions based on settlement mapping for toggle view in ChartOfAccounts
+  const popupMappedGroupsData = useMemo(() => {
+    if (!selectedAccountForPopup || !selectedAccountForPopup.enableMapping) {
+      return { groups: [], unmapped: [] };
+    }
+    const tolerance = getStoredSettlementTolerance();
+    const processedIds = new Set<string>();
+    const groups: {
+      parent: Transaction;
+      settlements: Transaction[];
+      status: ReturnType<typeof getSettlementStatus>;
+    }[] = [];
+    const unmapped: Transaction[] = [];
+
+    // Pass 1: Primary transactions with children mapped
+    for (const t of filteredPopupTxns) {
+      if (processedIds.has(t.id)) continue;
+      const children = (transactions || []).filter(c => c.mappedTransactionId === t.id);
+      if (children.length > 0) {
+        processedIds.add(t.id);
+        children.forEach(c => processedIds.add(c.id));
+        groups.push({
+          parent: t,
+          settlements: children.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+          status: getSettlementStatus(t, transactions || [], tolerance)
+        });
+      }
+    }
+
+    // Pass 2: Child transactions whose parent is in transactions
+    for (const t of filteredPopupTxns) {
+      if (processedIds.has(t.id)) continue;
+      if (t.mappedTransactionId) {
+        const parent = (transactions || []).find(p => p.id === t.mappedTransactionId);
+        if (parent) {
+          processedIds.add(t.id);
+          processedIds.add(parent.id);
+          const allSiblings = (transactions || []).filter(c => c.mappedTransactionId === parent.id);
+          allSiblings.forEach(c => processedIds.add(c.id));
+          groups.push({
+            parent,
+            settlements: allSiblings.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+            status: getSettlementStatus(parent, transactions || [], tolerance)
+          });
+        } else {
+          unmapped.push(t);
+        }
+      } else {
+        unmapped.push(t);
+      }
+    }
+
+    return { groups, unmapped };
+  }, [selectedAccountForPopup, filteredPopupTxns, transactions]);
 
   const applyDatePreset = (preset: 'all' | 'this_month' | 'last_month' | 'last_30_days' | 'this_year' | 'custom') => {
     setPdfPreset(preset);
@@ -2260,9 +2348,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     style={{ backgroundColor: selectedAccountForPopup.color || '#0284c7' }} 
                     title={selectedAccountForPopup.type}
                   />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 shrink-0">
-                    Passbook
-                  </span>
                 </div>
                 <div className="text-xs text-slate-400 flex items-center gap-2 truncate mt-0.5">
                   <span className="font-semibold text-slate-300">
@@ -2278,14 +2363,6 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     <>
                       <span>•</span>
                       <span className="font-mono">•••• {selectedAccountForPopup.accountNumber.slice(-4)}</span>
-                    </>
-                  )}
-                  {selectedAccountForPopup.enableMapping && (
-                    <>
-                      <span>•</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
-                        Settlement Mapping Active
-                      </span>
                     </>
                   )}
                 </div>
@@ -2353,78 +2430,44 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
           </div>
 
-          {/* Passbook KPI Strip & Reco Banner */}
-          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-3 shrink-0">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-center">
-              {/* Current Balance */}
-              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Current Balance</span>
-                <span className="text-lg sm:text-xl font-extrabold text-amber-300 font-mono tabular-nums block mt-0.5">
-                  {formatCurrency(currentAccountBalance)}
-                </span>
-              </div>
+          {/* Account Balance Strip: Show only Current Balance and Date of Reco */}
+          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-3 shrink-0 flex items-center justify-between gap-3 flex-wrap">
+            {/* Current Balance */}
+            <div className="bg-[#0a0e14] p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 min-w-[200px]">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Current Balance</span>
+              <span className="text-lg sm:text-xl font-extrabold text-amber-200 font-mono tabular-nums block mt-0.5">
+                {formatCurrency(currentAccountBalance)}
+              </span>
+            </div>
 
-              {/* Opening Balance */}
-              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Opening Balance</span>
-                <span className="text-sm sm:text-base font-bold text-slate-200 font-mono tabular-nums block mt-0.5">
-                  {formatCurrency(openingAccountBalance)}
-                </span>
-              </div>
-
-              {/* Total Inflow */}
-              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
-                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider block">Total Inflow</span>
-                <span className="text-sm sm:text-base font-bold text-emerald-300 font-mono tabular-nums block mt-0.5">
-                  +{formatCurrency(totalCredits)}
-                </span>
-              </div>
-
-              {/* Total Outflow */}
-              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
-                <span className="text-[10px] font-semibold text-rose-400 uppercase tracking-wider block">Total Outflow</span>
-                <span className="text-sm sm:text-base font-bold text-rose-300 font-mono tabular-nums block mt-0.5">
-                  -{formatCurrency(totalDebits)}
-                </span>
-              </div>
-
-              {/* Date of Reco */}
-              <div className="col-span-2 sm:col-span-1 bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80 flex flex-col justify-between">
-                <label htmlFor="account-reco-date" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  Date of Reco
-                </label>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <input
-                    id="account-reco-date"
-                    type="date"
-                    value={selectedAccountForPopup.reconciledDate || ''}
-                    onChange={(e) => handleUpdateRecoDate(e.target.value)}
-                    className="flex-1 bg-[#121820] hover:bg-[#161f2b] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
-                    className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition"
-                  >
-                    Today
-                  </button>
-                </div>
+            {/* Date of Reco */}
+            <div className="bg-[#0a0e14] p-2.5 sm:p-3 rounded-xl border border-slate-800/80 flex items-center gap-3">
+              <label htmlFor="account-reco-date" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
+                Date of Reco
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  id="account-reco-date"
+                  type="date"
+                  value={selectedAccountForPopup.reconciledDate || ''}
+                  onChange={(e) => handleUpdateRecoDate(e.target.value)}
+                  className="bg-[#121820] hover:bg-[#161f2b] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
+                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition"
+                >
+                  Today
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Subheader: Search & Stats */}
-          <div className="px-4 sm:px-8 py-2.5 bg-[#0e141c] border-b border-slate-800/60 flex items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center gap-2">
-              <BookOpen size={15} className="text-amber-400" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">Passbook Entries</span>
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[11px] font-mono text-slate-300 border border-slate-700">
-                {filteredPopupTxns.length} {filteredPopupTxns.length === 1 ? 'entry' : 'entries'}
-              </span>
-            </div>
-
-            <div className="relative w-48 sm:w-64">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* Subheader: Search & Mapping Group Toggle (Passbook & count labels removed) */}
+          <div className="px-4 sm:px-8 py-2.5 bg-[#0e141c] border-b border-slate-800/60 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+            <div className="relative w-48 sm:w-72">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={popupTxnSearch}
@@ -2433,9 +2476,38 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 className="w-full bg-[#121820] border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
               />
             </div>
+
+            {selectedAccountForPopup.enableMapping && (
+              <div className="flex items-center gap-1 bg-[#121820] p-1 rounded-xl border border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPopupPassbookViewMode('chronological')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                    popupPassbookViewMode === 'chronological'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Clock size={13} />
+                  <span>Chronological</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPopupPassbookViewMode('mapped')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                    popupPassbookViewMode === 'mapped'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Link2 size={13} />
+                  <span>Grouped by Mapping</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Passbook Entries Ledger (Full-Screen Scrollable List) */}
+          {/* Ledger Entries List */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-2">
             {filteredPopupTxns.length === 0 ? (
               <div className="py-16 text-center bg-[#121820]/40 rounded-2xl border border-slate-800/80 px-4">
@@ -2449,15 +2521,331 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     : 'Transactions referencing this account will appear here chronologically.'}
                 </p>
               </div>
+            ) : popupPassbookViewMode === 'mapped' && selectedAccountForPopup.enableMapping ? (
+              /* GROUPED BY MAPPING VIEW */
+              <div className="space-y-4">
+                {popupMappedGroupsData.groups.map((group) => {
+                  const parent = group.parent;
+                  const isParentTransfer = parent.type === 'TRANSFER';
+                  const isParentDebit = parent.fromAccountId === selectedAccountForPopup.id;
+                  const parentTransferStyle = isParentTransfer ? getTransferFlowStyle(parent, accounts, selectedAccountForPopup.id) : null;
+                  const parentFromAcc = accounts?.find(a => a.id === parent.fromAccountId)?.name || 'Source Account';
+                  const parentToAcc = accounts?.find(a => a.id === parent.toAccountId)?.name || 'Destination Account';
+                  const parentRunningBal = popupRunningBalancesMap.get(parent.id);
+
+                  return (
+                    <div key={parent.id} className="bg-[#121820] rounded-2xl border border-slate-800/90 overflow-hidden shadow-sm">
+                      {/* Group Header */}
+                      <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Link2 size={13} className="text-amber-400" />
+                          <span className="font-bold text-slate-200">Mapped Group</span>
+                          {group.status.isSettled ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                              <CheckCircle2 size={11} /> Settled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                              <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-400">
+                          Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
+                        </div>
+                      </div>
+
+                      {/* First Instance: Primary / Parent Transaction */}
+                      <div
+                        onClick={() => {
+                          if (onSelectTxn) onSelectTxn(parent);
+                        }}
+                        className={`p-3.5 bg-[#0e141c] hover:bg-slate-800/50 transition flex items-center justify-between gap-3 border-b border-slate-800/50 ${
+                          onSelectTxn ? 'cursor-pointer' : ''
+                        }`}
+                        title={onSelectTxn ? "Click to view transaction dossier" : undefined}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
+                              isParentTransfer
+                                ? parentTransferStyle?.badgeBgClass
+                                : isParentDebit
+                                ? 'bg-rose-500/15 text-rose-400'
+                                : 'bg-emerald-500/15 text-emerald-400'
+                            }`}
+                          >
+                            {isParentTransfer ? (
+                              <ArrowRightLeft size={15} />
+                            ) : isParentDebit ? (
+                              <ArrowUpRight size={15} />
+                            ) : (
+                              <ArrowDownLeft size={15} />
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                First Instance
+                              </span>
+                              {isParentTransfer ? (
+                                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <span className="text-slate-200">{parentFromAcc}</span>
+                                  <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                                  <span className="text-slate-200">{parentToAcc}</span>
+                                </div>
+                              ) : (
+                                <div className="text-xs font-semibold text-white tracking-tight truncate">
+                                  {parent.description || 'Transaction'}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="font-mono">{formatDate(parent.date)}</span>
+                              {(() => {
+                                const cat = (parent.category || '').trim();
+                                if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                                return (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Amount & Running Balance */}
+                        <div className="text-right shrink-0">
+                          <div
+                            className={`text-sm font-bold font-mono tabular-nums ${
+                              isParentTransfer
+                                ? parentTransferStyle?.colorClass
+                                : isParentDebit
+                                ? 'text-rose-400'
+                                : 'text-emerald-400'
+                            }`}
+                          >
+                            {isParentTransfer 
+                              ? `${parentTransferStyle?.sign}${formatCurrency(parent.amount)}` 
+                              : isParentDebit 
+                              ? `-${formatCurrency(parent.amount)}` 
+                              : `+${formatCurrency(parent.amount)}`}
+                          </div>
+                          {parentRunningBal !== undefined && (
+                            <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                              Bal: {formatCurrency(parentRunningBal)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Settlement Entries Down Below */}
+                      {group.settlements.length > 0 ? (
+                        <div className="p-3 pl-6 sm:pl-8 space-y-2 bg-[#121820]">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                            <ArrowDownLeft size={12} className="text-emerald-400" />
+                            <span>Settlement Entries ({group.settlements.length})</span>
+                          </div>
+                          {group.settlements.map((child) => {
+                            const isChildTransfer = child.type === 'TRANSFER';
+                            const isChildDebit = child.fromAccountId === selectedAccountForPopup.id;
+                            const childTransferStyle = isChildTransfer ? getTransferFlowStyle(child, accounts, selectedAccountForPopup.id) : null;
+                            const childRunningBal = popupRunningBalancesMap.get(child.id);
+                            const childFromAcc = accounts?.find(a => a.id === child.fromAccountId)?.name || 'Source Account';
+                            const childToAcc = accounts?.find(a => a.id === child.toAccountId)?.name || 'Destination Account';
+
+                            return (
+                              <div
+                                key={child.id}
+                                onClick={() => {
+                                  if (onSelectTxn) onSelectTxn(child);
+                                }}
+                                className={`p-2.5 rounded-xl bg-[#0a0e14] hover:bg-slate-800/60 border border-slate-800/80 flex items-center justify-between gap-3 transition group ${
+                                  onSelectTxn ? 'cursor-pointer' : ''
+                                }`}
+                                title={onSelectTxn ? "Click to view settlement entry" : undefined}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                  <div className="min-w-0">
+                                    {isChildTransfer ? (
+                                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                                        <span className="text-slate-200">{childFromAcc}</span>
+                                        <ArrowRight size={10} className="text-blue-400 shrink-0" />
+                                        <span className="text-slate-200">{childToAcc}</span>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs font-medium text-slate-200 truncate">
+                                        {child.description || 'Settlement'}
+                                      </div>
+                                    )}
+                                    <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
+                                      <span>{formatDate(child.date)}</span>
+                                      {(() => {
+                                        const cat = (child.category || '').trim();
+                                        if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                                        return (
+                                          <>
+                                            <span>•</span>
+                                            <span className="text-slate-400 truncate max-w-[120px]">{cat}</span>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  <div
+                                    className={`text-xs font-bold font-mono tabular-nums ${
+                                      isChildTransfer
+                                        ? childTransferStyle?.colorClass
+                                        : isChildDebit
+                                        ? 'text-rose-400'
+                                        : 'text-emerald-400'
+                                    }`}
+                                  >
+                                    {isChildTransfer 
+                                      ? `${childTransferStyle?.sign}${formatCurrency(child.amount)}` 
+                                      : isChildDebit 
+                                      ? `-${formatCurrency(child.amount)}` 
+                                      : `+${formatCurrency(child.amount)}`}
+                                  </div>
+                                  {childRunningBal !== undefined && (
+                                    <div className="text-[10px] font-mono text-slate-500 font-medium tabular-nums mt-0.5">
+                                      Bal: {formatCurrency(childRunningBal)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-[#121820] text-[11px] text-slate-500 italic pl-6">
+                          No settling entries linked yet.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Unmapped / Other Entries */}
+                {popupMappedGroupsData.unmapped.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">
+                      Other / Direct Entries ({popupMappedGroupsData.unmapped.length})
+                    </div>
+                    <div className="bg-[#121820] rounded-2xl border border-slate-800/80 divide-y divide-slate-800/60 overflow-hidden">
+                      {popupMappedGroupsData.unmapped.map((txn) => {
+                        const isTransfer = txn.type === 'TRANSFER';
+                        const isDebit = txn.fromAccountId === selectedAccountForPopup.id;
+                        const transferStyle = isTransfer ? getTransferFlowStyle(txn, accounts, selectedAccountForPopup.id) : null;
+                        const runningBal = popupRunningBalancesMap.get(txn.id);
+                        const fromAcc = accounts?.find(a => a.id === txn.fromAccountId)?.name || 'Source Account';
+                        const toAcc = accounts?.find(a => a.id === txn.toAccountId)?.name || 'Destination Account';
+
+                        return (
+                          <div
+                            key={txn.id}
+                            onClick={() => {
+                              if (onSelectTxn) onSelectTxn(txn);
+                            }}
+                            className={`py-3 px-3.5 flex items-center justify-between hover:bg-slate-800/40 transition ${
+                              onSelectTxn ? 'cursor-pointer' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
+                                  isTransfer
+                                    ? transferStyle?.badgeBgClass
+                                    : isDebit
+                                    ? 'bg-rose-500/15 text-rose-400'
+                                    : 'bg-emerald-500/15 text-emerald-400'
+                                }`}
+                              >
+                                {isTransfer ? (
+                                  <ArrowRightLeft size={15} />
+                                ) : isDebit ? (
+                                  <ArrowUpRight size={15} />
+                                ) : (
+                                  <ArrowDownLeft size={15} />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                {isTransfer ? (
+                                  <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-slate-200">{fromAcc}</span>
+                                    <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                                    <span className="text-slate-200">{toAcc}</span>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs font-semibold text-white tracking-tight truncate">
+                                    {txn.description || 'Transaction'}
+                                  </div>
+                                )}
+                                <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <span className="font-mono">{formatDate(txn.date)}</span>
+                                  {(() => {
+                                    const cat = (txn.category || '').trim();
+                                    if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                                    return (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0 ml-3">
+                              <div
+                                className={`text-xs font-bold font-mono tabular-nums ${
+                                  isTransfer
+                                    ? transferStyle?.colorClass
+                                    : isDebit
+                                    ? 'text-rose-400'
+                                    : 'text-emerald-400'
+                                }`}
+                              >
+                                {isTransfer 
+                                  ? `${transferStyle?.sign}${formatCurrency(txn.amount)}` 
+                                  : isDebit 
+                                  ? `-${formatCurrency(txn.amount)}` 
+                                  : `+${formatCurrency(txn.amount)}`}
+                              </div>
+                              {runningBal !== undefined && (
+                                <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                                  Bal: {formatCurrency(runningBal)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
+              /* CHRONOLOGICAL VIEW */
               filteredPopupTxns.map((t) => {
                 const accId = selectedAccountForPopup.id;
                 const isTransfer = t.type === 'TRANSFER';
-                const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (isTransfer && t.toAccountId === accId);
+                const isDebit = t.fromAccountId === accId;
+                const transferStyle = isTransfer ? getTransferFlowStyle(t, accounts, accId) : null;
                 const fromAcc = accounts.find(a => a.id === t.fromAccountId);
                 const toAcc = accounts.find(a => a.id === t.toAccountId);
                 const fromAccountName = fromAcc?.name || 'Account';
                 const toAccountName = toAcc?.name || 'Account';
+                const runningBal = popupRunningBalancesMap.get(t.id);
 
                 return (
                   <div
@@ -2476,18 +2864,18 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       <div
                         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                           isTransfer
-                            ? 'bg-blue-500/15 text-blue-400'
-                            : isCredit
-                            ? 'bg-emerald-500/15 text-emerald-400'
-                            : 'bg-rose-500/15 text-rose-400'
+                            ? transferStyle?.badgeBgClass
+                            : isDebit
+                            ? 'bg-rose-500/15 text-rose-400'
+                            : 'bg-emerald-500/15 text-emerald-400'
                         }`}
                       >
                         {isTransfer ? (
                           <ArrowRightLeft size={14} />
-                        ) : isCredit ? (
-                          <ArrowDownLeft size={14} />
-                        ) : (
+                        ) : isDebit ? (
                           <ArrowUpRight size={14} />
+                        ) : (
+                          <ArrowDownLeft size={14} />
                         )}
                       </div>
 
@@ -2505,11 +2893,19 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                           </div>
                         )}
 
-                        {/* Meta Row */}
+                        {/* Meta Row - without generic expense/income/transfer words */}
                         <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap truncate mt-0.5">
                           <span className="font-mono text-slate-400">{formatDate(t.date)}</span>
-                          <span>•</span>
-                          <span className="truncate">{t.category || t.type}</span>
+                          {(() => {
+                            const cat = (t.category || '').trim();
+                            if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                            return (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                              </>
+                            );
+                          })()}
                           {isTransfer && t.description && (
                             <>
                               <span>•</span>
@@ -2533,17 +2929,28 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                       </div>
                     </div>
 
-                    {/* Amount Column: Neutral text-slate-200 and no +/- for transfer transactions! */}
-                    <div
-                      className={`text-sm sm:text-base font-bold font-mono tabular-nums shrink-0 ${
-                        isTransfer 
-                          ? 'text-slate-200' 
-                          : isCredit 
-                          ? 'text-emerald-400' 
-                          : 'text-rose-400'
-                      }`}
-                    >
-                      {isTransfer ? '' : isCredit ? '+' : '-'}{formatCurrency(t.amount)}
+                    {/* Amount & Running Balance */}
+                    <div className="text-right shrink-0 ml-3">
+                      <div
+                        className={`text-sm sm:text-base font-bold font-mono tabular-nums ${
+                          isTransfer 
+                            ? transferStyle?.colorClass 
+                            : isDebit 
+                            ? 'text-rose-400' 
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {isTransfer 
+                          ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
+                          : isDebit 
+                          ? `-${formatCurrency(t.amount)}` 
+                          : `+${formatCurrency(t.amount)}`}
+                      </div>
+                      {runningBal !== undefined && (
+                        <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                          Bal: {formatCurrency(runningBal)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

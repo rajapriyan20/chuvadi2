@@ -15,7 +15,7 @@ import {
   Link2,
   Filter
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, getTransferFlowStyle } from '../../utils/formatters';
 import type { Account, Transaction } from '../../types';
 import { getSettlementStatus, getStoredSettlementTolerance } from '../../utils/settlement';
 import { jsPDF } from 'jspdf';
@@ -42,6 +42,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [tolerance, setTolerance] = useState<number>(() => getStoredSettlementTolerance());
+  const [passbookViewMode, setPassbookViewMode] = useState<'chronological' | 'mapped'>('chronological');
   
   // Date filter dialog state for PDF Export
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -77,7 +78,6 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
     if (preset === 'all') {
-      // Find earliest transaction date
       const allAccountDates = transactions
         .filter(t => account && (t.fromAccountId === account.id || t.toAccountId === account.id))
         .map(t => t.date)
@@ -110,17 +110,61 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     }
   };
 
-  // Filter transactions involving this account
+  // Base opening balance
+  const openingBalance = useMemo(() => {
+    if (!account) return 0;
+    return typeof account.openingBalance === 'number' 
+      ? account.openingBalance 
+      : (typeof account.balance === 'number' ? account.balance : 0);
+  }, [account]);
+
+  // Running balance calculated strictly chronologically based on transaction date
+  const runningBalancesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!account) return map;
+
+    // All transactions for this account sorted chronologically (oldest to newest by date)
+    const chronologicalTxns = transactions
+      .filter((t) => t.fromAccountId === account.id || t.toAccountId === account.id)
+      .sort((a, b) => {
+        const dateComp = (a.date || '').localeCompare(b.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+
+    let current = openingBalance;
+    for (const t of chronologicalTxns) {
+      const isCredit = (t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id);
+      const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id);
+      const amt = Number(t.amount) || 0;
+      if (isCredit) {
+        current += amt;
+      } else if (isDebit) {
+        current -= amt;
+      }
+      map.set(t.id, current);
+    }
+    return map;
+  }, [account, transactions, openingBalance]);
+
+  // Filter transactions involving this account, sorted strictly by transaction date (newest first)
   const accountTxns = useMemo(() => {
     if (!account) return [];
     return transactions
       .filter((t) => t.fromAccountId === account.id || t.toAccountId === account.id)
+      .sort((a, b) => {
+        // Strict sort based on transaction date
+        const dateComp = (b.date || '').localeCompare(a.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      })
       .filter((t) => {
         if (!searchTerm) return true;
         const s = searchTerm.toLowerCase();
         return (
-          t.description.toLowerCase().includes(s) ||
-          t.category.toLowerCase().includes(s) ||
+          t.description?.toLowerCase().includes(s) ||
+          t.category?.toLowerCase().includes(s) ||
+          t.date?.includes(s) ||
           String(t.amount).includes(s)
         );
       });
@@ -141,13 +185,6 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     }
     return { totalCredits: credits, totalDebits: debits };
   }, [account, transactions]);
-
-  const openingBalance = useMemo(() => {
-    if (!account) return 0;
-    return typeof account.openingBalance === 'number' 
-      ? account.openingBalance 
-      : (typeof account.balance === 'number' ? account.balance : 0);
-  }, [account]);
 
   const currentBalance = useMemo(() => {
     return openingBalance + totalCredits - totalDebits;
@@ -171,6 +208,61 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     }
 
     return { settled, unsettled, totalUnsettledDiff };
+  }, [account, accountTxns, transactions, tolerance]);
+
+  // Grouped transactions based on settlement mapping for toggle view
+  const mappedGroupsData = useMemo(() => {
+    if (!account || !account.enableMapping) return { groups: [], unmapped: [] };
+
+    const processedIds = new Set<string>();
+    const groups: {
+      parent: Transaction;
+      settlements: Transaction[];
+      status: ReturnType<typeof getSettlementStatus>;
+    }[] = [];
+    const unmapped: Transaction[] = [];
+
+    // Pass 1: Identify all parent transactions (transactions that have child transactions mapped to them)
+    for (const t of accountTxns) {
+      if (processedIds.has(t.id)) continue;
+
+      const children = transactions.filter(c => c.mappedTransactionId === t.id);
+      if (children.length > 0) {
+        processedIds.add(t.id);
+        children.forEach(c => processedIds.add(c.id));
+        groups.push({
+          parent: t,
+          settlements: children.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+          status: getSettlementStatus(t, transactions, tolerance)
+        });
+      }
+    }
+
+    // Pass 2: If a transaction is a child settlement whose parent wasn't added yet
+    for (const t of accountTxns) {
+      if (processedIds.has(t.id)) continue;
+
+      if (t.mappedTransactionId) {
+        const parent = transactions.find(p => p.id === t.mappedTransactionId);
+        if (parent) {
+          processedIds.add(t.id);
+          processedIds.add(parent.id);
+          const allSiblings = transactions.filter(c => c.mappedTransactionId === parent.id);
+          allSiblings.forEach(c => processedIds.add(c.id));
+          groups.push({
+            parent,
+            settlements: allSiblings.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+            status: getSettlementStatus(parent, transactions, tolerance)
+          });
+        } else {
+          unmapped.push(t);
+        }
+      } else {
+        unmapped.push(t);
+      }
+    }
+
+    return { groups, unmapped };
   }, [account, accountTxns, transactions, tolerance]);
 
   // Preview count for PDF export
@@ -451,12 +543,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: account.color || '#0284c7' }} />
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">{account.name} Passbook</h2>
-              {account.enableMapping && (
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-[10px] font-semibold text-amber-400">
-                  Mapping Enabled
-                </span>
-              )}
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">{account.name}</h2>
             </div>
             <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
               <span>{account.institution || account.type}</span>
@@ -466,8 +553,6 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                   <span className="font-mono">•••• {account.accountNumber}</span>
                 </>
               )}
-              <span>•</span>
-              <span className="text-amber-400 font-mono font-medium">{accountTxns.length} records</span>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
@@ -491,7 +576,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
             <button
               onClick={onClose}
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition cursor-pointer ml-1"
-              title="Close Full Screen Passbook"
+              title="Close Full Screen View"
               aria-label="Close"
             >
               <X size={18} />
@@ -499,29 +584,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         </div>
 
-        {/* Summary Metric Cards: Opening + Inflow - Outflow = Current Balance */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 px-4 sm:px-8 py-3 bg-[#0d1217] border-b border-slate-800/80 shrink-0">
-          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
-            <div className="text-[10px] uppercase font-bold text-slate-400">Opening Balance</div>
-            <div className="text-sm sm:text-base font-bold text-slate-200 font-mono mt-0.5">
-              {formatCurrency(openingBalance)}
-            </div>
-          </div>
-          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
-            <div className="text-[10px] uppercase font-bold text-emerald-400">Total Inflow</div>
-            <div className="text-sm sm:text-base font-bold text-emerald-300 font-mono mt-0.5">
-              +{formatCurrency(totalCredits)}
-            </div>
-          </div>
-          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
-            <div className="text-[10px] uppercase font-bold text-rose-400">Total Outflow</div>
-            <div className="text-sm sm:text-base font-bold text-rose-300 font-mono mt-0.5">
-              -{formatCurrency(totalDebits)}
-            </div>
-          </div>
-          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-amber-500/30 bg-amber-500/5">
+        {/* Metric Card: Show only the current balance */}
+        <div className="px-4 sm:px-8 py-3 bg-[#0d1217] border-b border-slate-800/80 shrink-0">
+          <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-amber-500/30 bg-amber-500/5 max-w-xs">
             <div className="text-[10px] uppercase font-bold text-amber-400">Current Balance</div>
-            <div className="text-sm sm:text-base font-extrabold text-amber-200 font-mono mt-0.5">
+            <div className="text-base sm:text-lg font-extrabold text-amber-200 font-mono mt-0.5">
               {formatCurrency(currentBalance)}
             </div>
           </div>
@@ -547,144 +614,491 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         )}
 
-        {/* Search filter */}
-        <div className="px-4 sm:px-8 py-2.5 border-b border-slate-800/80 bg-[#121820] shrink-0">
-          <div className="relative max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        {/* Toolbar: Search & Mapped Group Toggle */}
+        <div className="px-4 sm:px-8 py-2.5 border-b border-slate-800/80 bg-[#121820] flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div className="relative flex-1 min-w-[180px] max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by description, category, or amount..."
+              placeholder="Search by description, payee, or amount..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#0a0e14] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition"
+              className="w-full bg-[#0a0e14] border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 transition"
             />
           </div>
+
+          {account.enableMapping && (
+            <div className="flex items-center gap-1 bg-[#0a0e14] p-1 rounded-xl border border-slate-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPassbookViewMode('chronological')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  passbookViewMode === 'chronological'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock size={13} />
+                <span>Chronological</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPassbookViewMode('mapped')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  passbookViewMode === 'mapped'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Link2 size={13} />
+                <span>Grouped by Mapping</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Transaction Ledger Table */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 divide-y divide-slate-800/60">
+        {/* Transaction Ledger List */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-3">
           {accountTxns.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-xs">
+            <div className="text-center py-16 text-slate-500 text-xs">
               No transactions recorded for this account.
             </div>
-          ) : (
-            accountTxns.map((txn) => {
-              const isTransfer = txn.type === 'TRANSFER';
-              const isDebit = txn.fromAccountId === account.id;
-              const isSettlementMapped = Boolean(txn.mappedTransactionId);
-              const settlementInfo = account.enableMapping 
-                ? getSettlementStatus(txn, transactions, tolerance) 
-                : null;
+          ) : passbookViewMode === 'mapped' && account.enableMapping ? (
+            /* GROUPED BY MAPPING VIEW */
+            <div className="space-y-4">
+              {mappedGroupsData.groups.map((group) => {
+                const parent = group.parent;
+                const isParentTransfer = parent.type === 'TRANSFER';
+                const isParentDebit = parent.fromAccountId === account.id;
+                const parentTransferStyle = isParentTransfer ? getTransferFlowStyle(parent, accounts, account.id) : null;
+                const parentFromAcc = accounts?.find(a => a.id === parent.fromAccountId)?.name || 'Source Account';
+                const parentToAcc = accounts?.find(a => a.id === parent.toAccountId)?.name || 'Destination Account';
+                const runningBal = runningBalancesMap.get(parent.id);
 
-              const fromAccountName = accounts?.find(a => a.id === txn.fromAccountId)?.name || 'Source Account';
-              const toAccountName = accounts?.find(a => a.id === txn.toAccountId)?.name || 'Destination Account';
-
-              return (
-                <div
-                  key={txn.id}
-                  onClick={() => onSelectTxn(txn)}
-                  className="py-3 px-2 flex items-center justify-between hover:bg-slate-800/40 rounded-xl cursor-pointer transition group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
-                        isTransfer
-                          ? 'bg-blue-500/15 text-blue-400'
-                          : isDebit
-                          ? 'bg-rose-500/15 text-rose-400'
-                          : 'bg-emerald-500/15 text-emerald-400'
-                      }`}
-                    >
-                      {isTransfer ? (
-                        <ArrowRightLeft size={16} />
-                      ) : isDebit ? (
-                        <ArrowUpRight size={16} />
-                      ) : (
-                        <ArrowDownLeft size={16} />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      {isTransfer ? (
-                        <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                          <span className="text-slate-200">{fromAccountName}</span>
-                          <ArrowRight size={12} className="text-blue-400 shrink-0" />
-                          <span className="text-slate-200">{toAccountName}</span>
-                          {isSettlementMapped && (
-                            <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
-                              <Link2 size={12} />
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-xs font-semibold text-white tracking-tight truncate flex items-center gap-1.5">
-                          <span>{txn.description}</span>
-                          {isSettlementMapped && (
-                            <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
-                              <Link2 size={12} />
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span>{formatDate(txn.date)}</span>
-                        <span>•</span>
-                        <span className={isTransfer ? "text-blue-300/80 font-medium" : "text-amber-300/80"}>
-                          {txn.category || (isTransfer ? 'Transfer' : 'General')}
-                        </span>
-                        {isTransfer && txn.description && txn.description !== 'Transfer' && !txn.description.toLowerCase().includes('transfer record') && (
-                          <>
-                            <span>•</span>
-                            <span className="text-slate-400 truncate max-w-[150px] sm:max-w-xs">{txn.description}</span>
-                          </>
+                return (
+                  <div key={parent.id} className="bg-[#121820] rounded-2xl border border-slate-800/90 overflow-hidden shadow-sm">
+                    {/* Mapped Group Header: Status & Total Settled */}
+                    <div className="px-4 py-2.5 bg-[#161d28] border-b border-slate-800/80 flex items-center justify-between text-xs flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Link2 size={13} className="text-amber-400" />
+                        <span className="font-bold text-slate-200">Mapped Group</span>
+                        {group.status.isSettled ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 size={11} /> Settled
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                            <Clock size={11} /> Unsettled (Diff: {formatCurrency(group.status.remainingDifference)})
+                          </span>
                         )}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400">
+                        Settled: <span className="text-emerald-400 font-semibold">{formatCurrency(group.status.totalSettled)}</span> / {formatCurrency(parent.amount)}
+                      </div>
+                    </div>
 
-                        {/* Settlement Status Badge for mapping-enabled account */}
-                        {account.enableMapping && settlementInfo && (
-                          <>
-                            <span>•</span>
-                            {settlementInfo.isSettled ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                                <CheckCircle2 size={11} />
-                                <span>Settled</span>
-                                {settlementInfo.isChildSettlement && (
-                                  <span className="text-[9px] text-emerald-500/80">(Linked)</span>
-                                )}
-                              </span>
+                    {/* First Instance: Primary / Parent Transaction */}
+                    <div
+                      onClick={() => onSelectTxn(parent)}
+                      className="p-3.5 bg-[#0e141c] hover:bg-slate-800/50 cursor-pointer transition flex items-center justify-between gap-3 border-b border-slate-800/50"
+                      title="Click to view primary transaction"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
+                            isParentTransfer
+                              ? parentTransferStyle?.badgeBgClass
+                              : isParentDebit
+                              ? 'bg-rose-500/15 text-rose-400'
+                              : 'bg-emerald-500/15 text-emerald-400'
+                          }`}
+                        >
+                          {isParentTransfer ? (
+                            <ArrowRightLeft size={15} />
+                          ) : isParentDebit ? (
+                            <ArrowUpRight size={15} />
+                          ) : (
+                            <ArrowDownLeft size={15} />
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              First Instance
+                            </span>
+                            {isParentTransfer ? (
+                              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                <span className="text-slate-200">{parentFromAcc}</span>
+                                <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                                <span className="text-slate-200">{parentToAcc}</span>
+                              </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded">
-                                <Clock size={11} />
-                                <span>Unsettled</span>
-                                <span className="text-[9px] text-amber-400/90 font-mono">
-                                  (Diff: {formatCurrency(settlementInfo.remainingDifference)})
-                                </span>
-                              </span>
+                              <div className="text-xs font-semibold text-white tracking-tight truncate">
+                                {parent.description}
+                              </div>
                             )}
-                          </>
+                          </div>
+
+                          <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="font-mono">{formatDate(parent.date)}</span>
+                            {(() => {
+                              const cat = (parent.category || '').trim();
+                              if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                              return (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Parent Amount & Running Balance */}
+                      <div className="text-right shrink-0">
+                        <div
+                          className={`text-sm font-bold font-mono tabular-nums ${
+                            isParentTransfer
+                              ? parentTransferStyle?.colorClass
+                              : isParentDebit
+                              ? 'text-rose-400'
+                              : 'text-emerald-400'
+                          }`}
+                        >
+                          {isParentTransfer 
+                            ? `${parentTransferStyle?.sign}${formatCurrency(parent.amount)}` 
+                            : isParentDebit 
+                            ? `-${formatCurrency(parent.amount)}` 
+                            : `+${formatCurrency(parent.amount)}`}
+                        </div>
+                        {runningBal !== undefined && (
+                          <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                            Bal: {formatCurrency(runningBal)}
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="text-right shrink-0 ml-3">
-                    <div
-                      className={`text-xs font-bold font-mono tabular-nums ${
-                        isTransfer
-                          ? 'text-slate-200'
-                          : isDebit
-                          ? 'text-rose-400'
-                          : 'text-emerald-400'
-                      }`}
-                    >
-                      {isTransfer ? '' : isDebit ? '-' : '+'}{formatCurrency(txn.amount)}
-                    </div>
-                    <div className="text-[10px] text-slate-500 capitalize">
-                      {txn.type.toLowerCase()}
-                    </div>
+                    {/* Settlement Entries Down Below */}
+                    {group.settlements.length > 0 ? (
+                      <div className="p-3 pl-6 sm:pl-8 space-y-2 bg-[#121820]">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                          <ArrowDownLeft size={12} className="text-emerald-400" />
+                          <span>Settlement Entries ({group.settlements.length})</span>
+                        </div>
+                        {group.settlements.map((child) => {
+                          const isChildTransfer = child.type === 'TRANSFER';
+                          const isChildDebit = child.fromAccountId === account.id;
+                          const childTransferStyle = isChildTransfer ? getTransferFlowStyle(child, accounts, account.id) : null;
+                          const childRunningBal = runningBalancesMap.get(child.id);
+                          const childFromAcc = accounts?.find(a => a.id === child.fromAccountId)?.name || 'Source Account';
+                          const childToAcc = accounts?.find(a => a.id === child.toAccountId)?.name || 'Destination Account';
+
+                          return (
+                            <div
+                              key={child.id}
+                              onClick={() => onSelectTxn(child)}
+                              className="p-2.5 rounded-xl bg-[#0a0e14] hover:bg-slate-800/60 border border-slate-800/80 flex items-center justify-between gap-3 cursor-pointer transition group"
+                              title="Click to view settlement entry"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                <div className="min-w-0">
+                                  {isChildTransfer ? (
+                                    <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                                      <span className="text-slate-200">{childFromAcc}</span>
+                                      <ArrowRight size={10} className="text-blue-400 shrink-0" />
+                                      <span className="text-slate-200">{childToAcc}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs font-medium text-slate-200 truncate">
+                                      {child.description}
+                                    </div>
+                                  )}
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
+                                    <span>{formatDate(child.date)}</span>
+                                    {(() => {
+                                      const cat = (child.category || '').trim();
+                                      if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                                      return (
+                                        <>
+                                          <span>•</span>
+                                          <span className="text-slate-400 truncate max-w-[120px]">{cat}</span>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <div
+                                  className={`text-xs font-bold font-mono tabular-nums ${
+                                    isChildTransfer
+                                      ? childTransferStyle?.colorClass
+                                      : isChildDebit
+                                      ? 'text-rose-400'
+                                      : 'text-emerald-400'
+                                  }`}
+                                >
+                                  {isChildTransfer 
+                                    ? `${childTransferStyle?.sign}${formatCurrency(child.amount)}` 
+                                    : isChildDebit 
+                                    ? `-${formatCurrency(child.amount)}` 
+                                    : `+${formatCurrency(child.amount)}`}
+                                </div>
+                                {childRunningBal !== undefined && (
+                                  <div className="text-[10px] font-mono text-slate-500 font-medium tabular-nums mt-0.5">
+                                    Bal: {formatCurrency(childRunningBal)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-[#121820] text-[11px] text-slate-500 italic pl-6">
+                        No settling entries linked yet.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Unmapped / Independent Entries */}
+              {mappedGroupsData.unmapped.length > 0 && (
+                <div className="pt-2">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">
+                    Other / Direct Entries ({mappedGroupsData.unmapped.length})
+                  </div>
+                  <div className="bg-[#121820] rounded-2xl border border-slate-800/80 divide-y divide-slate-800/60 overflow-hidden">
+                    {mappedGroupsData.unmapped.map((txn) => {
+                      const isTransfer = txn.type === 'TRANSFER';
+                      const isDebit = txn.fromAccountId === account.id;
+                      const transferStyle = isTransfer ? getTransferFlowStyle(txn, accounts, account.id) : null;
+                      const runningBal = runningBalancesMap.get(txn.id);
+                      const fromAcc = accounts?.find(a => a.id === txn.fromAccountId)?.name || 'Source Account';
+                      const toAcc = accounts?.find(a => a.id === txn.toAccountId)?.name || 'Destination Account';
+
+                      return (
+                        <div
+                          key={txn.id}
+                          onClick={() => onSelectTxn(txn)}
+                          className="py-3 px-3.5 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
+                                isTransfer
+                                  ? transferStyle?.badgeBgClass
+                                  : isDebit
+                                  ? 'bg-rose-500/15 text-rose-400'
+                                  : 'bg-emerald-500/15 text-emerald-400'
+                              }`}
+                            >
+                              {isTransfer ? (
+                                <ArrowRightLeft size={15} />
+                              ) : isDebit ? (
+                                <ArrowUpRight size={15} />
+                              ) : (
+                                <ArrowDownLeft size={15} />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              {isTransfer ? (
+                                <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-slate-200">{fromAcc}</span>
+                                  <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                                  <span className="text-slate-200">{toAcc}</span>
+                                </div>
+                              ) : (
+                                <div className="text-xs font-semibold text-white tracking-tight truncate">
+                                  {txn.description}
+                                </div>
+                              )}
+                              <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span className="font-mono">{formatDate(txn.date)}</span>
+                                {(() => {
+                                  const cat = (txn.category || '').trim();
+                                  if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                                  return (
+                                    <>
+                                      <span>•</span>
+                                      <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0 ml-3">
+                            <div
+                              className={`text-xs font-bold font-mono tabular-nums ${
+                                isTransfer
+                                  ? transferStyle?.colorClass
+                                  : isDebit
+                                  ? 'text-rose-400'
+                                  : 'text-emerald-400'
+                              }`}
+                            >
+                              {isTransfer 
+                                ? `${transferStyle?.sign}${formatCurrency(txn.amount)}` 
+                                : isDebit 
+                                ? `-${formatCurrency(txn.amount)}` 
+                                : `+${formatCurrency(txn.amount)}`}
+                            </div>
+                            {runningBal !== undefined && (
+                              <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                                Bal: {formatCurrency(runningBal)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })
+              )}
+            </div>
+          ) : (
+            /* CHRONOLOGICAL VIEW (Sorted strictly by transaction date) */
+            <div className="bg-[#121820] rounded-2xl border border-slate-800/80 divide-y divide-slate-800/60 overflow-hidden shadow-sm">
+              {accountTxns.map((txn) => {
+                const isTransfer = txn.type === 'TRANSFER';
+                const isDebit = txn.fromAccountId === account.id;
+                const isSettlementMapped = Boolean(txn.mappedTransactionId);
+                const transferStyle = isTransfer ? getTransferFlowStyle(txn, accounts, account.id) : null;
+                const settlementInfo = account.enableMapping 
+                  ? getSettlementStatus(txn, transactions, tolerance) 
+                  : null;
+                const runningBal = runningBalancesMap.get(txn.id);
+
+                const fromAccountName = accounts?.find(a => a.id === txn.fromAccountId)?.name || 'Source Account';
+                const toAccountName = accounts?.find(a => a.id === txn.toAccountId)?.name || 'Destination Account';
+
+                return (
+                  <div
+                    key={txn.id}
+                    onClick={() => onSelectTxn(txn)}
+                    className="py-3 px-3.5 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
+                          isTransfer
+                            ? transferStyle?.badgeBgClass
+                            : isDebit
+                            ? 'bg-rose-500/15 text-rose-400'
+                            : 'bg-emerald-500/15 text-emerald-400'
+                        }`}
+                      >
+                        {isTransfer ? (
+                          <ArrowRightLeft size={16} />
+                        ) : isDebit ? (
+                          <ArrowUpRight size={16} />
+                        ) : (
+                          <ArrowDownLeft size={16} />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        {isTransfer ? (
+                          <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                            <span className="text-slate-200">{fromAccountName}</span>
+                            <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                            <span className="text-slate-200">{toAccountName}</span>
+                            {isSettlementMapped && (
+                              <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
+                                <Link2 size={12} />
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-xs font-semibold text-white tracking-tight truncate flex items-center gap-1.5">
+                            <span>{txn.description}</span>
+                            {isSettlementMapped && (
+                              <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
+                                <Link2 size={12} />
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="font-mono">{formatDate(txn.date)}</span>
+                          {(() => {
+                            const cat = (txn.category || '').trim();
+                            if (!cat || ['EXPENSE', 'INCOME', 'TRANSFER', 'GENERAL'].includes(cat.toUpperCase())) return null;
+                            return (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-300/80 truncate max-w-[150px]">{cat}</span>
+                              </>
+                            );
+                          })()}
+                          {isTransfer && txn.description && txn.description !== 'Transfer' && !txn.description.toLowerCase().includes('transfer record') && (
+                            <>
+                              <span>•</span>
+                              <span className="text-slate-400 truncate max-w-[150px] sm:max-w-xs">{txn.description}</span>
+                            </>
+                          )}
+
+                          {/* Settlement Status Badge for mapping-enabled account */}
+                          {account.enableMapping && settlementInfo && (
+                            <>
+                              <span>•</span>
+                              {settlementInfo.isSettled ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                                  <CheckCircle2 size={11} />
+                                  <span>Settled</span>
+                                  {settlementInfo.isChildSettlement && (
+                                    <span className="text-[9px] text-emerald-500/80">(Linked)</span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded">
+                                  <Clock size={11} />
+                                  <span>Unsettled</span>
+                                  <span className="text-[9px] text-amber-400/90 font-mono">
+                                    (Diff: {formatCurrency(settlementInfo.remainingDifference)})
+                                  </span>
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 ml-3">
+                      <div
+                        className={`text-xs font-bold font-mono tabular-nums ${
+                          isTransfer
+                            ? transferStyle?.colorClass
+                            : isDebit
+                            ? 'text-rose-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {isTransfer 
+                          ? `${transferStyle?.sign}${formatCurrency(txn.amount)}` 
+                          : isDebit 
+                          ? `-${formatCurrency(txn.amount)}` 
+                          : `+${formatCurrency(txn.amount)}`}
+                      </div>
+                      {runningBal !== undefined && (
+                        <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
+                          Bal: {formatCurrency(runningBal)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

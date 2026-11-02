@@ -214,3 +214,107 @@ export function getCategoryColor(category: string): string {
   return customPalette[index];
 }
 
+export interface TransferFlowStyle {
+  isTransfer: boolean;
+  sign: '+' | '-' | '';
+  colorClass: string;
+  badgeBgClass: string;
+  isBankInTo: boolean;
+  isBankInFrom: boolean;
+}
+
+export function isAccountBankCategory(acc?: import('../types').Account | null): boolean {
+  if (!acc) return false;
+  return acc.type === 'BANK' || acc.categoryId === 'BANK';
+}
+
+/**
+ * For transfers, if one of the accounts involves bank account category:
+ * - Green (and + symbol) if bank account is in 'to'
+ * - Red (and - symbol) if bank account is in 'from'
+ * - Else keep it neutral
+ * In passbook view of a specific account (contextAccountId), if both are banks,
+ * the viewed account receiving gets (+) green, and sending gets (-) red.
+ */
+export function getTransferFlowStyle(
+  txn: import('../types').Transaction,
+  accounts: import('../types').Account[],
+  contextAccountId?: string
+): TransferFlowStyle {
+  if (txn.type !== 'TRANSFER') {
+    return {
+      isTransfer: false,
+      sign: '',
+      colorClass: '',
+      badgeBgClass: '',
+      isBankInTo: false,
+      isBankInFrom: false
+    };
+  }
+
+  const fromAcc = accounts.find(a => a.id === txn.fromAccountId);
+  const toAcc = accounts.find(a => a.id === txn.toAccountId);
+
+  const fromIsBank = isAccountBankCategory(fromAcc);
+  const toIsBank = isAccountBankCategory(toAcc);
+
+  // In passbook view of a specific account where both are banks:
+  if (contextAccountId) {
+    if (fromIsBank && toIsBank) {
+      if (txn.toAccountId === contextAccountId) {
+        return {
+          isTransfer: true,
+          sign: '+',
+          colorClass: 'text-emerald-400',
+          badgeBgClass: 'bg-emerald-500/15 text-emerald-400',
+          isBankInTo: true,
+          isBankInFrom: false
+        };
+      } else {
+        return {
+          isTransfer: true,
+          sign: '-',
+          colorClass: 'text-rose-400',
+          badgeBgClass: 'bg-rose-500/15 text-rose-400',
+          isBankInTo: false,
+          isBankInFrom: true
+        };
+      }
+    }
+  }
+
+  // If one of the accounts involves bank account category:
+  if (toIsBank && !fromIsBank) {
+    return {
+      isTransfer: true,
+      sign: '+',
+      colorClass: 'text-emerald-400',
+      badgeBgClass: 'bg-emerald-500/15 text-emerald-400',
+      isBankInTo: true,
+      isBankInFrom: false
+    };
+  }
+
+  if (fromIsBank && !toIsBank) {
+    return {
+      isTransfer: true,
+      sign: '-',
+      colorClass: 'text-rose-400',
+      badgeBgClass: 'bg-rose-500/15 text-rose-400',
+      isBankInTo: false,
+      isBankInFrom: true
+    };
+  }
+
+  // Else keep it neutral
+  return {
+    isTransfer: true,
+    sign: '',
+    colorClass: 'text-slate-200',
+    badgeBgClass: 'bg-blue-500/15 text-blue-400',
+    isBankInTo: false,
+    isBankInFrom: false
+  };
+}
+
+

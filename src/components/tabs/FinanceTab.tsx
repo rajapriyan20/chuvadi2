@@ -30,7 +30,8 @@ import {
   formatDate, 
   formatDateToLocalYMD, 
   getTodayLocalDateString, 
-  getAllExpenseCategories 
+  getAllExpenseCategories,
+  getTransferFlowStyle
 } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
 import type { User } from 'firebase/auth';
@@ -700,6 +701,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                           const isExpense = t.type === 'EXPENSE';
                           const isIncome = t.type === 'INCOME';
                           const isTransfer = t.type === 'TRANSFER';
+                          const transferStyle = isTransfer ? getTransferFlowStyle(t, accounts) : null;
 
                           const fromAccountName = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source Account';
                           const toAccountName = accounts.find(a => a.id === t.toAccountId)?.name || 'Destination Account';
@@ -715,7 +717,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                 <div
                                   className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                                     isTransfer
-                                      ? 'bg-blue-500/15 text-blue-400'
+                                      ? transferStyle?.badgeBgClass
                                       : isExpense
                                       ? 'bg-rose-500/15 text-rose-400'
                                       : 'bg-emerald-500/15 text-emerald-400'
@@ -785,13 +787,17 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                 <div
                                   className={`text-sm font-bold font-mono tabular-nums ${
                                     isTransfer 
-                                      ? 'text-slate-200' 
+                                      ? transferStyle?.colorClass 
                                       : isExpense 
                                       ? 'text-rose-400' 
                                       : 'text-emerald-400'
                                   }`}
                                 >
-                                  {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
+                                  {isTransfer 
+                                    ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
+                                    : isExpense 
+                                    ? `-${formatCurrency(t.amount)}` 
+                                    : `+${formatCurrency(t.amount)}`}
                                 </div>
                                 <div className="text-[10px] text-slate-500 capitalize">
                                   {t.type.toLowerCase()}
@@ -838,6 +844,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                         const isExpense = t.type === 'EXPENSE';
                         const isIncome = t.type === 'INCOME';
                         const isTransfer = t.type === 'TRANSFER';
+                        const transferStyle = isTransfer ? getTransferFlowStyle(t, accounts) : null;
 
                         const fromAccountName = accounts.find(a => a.id === t.fromAccountId)?.name || '—';
                         const toAccountName = accounts.find(a => a.id === t.toAccountId)?.name || '—';
@@ -890,7 +897,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                               <span
                                 className={`text-[10px] font-bold uppercase tracking-wider ${
                                   isTransfer
-                                    ? 'text-blue-400'
+                                    ? (transferStyle?.isBankInTo ? 'text-emerald-400' : transferStyle?.isBankInFrom ? 'text-rose-400' : 'text-blue-400')
                                     : isExpense
                                     ? 'text-rose-400'
                                     : 'text-emerald-400'
@@ -905,13 +912,17 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                               <span
                                 className={
                                   isTransfer
-                                    ? 'text-slate-200'
+                                    ? transferStyle?.colorClass
                                     : isExpense
                                     ? 'text-rose-400'
                                     : 'text-emerald-400'
                                 }
                               >
-                                {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
+                                {isTransfer 
+                                  ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
+                                  : isExpense 
+                                  ? `-${formatCurrency(t.amount)}` 
+                                  : `+${formatCurrency(t.amount)}`}
                               </span>
                             </td>
 
