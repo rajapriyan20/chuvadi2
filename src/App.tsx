@@ -1616,6 +1616,7 @@ export function App() {
         }}
         account={passbookAccount ? (computedAccounts.find(a => a.id === passbookAccount.id) || passbookAccount) : null}
         transactions={transactions}
+        accounts={computedAccounts}
         onSelectTxn={handleSelectTxn}
       />
 

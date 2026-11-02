@@ -4,6 +4,7 @@ import {
   ArrowUpRight, 
   ArrowDownLeft, 
   ArrowRightLeft, 
+  ArrowRight,
   Download, 
   Search, 
   FileText, 
@@ -25,6 +26,7 @@ interface PassbookModalProps {
   onClose: () => void;
   account: Account | null;
   transactions: Transaction[];
+  accounts?: Account[];
   onSelectTxn: (txn: Transaction) => void;
 }
 
@@ -35,6 +37,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   onClose,
   account,
   transactions,
+  accounts = [],
   onSelectTxn
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -566,11 +569,15 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
             </div>
           ) : (
             accountTxns.map((txn) => {
+              const isTransfer = txn.type === 'TRANSFER';
               const isDebit = txn.fromAccountId === account.id;
               const isSettlementMapped = Boolean(txn.mappedTransactionId);
               const settlementInfo = account.enableMapping 
                 ? getSettlementStatus(txn, transactions, tolerance) 
                 : null;
+
+              const fromAccountName = accounts?.find(a => a.id === txn.fromAccountId)?.name || 'Source Account';
+              const toAccountName = accounts?.find(a => a.id === txn.toAccountId)?.name || 'Destination Account';
 
               return (
                 <div
@@ -581,14 +588,14 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
-                        txn.type === 'TRANSFER'
+                        isTransfer
                           ? 'bg-blue-500/15 text-blue-400'
                           : isDebit
                           ? 'bg-rose-500/15 text-rose-400'
                           : 'bg-emerald-500/15 text-emerald-400'
                       }`}
                     >
-                      {txn.type === 'TRANSFER' ? (
+                      {isTransfer ? (
                         <ArrowRightLeft size={16} />
                       ) : isDebit ? (
                         <ArrowUpRight size={16} />
@@ -597,18 +604,40 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-white tracking-tight truncate flex items-center gap-1.5">
-                        <span>{txn.description}</span>
-                        {isSettlementMapped && (
-                          <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
-                            <Link2 size={12} />
-                          </span>
-                        )}
-                      </div>
+                      {isTransfer ? (
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                          <span className="text-slate-200">{fromAccountName}</span>
+                          <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                          <span className="text-slate-200">{toAccountName}</span>
+                          {isSettlementMapped && (
+                            <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
+                              <Link2 size={12} />
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-white tracking-tight truncate flex items-center gap-1.5">
+                          <span>{txn.description}</span>
+                          {isSettlementMapped && (
+                            <span title="Linked Settlement Transaction" className="text-blue-400 shrink-0">
+                              <Link2 size={12} />
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
                         <span>{formatDate(txn.date)}</span>
                         <span>•</span>
-                        <span className="text-amber-300/80">{txn.category}</span>
+                        <span className={isTransfer ? "text-blue-300/80 font-medium" : "text-amber-300/80"}>
+                          {txn.category || (isTransfer ? 'Transfer' : 'General')}
+                        </span>
+                        {isTransfer && txn.description && txn.description !== 'Transfer' && !txn.description.toLowerCase().includes('transfer record') && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-400 truncate max-w-[150px] sm:max-w-xs">{txn.description}</span>
+                          </>
+                        )}
 
                         {/* Settlement Status Badge for mapping-enabled account */}
                         {account.enableMapping && settlementInfo && (
@@ -639,11 +668,15 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
                   <div className="text-right shrink-0 ml-3">
                     <div
-                      className={`text-xs font-bold font-mono ${
-                        isDebit ? 'text-rose-400' : 'text-emerald-400'
+                      className={`text-xs font-bold font-mono tabular-nums ${
+                        isTransfer
+                          ? 'text-slate-200'
+                          : isDebit
+                          ? 'text-rose-400'
+                          : 'text-emerald-400'
                       }`}
                     >
-                      {isDebit ? '-' : '+'}{formatCurrency(txn.amount)}
+                      {isTransfer ? '' : isDebit ? '-' : '+'}{formatCurrency(txn.amount)}
                     </div>
                     <div className="text-[10px] text-slate-500 capitalize">
                       {txn.type.toLowerCase()}

@@ -36,7 +36,9 @@ import {
   CircleDollarSign,
   Table,
   GitFork,
-  Clock
+  Clock,
+  FileText,
+  Download
 } from 'lucide-react';
 import { formatCurrency, formatDate, getTodayLocalDateString } from '../../utils/formatters';
 import type { Account, AccountType, Transaction } from '../../types';
@@ -44,6 +46,8 @@ import { BankLogo, BankLogoPicker, resolveBankLogoId } from '../common/BankLogo'
 import { CoaTableView } from './CoaTableView';
 import { CoaDiagramView } from './CoaDiagramView';
 import { getSettlementStatus, getStoredSettlementTolerance } from '../../utils/settlement';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ChartOfAccountsProps {
   accounts: Account[];
@@ -281,6 +285,13 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [isSavingAccountPopup, setIsSavingAccountPopup] = useState<boolean>(false);
   const [isDeletingAccountPopup, setIsDeletingAccountPopup] = useState<boolean>(false);
 
+  // PDF Export Dialog State for Account Passbook
+  const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
+  const [pdfPreset, setPdfPreset] = useState<'all' | 'this_month' | 'last_month' | 'last_30_days' | 'this_year' | 'custom'>('all');
+  const [pdfStartDate, setPdfStartDate] = useState<string>('');
+  const [pdfEndDate, setPdfEndDate] = useState<string>('');
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+
   // Add Account Modal State (Triggered by + New -> Add Account)
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState<boolean>(false);
   const [newAccountName, setNewAccountName] = useState<string>('');
@@ -515,7 +526,253 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       t.date?.includes(query) ||
       String(t.amount).includes(query)
     );
-  }, [selectedAccountTxns, popupTxnSearch]);
+  }, [popupTxnSearch, selectedAccountTxns]);
+
+  const applyDatePreset = (preset: 'all' | 'this_month' | 'last_month' | 'last_30_days' | 'this_year' | 'custom') => {
+    setPdfPreset(preset);
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (preset === 'all') {
+      const allDates = selectedAccountTxns.map(t => t.date).filter(Boolean).sort();
+      setPdfStartDate(allDates[0] || `${yyyy}-01-01`);
+      setPdfEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      setPdfStartDate(`${yyyy}-${mm}-01`);
+      setPdfEndDate(todayStr);
+    } else if (preset === 'last_month') {
+      const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      const pY = prevMonth.getFullYear();
+      const pM = String(prevMonth.getMonth() + 1).padStart(2, '0');
+      const lastDay = String(prevMonthEnd.getDate()).padStart(2, '0');
+      setPdfStartDate(`${pY}-${pM}-01`);
+      setPdfEndDate(`${pY}-${pM}-${lastDay}`);
+    } else if (preset === 'last_30_days') {
+      const past30 = new Date();
+      past30.setDate(past30.getDate() - 30);
+      const pY = past30.getFullYear();
+      const pM = String(past30.getMonth() + 1).padStart(2, '0');
+      const pD = String(past30.getDate()).padStart(2, '0');
+      setPdfStartDate(`${pY}-${pM}-${pD}`);
+      setPdfEndDate(todayStr);
+    } else if (preset === 'this_year') {
+      setPdfStartDate(`${yyyy}-01-01`);
+      setPdfEndDate(todayStr);
+    }
+  };
+
+  const handleOpenPdfExport = () => {
+    applyDatePreset('all');
+    setShowPdfModal(true);
+  };
+
+  const handleGeneratePdf = () => {
+    if (!selectedAccountForPopup) return;
+    setIsExportingPdf(true);
+
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'a4'
+      });
+
+      const sDate = pdfStartDate || '2000-01-01';
+      const eDate = pdfEndDate || '2099-12-31';
+      const tolerance = getStoredSettlementTolerance();
+
+      let periodOpening = openingAccountBalance;
+      const priorTxns = (transactions || []).filter(t => 
+        (t.fromAccountId === selectedAccountForPopup.id || t.toAccountId === selectedAccountForPopup.id) && 
+        t.date < sDate
+      );
+      for (const t of priorTxns) {
+        if ((t.type === 'INCOME' && t.toAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.toAccountId === selectedAccountForPopup.id)) {
+          periodOpening += Number(t.amount) || 0;
+        } else if ((t.type === 'EXPENSE' && t.fromAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.fromAccountId === selectedAccountForPopup.id)) {
+          periodOpening -= Number(t.amount) || 0;
+        }
+      }
+
+      const rangeTxns = (transactions || [])
+        .filter(t => (t.fromAccountId === selectedAccountForPopup.id || t.toAccountId === selectedAccountForPopup.id) && t.date >= sDate && t.date <= eDate)
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+      let periodCredits = 0;
+      let periodDebits = 0;
+      let runningBalance = periodOpening;
+
+      const tableHeaders = [
+        ['Date', 'Description', 'Category', 'Debit (INR)', 'Credit (INR)', 'Balance (INR)']
+      ];
+
+      if (selectedAccountForPopup.enableMapping) {
+        tableHeaders[0].push('Settlement');
+      }
+
+      const tableRows: (string | number)[][] = [];
+
+      const initialRow = [
+        formatDate(sDate),
+        'PERIOD OPENING BALANCE',
+        '-',
+        '-',
+        '-',
+        formatCurrency(periodOpening)
+      ];
+      if (selectedAccountForPopup.enableMapping) {
+        initialRow.push('-');
+      }
+      tableRows.push(initialRow);
+
+      for (const t of rangeTxns) {
+        const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.fromAccountId === selectedAccountForPopup.id);
+        const isCredit = (t.type === 'INCOME' && t.toAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.toAccountId === selectedAccountForPopup.id);
+        const isTransfer = t.type === 'TRANSFER';
+        const amt = Number(t.amount) || 0;
+
+        if (isDebit) {
+          periodDebits += amt;
+          runningBalance -= amt;
+        } else if (isCredit) {
+          periodCredits += amt;
+          runningBalance += amt;
+        }
+
+        const fromAcc = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
+        const toAcc = accounts.find(a => a.id === t.toAccountId)?.name || 'Dest';
+        const descText = isTransfer ? `${fromAcc} -> ${toAcc}` : (t.description || 'Transaction');
+
+        const row = [
+          formatDate(t.date),
+          descText,
+          t.category || (isTransfer ? 'Transfer' : '-'),
+          isDebit ? formatCurrency(amt) : '-',
+          isCredit ? formatCurrency(amt) : '-',
+          formatCurrency(runningBalance)
+        ];
+
+        if (selectedAccountForPopup.enableMapping) {
+          const s = getSettlementStatus(t, transactions || [], tolerance);
+          const statusText = s.isSettled 
+            ? 'SETTLED' 
+            : `UNSETTLED (Diff: ${formatCurrency(s.remainingDifference)})`;
+          row.push(statusText);
+        }
+
+        tableRows.push(row);
+      }
+
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, 595, 75, 'F');
+
+      doc.setTextColor(248, 250, 252);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('ACCOUNT PASSBOOK STATEMENT', 36, 32);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(203, 213, 225);
+      doc.text(`Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, 36, 48);
+
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(36, 88, 523, 64, 4, 4, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(36, 88, 523, 64, 4, 4, 'D');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text(selectedAccountForPopup.name, 48, 106);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      const accDetails = [
+        `Type: ${selectedAccountForPopup.type}`,
+        selectedAccountForPopup.institution ? `Institution: ${selectedAccountForPopup.institution}` : null,
+        selectedAccountForPopup.accountNumber ? `Account #: •••• ${selectedAccountForPopup.accountNumber.slice(-4)}` : null,
+        `Period: ${formatDate(sDate)} to ${formatDate(eDate)}`
+      ].filter(Boolean).join('   |   ');
+      doc.text(accDetails, 48, 122);
+
+      const kpis = [
+        { label: 'Opening Balance', value: formatCurrency(periodOpening) },
+        { label: 'Total Inflow (+)', value: formatCurrency(periodCredits) },
+        { label: 'Total Outflow (-)', value: formatCurrency(periodDebits) },
+        { label: 'Closing Balance', value: formatCurrency(runningBalance) }
+      ];
+
+      const kpiCardWidth = 124;
+      kpis.forEach((kpi, idx) => {
+        const x = 36 + idx * (kpiCardWidth + 9);
+        doc.setFillColor(241, 245, 249);
+        doc.roundedRect(x, 162, kpiCardWidth, 38, 3, 3, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(x, 162, kpiCardWidth, 38, 3, 3, 'D');
+
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(kpi.label.toUpperCase(), x + 8, 174);
+
+        doc.setFontSize(9.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text(kpi.value, x + 8, 191);
+      });
+
+      autoTable(doc, {
+        head: tableHeaders,
+        body: tableRows,
+        startY: 212,
+        theme: 'grid',
+        styles: {
+          fontSize: 8,
+          cellPadding: 5,
+          font: 'helvetica'
+        },
+        headStyles: {
+          fillColor: [30, 41, 59],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        columnStyles: {
+          0: { cellWidth: 62 },
+          1: { cellWidth: selectedAccountForPopup.enableMapping ? 120 : 160 },
+          2: { cellWidth: 70 },
+          3: { halign: 'right', cellWidth: 65, textColor: [220, 38, 38] },
+          4: { halign: 'right', cellWidth: 65, textColor: [22, 163, 74] },
+          5: { halign: 'right', cellWidth: 70, fontStyle: 'bold', textColor: [15, 23, 42] },
+          ...(selectedAccountForPopup.enableMapping ? { 6: { cellWidth: 70, fontSize: 7, halign: 'center' } } : {})
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        didDrawPage: (data) => {
+          const pageCount = (doc as any).internal?.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;
+          const currentPage = (data as any).pageNumber || 1;
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(`Chuvadi Passbook • Page ${currentPage} of ${pageCount}`, 36, 825);
+          doc.text(`Account ID: ${selectedAccountForPopup.id}`, 460, 825);
+        }
+      });
+
+      const sanitizedName = selectedAccountForPopup.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      doc.save(`${sanitizedName}_Passbook_${sDate}_to_${eDate}.pdf`);
+      setShowPdfModal(false);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const handleUpdateRecoDate = async (newDate: string) => {
     if (!selectedAccountForPopup) return;
@@ -1701,575 +1958,700 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       {/* ============================================================= */}
       {/* 1. Account Details & Combined Passbook Preview Pop-up Modal   */}
       {/* ============================================================= */}
-      {selectedAccountForPopup && (
+      {/* ============================================================= */}
+      {/* 1. Account Details & Combined Passbook Full-Screen View       */}
+      {/* ============================================================= */}
+      {selectedAccountForPopup && isEditingAccountInPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#121820] w-full max-w-lg rounded-2xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
             {/* Modal Header */}
             <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-800 flex items-center justify-between bg-[#161d26] shrink-0 gap-3">
-              {isEditingAccountInPopup ? (
-                <div className="text-amber-300 font-bold text-sm sm:text-base flex items-center gap-2">
-                  <Edit3 size={16} />
-                  <span>Edit Account</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <BankLogo
-                    iconId={selectedAccountForPopup.icon}
-                    name={selectedAccountForPopup.name}
-                    institution={selectedAccountForPopup.institution}
-                    size={24}
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
-                        {selectedAccountForPopup.name}
-                      </h3>
-                      <span 
-                        className="w-2.5 h-2.5 rounded-full shrink-0" 
-                        style={{ backgroundColor: selectedAccountForPopup.color || '#0284c7' }} 
-                        title={selectedAccountForPopup.type}
-                      />
-                    </div>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
-                      <span className="font-semibold text-amber-400/90">
-                        {getCategoryTitle(getCategoryDefinitionByType(selectedAccountForPopup.type))}
-                      </span>
-                      {selectedAccountForPopup.institution && (
-                        <>
-                          <span>•</span>
-                          <span className="truncate">{selectedAccountForPopup.institution}</span>
-                        </>
-                      )}
-                      {selectedAccountForPopup.accountNumber && (
-                        <>
-                          <span>•</span>
-                          <span className="font-mono">•••• {selectedAccountForPopup.accountNumber.slice(-4)}</span>
-                        </>
-                      )}
-                      {selectedAccountForPopup.enableMapping && (
-                        <>
-                          <span>•</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
-                            Mapping Enabled
-                          </span>
-                        </>
-                      )}
-                    </div>
+              <div className="text-amber-300 font-bold text-sm sm:text-base flex items-center gap-2">
+                <Edit3 size={16} />
+                <span>Edit Account</span>
+              </div>
+              <button 
+                type="button"
+                onClick={handleCloseAccountPopup} 
+                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                title="Close"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Edit Mode Form: Matching Add Account Screen with all options */}
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 max-h-[75vh]">
+              {/* Field 1: Account Name */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Account Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={popupAccountName}
+                  onChange={(e) => setPopupAccountName(e.target.value)}
+                  placeholder="e.g. HDFC Salary, Cash in Hand"
+                  autoFocus
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition shadow-inner"
+                />
+              </div>
+
+              {/* Field 2: Account Category Dropdown */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Account Category
+                </label>
+                <select
+                  value={popupAccountCategoryId}
+                  onChange={(e) => {
+                    const chosenId = e.target.value;
+                    setPopupAccountCategoryId(chosenId);
+                    const c = categoriesList.find(cat => (cat.id || cat.type) === chosenId);
+                    if (c) {
+                      setPopupAccountType(c.type);
+                      setPopupAccountIsLiability(c.type === 'CREDIT_CARD' || c.type === 'LOAN');
+                    }
+                  }}
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer"
+                >
+                  {categoriesList.map((c) => {
+                    const title = getCategoryTitle(c);
+                    const isSub = !!c.parentId && c.parentId !== 'MAIN';
+                    const isLiab = c.type === 'CREDIT_CARD' || c.type === 'LOAN';
+                    return (
+                      <option key={c.id || c.type} value={c.id || c.type}>
+                        {isSub ? `↳ ${title} (Subcategory)` : title}{isLiab ? ' [Liability]' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Field 3: Opening Balance */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Opening Balance (₹)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={popupAccountOpeningBalance}
+                  onChange={(e) => setPopupAccountOpeningBalance(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none transition shadow-inner"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Initial ledger balance before any recorded transactions.
+                </p>
+              </div>
+
+              {/* Current Balance Calculation Preview */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    Opening ({formatCurrency(parseFloat(popupAccountOpeningBalance) || 0)}) {netTransactions >= 0 ? `+ Inflows (${formatCurrency(netTransactions)})` : `- Outflows (${formatCurrency(Math.abs(netTransactions))})`}
                   </div>
                 </div>
-              )}
+                <div className="text-sm font-extrabold font-mono text-amber-200">
+                  {formatCurrency(liveEditingCurrentBalance)}
+                </div>
+              </div>
 
-              {/* Header Action Icons: Edit alone, Delete alone, Close alone */}
-              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                {!isEditingAccountInPopup && (
-                  <>
-                    {/* Edit icon alone */}
+              {/* Field 4: Debt / Liability Account Toggle Card */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={popupAccountIsLiability}
+                    onChange={(e) => {
+                      const newIsLiab = e.target.checked;
+                      setPopupAccountIsLiability(newIsLiab);
+                      const curCat = categoriesList.find(c => (c.id || c.type) === popupAccountCategoryId);
+                      if (curCat) {
+                        const curIsLiab = curCat.type === 'CREDIT_CARD' || curCat.type === 'LOAN';
+                        if (newIsLiab && !curIsLiab) {
+                          setPopupAccountCategoryId('LOAN');
+                          setPopupAccountType('LOAN');
+                        } else if (!newIsLiab && curIsLiab) {
+                          setPopupAccountCategoryId('BANK');
+                          setPopupAccountType('BANK');
+                        }
+                      }
+                    }}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
+                  />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2">
+                      <span>This is a Debt / Liability account</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                        popupAccountIsLiability 
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}>
+                        {popupAccountIsLiability ? 'Liability' : 'Asset'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {popupAccountIsLiability 
+                        ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
+                        : 'Balances in this account add positively to your Total Funds & Net Worth.'}
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Field: Enable Mapping Option Card */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={popupAccountEnableMapping}
+                    onChange={(e) => setPopupAccountEnableMapping(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-amber-500"
+                  />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2">
+                      <span>Enable mapping</span>
+                      {popupAccountEnableMapping && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      When enabled, transactions on this account can be linked to settle against prior unsettled transactions, tracking their settlement status in the passbook.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Bank / Provider
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HDFC, SBI"
+                    value={popupAccountInstitution}
+                    onChange={(e) => setPopupAccountInstitution(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                    Last 4 Digits
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 4589"
+                    maxLength={4}
+                    value={popupAccountAccountNumber}
+                    onChange={(e) => setPopupAccountAccountNumber(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Field 6: Bank Logo Selection */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Bank / Financial Institution Logo
+                </label>
+                <BankLogoPicker
+                  selectedId={popupAccountIcon}
+                  onSelect={setPopupAccountIcon}
+                />
+              </div>
+
+              {/* Field 7: Card Color Accent */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Card Color Accent
+                </label>
+                <div className="flex items-center gap-2">
+                  {ACCOUNT_COLORS.map((c) => (
                     <button
                       type="button"
-                      onClick={() => setIsEditingAccountInPopup(true)}
-                      className="p-1.5 sm:p-2 rounded-xl text-amber-400 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition active:scale-95"
-                      title="Edit Account Details & Opening Balance"
-                      aria-label="Edit Account"
-                    >
-                      <Edit3 size={15} />
-                    </button>
-
-                    {/* Delete icon alone - disabled if at least one transaction exists */}
-                    {onDeleteAccount && (
-                      hasTransactions ? (
-                        <button
-                          type="button"
-                          disabled
-                          className="p-1.5 sm:p-2 rounded-xl text-slate-600 bg-slate-800/40 border border-slate-800 cursor-not-allowed opacity-40 transition"
-                          title={`Cannot delete account: ${selectedAccountTxns.length} transaction entr${selectedAccountTxns.length === 1 ? 'y' : 'ies'} exist`}
-                          aria-label="Cannot delete account with existing transactions"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={handleDeleteAccountFromPopup}
-                          disabled={isDeletingAccountPopup}
-                          className="p-1.5 sm:p-2 rounded-xl text-rose-400 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition active:scale-95"
-                          title="Delete Account (0 transactions)"
-                          aria-label="Delete Account"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )
-                    )}
-                  </>
-                )}
-
-                {/* Close icon alone */}
-                <button 
-                  type="button"
-                  onClick={handleCloseAccountPopup} 
-                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
-                  title="Close"
-                  aria-label="Close"
-                >
-                  <X size={16} />
-                </button>
+                      key={c}
+                      onClick={() => setPopupAccountColor(c)}
+                      className={`w-6 h-6 rounded-full transition-transform ${popupAccountColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Modal Body */}
-            {isEditingAccountInPopup ? (
-              /* Edit Mode Form: Matching Add Account Screen with all options */
-              <>
-                <div className="p-4 sm:p-6 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 max-h-[75vh]">
-                  {/* Field 1: Account Name */}
-                  <div>
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                      Account Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={popupAccountName}
-                      onChange={(e) => setPopupAccountName(e.target.value)}
-                      placeholder="e.g. HDFC Salary, Cash in Hand"
-                      autoFocus
-                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition shadow-inner"
-                    />
-                  </div>
+            {/* Edit Mode Footer */}
+            <div className="px-4 py-3 bg-[#161d26] border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
+              {onDeleteAccount && !hasTransactions ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteAccountFromPopup}
+                  disabled={isDeletingAccountPopup}
+                  className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold transition"
+                  title="Delete this account (0 transactions)"
+                >
+                  <Trash2 size={16} />
+                </button>
+              ) : <div />}
 
-                  {/* Field 2: Account Category Dropdown */}
-                  <div>
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                      Account Category
-                    </label>
-                    <select
-                      value={popupAccountCategoryId}
-                      onChange={(e) => {
-                        const chosenId = e.target.value;
-                        setPopupAccountCategoryId(chosenId);
-                        const c = categoriesList.find(cat => (cat.id || cat.type) === chosenId);
-                        if (c) {
-                          setPopupAccountType(c.type);
-                          setPopupAccountIsLiability(c.type === 'CREDIT_CARD' || c.type === 'LOAN');
-                        }
-                      }}
-                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs sm:text-sm text-white font-medium focus:outline-none cursor-pointer"
-                    >
-                      {categoriesList.map((c) => {
-                        const title = getCategoryTitle(c);
-                        const isSub = !!c.parentId && c.parentId !== 'MAIN';
-                        const isLiab = c.type === 'CREDIT_CARD' || c.type === 'LOAN';
-                        return (
-                          <option key={c.id || c.type} value={c.id || c.type}>
-                            {isSub ? `↳ ${title} (Subcategory)` : title}{isLiab ? ' [Liability]' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPopupAccountName(selectedAccountForPopup.name);
+                    setPopupAccountType(selectedAccountForPopup.type);
+                    setPopupAccountCategoryId(selectedAccountForPopup.categoryId || selectedAccountForPopup.type);
+                    setPopupAccountIcon(selectedAccountForPopup.icon || 'none');
+                    setPopupAccountInstitution(selectedAccountForPopup.institution || '');
+                    setPopupAccountAccountNumber(selectedAccountForPopup.accountNumber || '');
+                    setPopupAccountColor(selectedAccountForPopup.color || '#0284c7');
+                    setPopupAccountIsLiability(selectedAccountForPopup.type === 'CREDIT_CARD' || selectedAccountForPopup.type === 'LOAN');
+                    setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
+                    setPopupAccountEnableMapping(!!selectedAccountForPopup.enableMapping);
+                    setIsEditingAccountInPopup(false);
+                  }}
+                  disabled={isSavingAccountPopup}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAccountPopup}
+                  disabled={isSavingAccountPopup || !popupAccountName.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition disabled:opacity-50"
+                >
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>{isSavingAccountPopup ? 'Saving...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-                  {/* Field 3: Opening Balance */}
-                  <div>
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                      Opening Balance (₹)
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={popupAccountOpeningBalance}
-                      onChange={(e) => setPopupAccountOpeningBalance(e.target.value)}
-                      placeholder="0"
-                      className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none transition shadow-inner"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Initial ledger balance before any recorded transactions.
-                    </p>
-                  </div>
-
-                  {/* Current Balance Calculation Preview */}
-                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Calculated Current Balance</div>
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        Opening ({formatCurrency(parseFloat(popupAccountOpeningBalance) || 0)}) {netTransactions >= 0 ? `+ Inflows (${formatCurrency(netTransactions)})` : `- Outflows (${formatCurrency(Math.abs(netTransactions))})`}
-                      </div>
-                    </div>
-                    <div className="text-sm font-extrabold font-mono text-amber-200">
-                      {formatCurrency(liveEditingCurrentBalance)}
-                    </div>
-                  </div>
-
-                  {/* Field 4: Debt / Liability Account Toggle Card */}
-                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
-                    <label className="flex items-start gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={popupAccountIsLiability}
-                        onChange={(e) => {
-                          const newIsLiab = e.target.checked;
-                          setPopupAccountIsLiability(newIsLiab);
-                          const curCat = categoriesList.find(c => (c.id || c.type) === popupAccountCategoryId);
-                          if (curCat) {
-                            const curIsLiab = curCat.type === 'CREDIT_CARD' || curCat.type === 'LOAN';
-                            if (newIsLiab && !curIsLiab) {
-                              setPopupAccountCategoryId('LOAN');
-                              setPopupAccountType('LOAN');
-                            } else if (!newIsLiab && curIsLiab) {
-                              setPopupAccountCategoryId('BANK');
-                              setPopupAccountType('BANK');
-                            }
-                          }
-                        }}
-                        className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-rose-500"
-                      />
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold text-white flex items-center gap-2">
-                          <span>This is a Debt / Liability account</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
-                            popupAccountIsLiability 
-                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
-                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          }`}>
-                            {popupAccountIsLiability ? 'Liability' : 'Asset'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          {popupAccountIsLiability 
-                            ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
-                            : 'Balances in this account add positively to your Total Funds & Net Worth.'}
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* Field: Enable Mapping Option Card */}
-                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
-                    <label className="flex items-start gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={popupAccountEnableMapping}
-                        onChange={(e) => setPopupAccountEnableMapping(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-amber-500"
-                      />
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold text-white flex items-center gap-2">
-                          <span>Enable mapping</span>
-                          {popupAccountEnableMapping && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
-                          When enabled, transactions on this account can be linked to settle against prior unsettled transactions, tracking their settlement status in the passbook.
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Bank / Provider
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. HDFC, SBI"
-                        value={popupAccountInstitution}
-                        onChange={(e) => setPopupAccountInstitution(e.target.value)}
-                        className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Last 4 Digits
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 4589"
-                        maxLength={4}
-                        value={popupAccountAccountNumber}
-                        onChange={(e) => setPopupAccountAccountNumber(e.target.value)}
-                        className="w-full bg-[#0e131a] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Field 6: Bank Logo Selection */}
-                  <div>
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                      Bank / Financial Institution Logo
-                    </label>
-                    <BankLogoPicker
-                      selectedId={popupAccountIcon}
-                      onSelect={setPopupAccountIcon}
-                    />
-                  </div>
-
-                  {/* Field 7: Card Color Accent */}
-                  <div>
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                      Card Color Accent
-                    </label>
-                    <div className="flex items-center gap-2">
-                      {ACCOUNT_COLORS.map((c) => (
-                        <button
-                          type="button"
-                          key={c}
-                          onClick={() => setPopupAccountColor(c)}
-                          className={`w-6 h-6 rounded-full transition-transform ${popupAccountColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                  </div>
+      {/* Full Screen Account Passbook View */}
+      {selectedAccountForPopup && !isEditingAccountInPopup && (
+        <div className="fixed inset-0 z-50 bg-[#0d1217] w-full h-full flex flex-col overflow-hidden animate-fadeIn">
+          {/* Full-Screen Header */}
+          <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <BankLogo
+                iconId={selectedAccountForPopup.icon}
+                name={selectedAccountForPopup.name}
+                institution={selectedAccountForPopup.institution}
+                size={32}
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
+                    {selectedAccountForPopup.name}
+                  </h2>
+                  <span 
+                    className="w-2.5 h-2.5 rounded-full shrink-0" 
+                    style={{ backgroundColor: selectedAccountForPopup.color || '#0284c7' }} 
+                    title={selectedAccountForPopup.type}
+                  />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 shrink-0">
+                    Passbook
+                  </span>
                 </div>
-
-                {/* Edit Mode Footer */}
-                <div className="px-4 py-3 bg-[#161d26] border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
-                  {onDeleteAccount && !hasTransactions ? (
-                    <button
-                      type="button"
-                      onClick={handleDeleteAccountFromPopup}
-                      disabled={isDeletingAccountPopup}
-                      className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 text-xs font-bold transition"
-                      title="Delete this account (0 transactions)"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  ) : <div />}
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPopupAccountName(selectedAccountForPopup.name);
-                        setPopupAccountType(selectedAccountForPopup.type);
-                        setPopupAccountCategoryId(selectedAccountForPopup.categoryId || selectedAccountForPopup.type);
-                        setPopupAccountIcon(selectedAccountForPopup.icon || 'none');
-                        setPopupAccountInstitution(selectedAccountForPopup.institution || '');
-                        setPopupAccountAccountNumber(selectedAccountForPopup.accountNumber || '');
-                        setPopupAccountColor(selectedAccountForPopup.color || '#0284c7');
-                        setPopupAccountIsLiability(selectedAccountForPopup.type === 'CREDIT_CARD' || selectedAccountForPopup.type === 'LOAN');
-                        setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
-                        setPopupAccountEnableMapping(!!selectedAccountForPopup.enableMapping);
-                        setIsEditingAccountInPopup(false);
-                      }}
-                      disabled={isSavingAccountPopup}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveAccountPopup}
-                      disabled={isSavingAccountPopup || !popupAccountName.trim()}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition disabled:opacity-50"
-                    >
-                      <Check size={14} strokeWidth={2.5} />
-                      <span>{isSavingAccountPopup ? 'Saving...' : 'Save Changes'}</span>
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* View Mode: Compact Summary + Combined Passbook Preview */
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 p-3 sm:p-4 space-y-2.5">
-                {/* 1. Compact Balance & Date of Reco (Label left, Value/Field right) */}
-                <div className="p-2.5 sm:p-3 bg-[#0a0e14] rounded-xl sm:rounded-2xl border border-slate-800 space-y-2.5">
-                  {/* Row 1: Current Balance */}
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-400">Current Balance</span>
-                    <span className="text-sm sm:text-base font-extrabold text-amber-200 font-mono">
-                      {formatCurrency(currentAccountBalance)}
-                    </span>
-                  </div>
-
-                  <div className="h-[1px] bg-slate-800/80" />
-
-                  {/* Ledger Breakdown: Opening Balance, Inflows, Outflows */}
-                  <div className="grid grid-cols-3 gap-2 py-1 text-center bg-[#131922] rounded-xl p-2 border border-slate-800/60">
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Opening Balance</div>
-                      <div className="text-xs font-mono font-bold text-slate-200 mt-0.5">
-                        {formatCurrency(openingAccountBalance)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-emerald-400">Total Inflow</div>
-                      <div className="text-xs font-mono font-bold text-emerald-300 mt-0.5">
-                        +{formatCurrency(totalCredits)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-rose-400">Total Outflow</div>
-                      <div className="text-xs font-mono font-bold text-rose-300 mt-0.5">
-                        -{formatCurrency(totalDebits)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="h-[1px] bg-slate-800/80" />
-
-                  {/* Row 2: Date of reco */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label htmlFor="account-reco-date" className="text-xs font-semibold text-slate-400 cursor-pointer shrink-0">
-                      Date of reco
-                    </label>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <input
-                        id="account-reco-date"
-                        type="date"
-                        value={selectedAccountForPopup.reconciledDate || ''}
-                        onChange={(e) => handleUpdateRecoDate(e.target.value)}
-                        className="bg-[#121820] hover:bg-[#161f2b] focus:bg-[#121820] border border-slate-700 hover:border-amber-500/80 focus:border-amber-500 rounded-xl px-2.5 py-1 text-xs text-white font-mono focus:outline-none transition cursor-pointer [color-scheme:dark] shadow-sm"
-                        title="Change Date of reco"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
-                        className="px-2 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-semibold transition active:scale-95 shrink-0"
-                        title="Set Date of reco to today"
-                      >
-                        Today
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="h-[1px] bg-slate-800/80" />
-
-                  {/* Row 3: Settlement Mapping */}
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-slate-400">Settlement Mapping</span>
-                    {selectedAccountForPopup.enableMapping ? (
-                      <span className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                        Enabled
+                <div className="text-xs text-slate-400 flex items-center gap-2 truncate mt-0.5">
+                  <span className="font-semibold text-slate-300">
+                    {getCategoryTitle(getCategoryDefinitionByType(selectedAccountForPopup.type))}
+                  </span>
+                  {selectedAccountForPopup.institution && (
+                    <>
+                      <span>•</span>
+                      <span className="truncate">{selectedAccountForPopup.institution}</span>
+                    </>
+                  )}
+                  {selectedAccountForPopup.accountNumber && (
+                    <>
+                      <span>•</span>
+                      <span className="font-mono">•••• {selectedAccountForPopup.accountNumber.slice(-4)}</span>
+                    </>
+                  )}
+                  {selectedAccountForPopup.enableMapping && (
+                    <>
+                      <span>•</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                        Settlement Mapping Active
                       </span>
-                    ) : (
-                      <span className="text-xs text-slate-500">Disabled</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Combined Passbook Preview Section */}
-                <div className="space-y-2">
-                  {/* Passbook Section Header */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5">
-                    <div className="flex items-center gap-2">
-                      <BookOpen size={14} className="text-amber-400" />
-                      <span className="text-xs font-bold text-white">Passbook Entries</span>
-                      <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] font-mono text-slate-300 border border-slate-700">
-                        {selectedAccountTxns.length}
-                      </span>
-                    </div>
-
-                    {/* Quick Search if more than 2 entries */}
-                    {selectedAccountTxns.length > 2 && (
-                      <div className="relative w-36 sm:w-44">
-                        <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input
-                          type="text"
-                          value={popupTxnSearch}
-                          onChange={(e) => setPopupTxnSearch(e.target.value)}
-                          placeholder="Search entries..."
-                          className="w-full bg-[#0a0e14] border border-slate-800 rounded-lg pl-6 pr-2 py-0.5 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Transaction Entries List */}
-                  <div className="space-y-1.5 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 pr-0.5">
-                    {filteredPopupTxns.length === 0 ? (
-                      <div className="py-6 text-center bg-[#0a0e14]/60 rounded-xl border border-slate-800/80 px-4">
-                        <BookOpen size={20} className="text-slate-600 mx-auto mb-1.5" />
-                        <p className="text-xs font-medium text-slate-400">
-                          {popupTxnSearch ? 'No matching entries found' : 'No transactions recorded yet'}
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {hasTransactions 
-                            ? 'Try changing your search keywords' 
-                            : 'This account has 0 entries and can be deleted using the trash icon above.'}
-                        </p>
-                      </div>
-                    ) : (
-                      filteredPopupTxns.map((t) => {
-                        const accId = selectedAccountForPopup.id;
-                        const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId);
-                        const isTransfer = t.type === 'TRANSFER';
-
-                        return (
-                          <div
-                            key={t.id}
-                            onClick={() => {
-                              if (onSelectTxn) {
-                                onSelectTxn(t);
-                              }
-                            }}
-                            className={`p-2 sm:p-2.5 rounded-xl bg-[#0a0e14] hover:bg-[#151c27] border border-slate-800/70 flex items-center justify-between gap-2 transition ${
-                              onSelectTxn ? 'cursor-pointer' : ''
-                            }`}
-                            title={onSelectTxn ? "Click to view/edit transaction" : undefined}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isTransfer
-                                    ? 'bg-blue-500/15 text-blue-400'
-                                    : isCredit
-                                    ? 'bg-emerald-500/15 text-emerald-400'
-                                    : 'bg-rose-500/15 text-rose-400'
-                                }`}
-                              >
-                                {isTransfer ? (
-                                  <ArrowRightLeft size={12} />
-                                ) : isCredit ? (
-                                  <ArrowDownLeft size={12} />
-                                ) : (
-                                  <ArrowUpRight size={12} />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium text-slate-200 truncate">
-                                  {t.description || 'Transaction'}
-                                </div>
-                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5 truncate">
-                                  <span>{formatDate(t.date)}</span>
-                                  <span>•</span>
-                                  <span className="truncate">{t.category || t.type}</span>
-                                  {selectedAccountForPopup.enableMapping && (
-                                    <>
-                                      <span>•</span>
-                                      {(() => {
-                                        const s = getSettlementStatus(t, transactions || [], getStoredSettlementTolerance());
-                                        return s.isSettled ? (
-                                          <span className="text-emerald-400 font-medium">Settled</span>
-                                        ) : (
-                                          <span className="text-amber-300 font-medium">Unsettled</span>
-                                        );
-                                      })()}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div
-                              className={`text-xs font-bold font-mono shrink-0 ${
-                                isCredit ? 'text-emerald-400' : 'text-rose-400'
-                              }`}
-                            >
-                              {isCredit ? '+' : '-'}{formatCurrency(t.amount)}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
+            </div>
+
+            {/* Header Action Buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Export as PDF button */}
+              <button
+                type="button"
+                onClick={handleOpenPdfExport}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition active:scale-95 shadow-sm"
+                title="Export Statement as PDF"
+              >
+                <FileText size={15} />
+                <span className="hidden sm:inline">Export as PDF</span>
+              </button>
+
+              {/* Edit Account */}
+              <button
+                type="button"
+                onClick={() => setIsEditingAccountInPopup(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition active:scale-95"
+                title="Edit Account Details & Opening Balance"
+              >
+                <Edit3 size={15} />
+                <span className="hidden sm:inline">Edit Account</span>
+              </button>
+
+              {/* Delete button (if zero transactions) */}
+              {onDeleteAccount && (
+                hasTransactions ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="p-2 rounded-xl text-slate-600 bg-slate-800/40 border border-slate-800 cursor-not-allowed opacity-40 transition"
+                    title={`Cannot delete account: ${selectedAccountTxns.length} transaction entries exist`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccountFromPopup}
+                    disabled={isDeletingAccountPopup}
+                    className="p-2 rounded-xl text-rose-400 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition active:scale-95"
+                    title="Delete Account (0 transactions)"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )
+              )}
+
+              {/* Close Full Screen View */}
+              <button 
+                type="button"
+                onClick={handleCloseAccountPopup} 
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 transition"
+                title="Close Passbook"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Passbook KPI Strip & Reco Banner */}
+          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-3 shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-center">
+              {/* Current Balance */}
+              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Current Balance</span>
+                <span className="text-lg sm:text-xl font-extrabold text-amber-300 font-mono tabular-nums block mt-0.5">
+                  {formatCurrency(currentAccountBalance)}
+                </span>
+              </div>
+
+              {/* Opening Balance */}
+              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Opening Balance</span>
+                <span className="text-sm sm:text-base font-bold text-slate-200 font-mono tabular-nums block mt-0.5">
+                  {formatCurrency(openingAccountBalance)}
+                </span>
+              </div>
+
+              {/* Total Inflow */}
+              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider block">Total Inflow</span>
+                <span className="text-sm sm:text-base font-bold text-emerald-300 font-mono tabular-nums block mt-0.5">
+                  +{formatCurrency(totalCredits)}
+                </span>
+              </div>
+
+              {/* Total Outflow */}
+              <div className="bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] font-semibold text-rose-400 uppercase tracking-wider block">Total Outflow</span>
+                <span className="text-sm sm:text-base font-bold text-rose-300 font-mono tabular-nums block mt-0.5">
+                  -{formatCurrency(totalDebits)}
+                </span>
+              </div>
+
+              {/* Date of Reco */}
+              <div className="col-span-2 sm:col-span-1 bg-[#0a0e14] p-3 rounded-xl border border-slate-800/80 flex flex-col justify-between">
+                <label htmlFor="account-reco-date" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                  Date of Reco
+                </label>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <input
+                    id="account-reco-date"
+                    type="date"
+                    value={selectedAccountForPopup.reconciledDate || ''}
+                    onChange={(e) => handleUpdateRecoDate(e.target.value)}
+                    className="flex-1 bg-[#121820] hover:bg-[#161f2b] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
+                    className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition"
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Subheader: Search & Stats */}
+          <div className="px-4 sm:px-8 py-2.5 bg-[#0e141c] border-b border-slate-800/60 flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <BookOpen size={15} className="text-amber-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Passbook Entries</span>
+              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[11px] font-mono text-slate-300 border border-slate-700">
+                {filteredPopupTxns.length} {filteredPopupTxns.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+
+            <div className="relative w-48 sm:w-64">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={popupTxnSearch}
+                onChange={(e) => setPopupTxnSearch(e.target.value)}
+                placeholder="Search description, category, amount..."
+                className="w-full bg-[#121820] border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Passbook Entries Ledger (Full-Screen Scrollable List) */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-2">
+            {filteredPopupTxns.length === 0 ? (
+              <div className="py-16 text-center bg-[#121820]/40 rounded-2xl border border-slate-800/80 px-4">
+                <BookOpen size={28} className="text-slate-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-slate-300">
+                  {popupTxnSearch ? 'No matching entries found' : 'No transactions recorded for this account'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {hasTransactions 
+                    ? 'Try adjusting your search keywords' 
+                    : 'Transactions referencing this account will appear here chronologically.'}
+                </p>
+              </div>
+            ) : (
+              filteredPopupTxns.map((t) => {
+                const accId = selectedAccountForPopup.id;
+                const isTransfer = t.type === 'TRANSFER';
+                const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (isTransfer && t.toAccountId === accId);
+                const fromAcc = accounts.find(a => a.id === t.fromAccountId);
+                const toAcc = accounts.find(a => a.id === t.toAccountId);
+                const fromAccountName = fromAcc?.name || 'Account';
+                const toAccountName = toAcc?.name || 'Account';
+
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => {
+                      if (onSelectTxn) {
+                        onSelectTxn(t);
+                      }
+                    }}
+                    className={`p-3 sm:p-3.5 rounded-xl bg-[#121820] hover:bg-[#16202c] border border-slate-800/80 hover:border-slate-700/90 flex items-center justify-between gap-3 transition shadow-sm ${
+                      onSelectTxn ? 'cursor-pointer' : ''
+                    }`}
+                    title={onSelectTxn ? "Click to view transaction dossier" : undefined}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isTransfer
+                            ? 'bg-blue-500/15 text-blue-400'
+                            : isCredit
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-rose-500/15 text-rose-400'
+                        }`}
+                      >
+                        {isTransfer ? (
+                          <ArrowRightLeft size={14} />
+                        ) : isCredit ? (
+                          <ArrowDownLeft size={14} />
+                        ) : (
+                          <ArrowUpRight size={14} />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        {/* Transaction Title or Transfer Flow */}
+                        {isTransfer ? (
+                          <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                            <span className="truncate">{fromAccountName}</span>
+                            <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                            <span className="truncate">{toAccountName}</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs sm:text-sm font-semibold text-slate-200 truncate">
+                            {t.description || 'Transaction'}
+                          </div>
+                        )}
+
+                        {/* Meta Row */}
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap truncate mt-0.5">
+                          <span className="font-mono text-slate-400">{formatDate(t.date)}</span>
+                          <span>•</span>
+                          <span className="truncate">{t.category || t.type}</span>
+                          {isTransfer && t.description && (
+                            <>
+                              <span>•</span>
+                              <span className="text-slate-400 truncate italic">"{t.description}"</span>
+                            </>
+                          )}
+                          {selectedAccountForPopup.enableMapping && (
+                            <>
+                              <span>•</span>
+                              {(() => {
+                                const s = getSettlementStatus(t, transactions || [], getStoredSettlementTolerance());
+                                return s.isSettled ? (
+                                  <span className="text-emerald-400 font-medium">Settled</span>
+                                ) : (
+                                  <span className="text-amber-300 font-medium">Unsettled</span>
+                                );
+                              })()}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Amount Column: Neutral text-slate-200 and no +/- for transfer transactions! */}
+                    <div
+                      className={`text-sm sm:text-base font-bold font-mono tabular-nums shrink-0 ${
+                        isTransfer 
+                          ? 'text-slate-200' 
+                          : isCredit 
+                          ? 'text-emerald-400' 
+                          : 'text-rose-400'
+                      }`}
+                    >
+                      {isTransfer ? '' : isCredit ? '+' : '-'}{formatCurrency(t.amount)}
+                    </div>
+                  </div>
+                );
+              })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Date Range Modal for PDF Export in ChartOfAccounts */}
+      {showPdfModal && selectedAccountForPopup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#121820] w-full max-w-md rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28]">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <FileText size={18} className="text-amber-400" />
+                <span>Export Passbook PDF</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="text-xs text-slate-400">
+                Choose the statement period for <span className="font-semibold text-white">{selectedAccountForPopup.name}</span>:
+              </div>
+
+              {/* Quick Presets */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'all', label: 'All Time' },
+                  { id: 'this_month', label: 'This Month' },
+                  { id: 'last_month', label: 'Last Month' },
+                  { id: 'last_30_days', label: 'Last 30 Days' },
+                  { id: 'this_year', label: 'This Year' },
+                  { id: 'custom', label: 'Custom' }
+                ].map((p) => (
+                  <button
+                    type="button"
+                    key={p.id}
+                    onClick={() => applyDatePreset(p.id as any)}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition ${
+                      pdfPreset === p.id 
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' 
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Date Inputs */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={pdfStartDate}
+                    onChange={(e) => {
+                      setPdfStartDate(e.target.value);
+                      setPdfPreset('custom');
+                    }}
+                    className="w-full bg-[#0a0e14] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={pdfEndDate}
+                    onChange={(e) => {
+                      setPdfEndDate(e.target.value);
+                      setPdfPreset('custom');
+                    }}
+                    className="w-full bg-[#0a0e14] border border-slate-700 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 bg-[#161e28] border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGeneratePdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md disabled:opacity-50"
+              >
+                <Download size={14} />
+                <span>{isExportingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
