@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus, Pencil } from 'lucide-react';
+import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus, Pencil, Copy, AlertTriangle } from 'lucide-react';
 import { 
   DEFAULT_CATEGORIES, 
   getAllExpenseCategories, 
   addCustomExpenseCategory, 
   formatCurrency, 
+  formatDate,
   getTodayLocalDateString 
 } from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
@@ -29,6 +30,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   vehicles
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(!initialData);
+  const [isDuplicateNewRecord, setIsDuplicateNewRecord] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -55,6 +58,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       prevIsOpenRef.current = false;
+      setIsDuplicateNewRecord(false);
+      setShowDeleteConfirm(false);
       return;
     }
 
@@ -64,6 +69,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     if (isNewlyOpening || isDifferentTxn) {
       prevIsOpenRef.current = true;
       prevTxnIdRef.current = initialData?.id;
+      setIsDuplicateNewRecord(false);
+      setShowDeleteConfirm(false);
 
       const cats = getAllExpenseCategories(initialData?.category ? [initialData.category] : []);
       setAvailableCategories(cats);
@@ -142,6 +149,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
   };
 
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDuplicateNewRecord(true);
+    setIsEditing(true);
+    justSwitchedToEditRef.current = Date.now();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -160,7 +175,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setIsSaving(true);
     try {
       await onSave({
-        id: initialData?.id ? initialData.id : undefined,
+        id: isDuplicateNewRecord ? undefined : (initialData?.id ? initialData.id : undefined),
         type,
         amount: numAmt,
         description: description.trim() || `${category} Record`,
@@ -168,7 +183,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         fromAccountId: (type === 'EXPENSE' || type === 'TRANSFER') ? fromAccountId : null,
         toAccountId: (type === 'INCOME' || type === 'TRANSFER') ? toAccountId : null,
         date,
-        timestamp: initialData?.timestamp || Date.now(),
+        timestamp: isDuplicateNewRecord ? Date.now() : (initialData?.timestamp || Date.now()),
         vehicleId: isFuelRecord ? (vehicleId || null) : null,
         isFuel: isFuelRecord,
         fuelLiters: isFuelRecord && fuelLiters ? parseFloat(fuelLiters) : null,
@@ -183,11 +198,18 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
     if (!initialData || !onDelete) return;
     setIsSaving(true);
     try {
       await onDelete(initialData);
+      setShowDeleteConfirm(false);
       onClose();
     } catch (err) {
       console.error('Error deleting transaction:', err);
@@ -198,14 +220,25 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col relative">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
           <div className="flex items-center gap-2">
             <span className="text-amber-400 font-bold text-base">
-              {!initialData ? 'New Transaction' : isEditing ? 'Edit Transaction' : 'Transaction Details'}
+              {isDuplicateNewRecord
+                ? 'New Transaction (Duplicate)'
+                : !initialData
+                ? 'New Transaction'
+                : isEditing
+                ? 'Edit Transaction'
+                : 'Transaction Details'}
             </span>
-            {initialData && !isEditing && (
+            {isDuplicateNewRecord && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                <Copy size={10} /> Duplicate
+              </span>
+            )}
+            {initialData && !isEditing && !isDuplicateNewRecord && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/80">
                 View Mode
               </span>
@@ -213,8 +246,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             <span className="text-xs text-slate-400 hidden sm:inline">| Chuvadi Ledger</span>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition"
+            className="p-1.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -594,82 +628,170 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2">
-            {initialData && onDelete && (
+          <div className="flex items-center gap-2 sm:gap-3 pt-2">
+            {/* Delete button (only for existing saved transactions, not duplicates) */}
+            {initialData && !isDuplicateNewRecord && onDelete && (
               <button
                 key="delete-txn-btn"
                 type="button"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 disabled={isSaving}
-                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3 sm:px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                title="Delete this transaction"
               >
                 <Trash2 size={15} />
-                <span>Delete</span>
+                <span className="hidden sm:inline">Delete</span>
               </button>
             )}
 
-            {!isEditing && initialData ? (
-              <button
-                key="close-view-btn"
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onClose();
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
-              >
-                Close
-              </button>
-            ) : (
-              <button
-                key="cancel-edit-btn"
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (initialData) {
-                    setIsEditing(false);
-                  } else {
+            {/* View Mode buttons */}
+            {!isEditing && initialData && !isDuplicateNewRecord ? (
+              <>
+                <button
+                  key="close-view-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     onClose();
-                  }
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
-              >
-                {initialData ? 'Cancel' : 'Close'}
-              </button>
-            )}
+                  }}
+                  className="py-2.5 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Close
+                </button>
 
-            {!isEditing ? (
-              <button
-                key="enter-edit-mode-btn"
-                id="edit-transaction-btn"
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  justSwitchedToEditRef.current = Date.now();
-                  setIsEditing(true);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-              >
-                <Pencil size={15} strokeWidth={2.5} />
-                <span>Edit</span>
-              </button>
+                <button
+                  key="duplicate-txn-btn"
+                  id="duplicate-transaction-btn"
+                  type="button"
+                  onClick={handleDuplicate}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  title="Create a new transaction pre-filled with these details"
+                >
+                  <Copy size={15} strokeWidth={2.2} />
+                  <span>Duplicate</span>
+                </button>
+
+                <button
+                  key="enter-edit-mode-btn"
+                  id="edit-transaction-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    justSwitchedToEditRef.current = Date.now();
+                    setIsEditing(true);
+                  }}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                >
+                  <Pencil size={15} strokeWidth={2.5} />
+                  <span>Edit</span>
+                </button>
+              </>
             ) : (
-              <button
-                key="save-changes-submit-btn"
-                id="save-transaction-btn"
-                type="submit"
-                disabled={isSaving || !amount}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-              >
-                <Check size={16} strokeWidth={2.5} />
-                <span>{isSaving ? 'Committing...' : initialData ? 'Save Changes' : 'Save Record'}</span>
-              </button>
+              /* Edit Mode / New Transaction / Duplicate Mode buttons */
+              <>
+                <button
+                  key="cancel-edit-btn"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (isDuplicateNewRecord) {
+                      onClose();
+                    } else if (initialData) {
+                      setIsEditing(false);
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  key="save-changes-submit-btn"
+                  id="save-transaction-btn"
+                  type="submit"
+                  disabled={isSaving || !amount}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                >
+                  <Check size={16} strokeWidth={2.5} />
+                  <span>
+                    {isSaving 
+                      ? 'Committing...' 
+                      : (initialData && !isDuplicateNewRecord) 
+                      ? 'Save Changes' 
+                      : 'Save Record'}
+                  </span>
+                </button>
+              </>
             )}
           </div>
         </form>
+
+        {/* Delete Confirmation Popup */}
+        {showDeleteConfirm && (
+          <div 
+            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <div 
+              className="bg-[#121820] w-full max-w-sm rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col p-6 text-center animate-scaleUp"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-rose-500/10">
+                <Trash2 size={26} />
+              </div>
+
+              <h3 className="text-base font-bold text-white mb-1.5">
+                Delete Transaction?
+              </h3>
+              
+              <div className="bg-[#0a0e14] rounded-2xl border border-slate-800/80 p-3 my-3 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white truncate max-w-[170px]">
+                    {description || initialData?.description || 'Transaction'}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-rose-400">
+                    {formatCurrency(Number(amount) || initialData?.amount || 0)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">
+                  <span>{date || initialData?.date}</span>
+                  <span>•</span>
+                  <span className="text-amber-300/80">{category || initialData?.category}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400 mb-5 leading-relaxed">
+                Are you sure you want to delete this record? This action cannot be undone and will update your account balance.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isSaving}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  id="confirm-delete-txn-btn"
+                  onClick={handleConfirmDelete}
+                  disabled={isSaving}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-rose-600/30 disabled:opacity-50"
+                >
+                  <Trash2 size={14} />
+                  <span>{isSaving ? 'Deleting...' : 'Delete Record'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
