@@ -9,7 +9,7 @@ import {
   getTodayLocalDateString 
 } from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
-import { getUnsettledTransactionsForAccount, getStoredSettlementTolerance } from '../../utils/settlement';
+import { getUnsettledTransactionsForAccount, getStoredSettlementTolerance, type UnsettledTransactionItem } from '../../utils/settlement';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -115,30 +115,74 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
   }, [isOpen, initialData?.id]);
 
-  // Determine active account and if mapping is enabled on it
-  const activeAccountId = useMemo(() => {
-    if (type === 'EXPENSE') return fromAccountId;
-    if (type === 'INCOME') return toAccountId;
-    if (type === 'TRANSFER') return toAccountId || fromAccountId;
-    return fromAccountId || toAccountId;
-  }, [type, fromAccountId, toAccountId]);
+  // Determine accounts involved in this transaction that have mapping enabled
+  const mappingAccounts = useMemo(() => {
+    const list: Account[] = [];
+    if (type === 'EXPENSE') {
+      const acc = accounts.find(a => a.id === fromAccountId);
+      if (acc?.enableMapping) list.push(acc);
+    } else if (type === 'INCOME') {
+      const acc = accounts.find(a => a.id === toAccountId);
+      if (acc?.enableMapping) list.push(acc);
+    } else if (type === 'TRANSFER') {
+      // In transfers, both destination and source accounts can be settled against
+      const toAcc = accounts.find(a => a.id === toAccountId);
+      const fromAcc = accounts.find(a => a.id === fromAccountId);
+      if (toAcc?.enableMapping) list.push(toAcc);
+      if (fromAcc?.enableMapping && fromAcc.id !== toAcc?.id) list.push(fromAcc);
+    }
+    return list;
+  }, [type, fromAccountId, toAccountId, accounts]);
 
-  const selectedAccount = useMemo(() => {
-    return accounts.find(a => a.id === activeAccountId);
-  }, [accounts, activeAccountId]);
+  const isMappingEnabled = mappingAccounts.length > 0 || !!initialData?.mappedTransactionId;
 
-  const isMappingEnabled = !!selectedAccount?.enableMapping;
-
-  // Retrieve unsettled transactions for this mapping-enabled account
+  // Retrieve unsettled transactions across all mapping-enabled accounts involved
   const unsettledTransactions = useMemo(() => {
-    if (!isMappingEnabled || !activeAccountId) return [];
-    return getUnsettledTransactionsForAccount(
-      activeAccountId,
-      allTransactions,
-      getStoredSettlementTolerance(),
-      initialData?.id
-    );
-  }, [isMappingEnabled, activeAccountId, allTransactions, initialData?.id]);
+    if (!isMappingEnabled) return [];
+    const tolerance = getStoredSettlementTolerance();
+
+    const accountsToQuery = mappingAccounts.length > 0
+      ? mappingAccounts
+      : accounts.filter(a => a.enableMapping);
+
+    const seen = new Set<string>();
+    const result: (UnsettledTransactionItem & { accountName?: string })[] = [];
+
+    // If existing record was linked to a parent, include it so user can see it
+    if (initialData?.mappedTransactionId) {
+      const existingParent = allTransactions.find(t => t.id === initialData.mappedTransactionId);
+      if (existingParent) {
+        seen.add(existingParent.id);
+        const parentAcc = accounts.find(a => a.id === existingParent.fromAccountId || a.id === existingParent.toAccountId);
+        result.push({
+          ...existingParent,
+          remainingDifference: 0,
+          totalSettled: existingParent.amount,
+          accountName: parentAcc?.name
+        });
+      }
+    }
+
+    for (const acc of accountsToQuery) {
+      const txns = getUnsettledTransactionsForAccount(
+        acc.id,
+        allTransactions,
+        tolerance,
+        initialData?.id
+      );
+      for (const t of txns) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          result.push({
+            ...t,
+            accountName: acc.name
+          });
+        }
+      }
+    }
+
+    return result.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [isMappingEnabled, mappingAccounts, accounts, allTransactions, initialData?.id, initialData?.mappedTransactionId]);
 
   if (!isOpen) return null;
 
@@ -474,7 +518,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   <span>Map / Settle Against Unsettled Transaction</span>
                 </span>
                 <span className="text-[10px] text-amber-400 font-mono font-semibold">
-                  {selectedAccount?.name}
+                  {mappingAccounts.map(a => a.name).join(' / ') || 'Mapping Active'}
                 </span>
               </label>
 
@@ -488,6 +532,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <option value="">None / New Transaction (Do not link)</option>
                 {unsettledTransactions.map((opt) => (
                   <option key={opt.id} value={opt.id}>
+                    {type === 'TRANSFER' && opt.accountName ? `[${opt.accountName}] ` : ''}
                     {formatDate(opt.date)} • {opt.description} — ₹{opt.amount} (Unsettled: ₹{opt.remainingDifference})
                   </option>
                 ))}
