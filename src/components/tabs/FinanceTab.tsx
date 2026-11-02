@@ -14,7 +14,8 @@ import {
   Filter,
   Tag,
   Landmark,
-  X
+  X,
+  ArrowRight
 } from 'lucide-react';
 import { formatCurrency, formatDate, getAllExpenseCategories } from '../../utils/formatters';
 import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
@@ -333,6 +334,42 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             </button>
           </div>
 
+          {/* Quick Transaction Type Filter Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            <div className="inline-flex p-1 bg-[#121820] rounded-2xl border border-slate-800 shrink-0">
+              {(
+                [
+                  { id: 'ALL', label: 'All Transactions' },
+                  { id: 'EXPENSE', label: 'Expenses' },
+                  { id: 'INCOME', label: 'Income' },
+                  { id: 'TRANSFER', label: 'Transfers' }
+                ] as const
+              ).map((tab) => {
+                const isActive = typeFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setTypeFilter(tab.id)}
+                    className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      isActive
+                        ? tab.id === 'TRANSFER'
+                          ? 'bg-blue-500/25 text-blue-300 border border-blue-500/40 shadow-sm'
+                          : tab.id === 'EXPENSE'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                          : tab.id === 'INCOME'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                          : 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Horizontally Stacked Filter & Sort Bar (Icon-first to maximize screen usage) */}
           <div className="flex items-center gap-2">
             {/* Scrollable Filter Inputs Container */}
@@ -490,6 +527,10 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             filteredTransactions.map((t) => {
               const isExpense = t.type === 'EXPENSE';
               const isIncome = t.type === 'INCOME';
+              const isTransfer = t.type === 'TRANSFER';
+
+              const fromAccountName = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source Account';
+              const toAccountName = accounts.find(a => a.id === t.toAccountId)?.name || 'Destination Account';
 
               return (
                 <div
@@ -497,17 +538,17 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                   onClick={() => onSelectTxn(t)}
                   className="p-3.5 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-9 h-9 rounded-2xl flex items-center justify-center ${
-                        t.type === 'TRANSFER'
+                      className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+                        isTransfer
                           ? 'bg-blue-500/15 text-blue-400'
                           : isExpense
                           ? 'bg-rose-500/15 text-rose-400'
                           : 'bg-emerald-500/15 text-emerald-400'
                       }`}
                     >
-                      {t.type === 'TRANSFER' ? (
+                      {isTransfer ? (
                         <ArrowRightLeft size={16} />
                       ) : isExpense ? (
                         <ArrowUpRight size={16} />
@@ -515,25 +556,42 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                         <ArrowDownLeft size={16} />
                       )}
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-white">{t.description}</div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                    <div className="min-w-0">
+                      {isTransfer ? (
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                          <span className="text-slate-200">{fromAccountName}</span>
+                          <ArrowRight size={12} className="text-blue-400 shrink-0" />
+                          <span className="text-slate-200">{toAccountName}</span>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-bold text-white truncate">{t.description}</div>
+                      )}
+
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
                         <span>{formatDate(t.date)}</span>
                         <span>•</span>
-                        <span className="text-amber-300/80">{t.category}</span>
+                        <span className={isTransfer ? "text-blue-300/80 font-medium" : "text-amber-300/80"}>
+                          {t.category || (isTransfer ? 'Transfer' : 'General')}
+                        </span>
+                        {isTransfer && t.description && t.description !== 'Transfer' && !t.description.toLowerCase().includes('transfer record') && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-400 truncate max-w-[150px] sm:max-w-xs">{t.description}</span>
+                          </>
+                        )}
                         {t.fuelLiters && <span>({t.fuelLiters}L)</span>}
                         {t.odometer && <span>• {t.odometer} km</span>}
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right shrink-0 ml-3">
                     <div
                       className={`text-xs font-bold font-mono ${
-                        isExpense ? 'text-rose-400' : isIncome ? 'text-emerald-400' : 'text-blue-300'
+                        isTransfer ? 'text-slate-200' : isExpense ? 'text-rose-400' : 'text-emerald-400'
                       }`}
                     >
-                      {isExpense ? '-' : isIncome ? '+' : ''}{formatCurrency(t.amount)}
+                      {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
                     </div>
                     <div className="text-[10px] text-slate-500 capitalize">{t.type.toLowerCase()}</div>
                   </div>

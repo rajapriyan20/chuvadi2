@@ -7,6 +7,7 @@ import {
   ArrowUpRight, 
   ArrowDownLeft, 
   ArrowRightLeft,
+  ArrowRight,
   ChevronRight,
   ChevronLeft,
   ShieldAlert,
@@ -895,6 +896,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               recentTransactions.map((t) => {
                 const isExpense = t.type === 'EXPENSE';
                 const isIncome = t.type === 'INCOME';
+                const isTransfer = t.type === 'TRANSFER';
+                const fromAccName = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
+                const toAccName = accounts.find(a => a.id === t.toAccountId)?.name || 'Destination';
 
                 return (
                   <div
@@ -905,14 +909,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div
                         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                          t.type === 'TRANSFER'
+                          isTransfer
                             ? 'bg-blue-500/15 text-blue-400'
                             : isExpense
                             ? 'bg-rose-500/15 text-rose-400'
                             : 'bg-emerald-500/15 text-emerald-400'
                         }`}
                       >
-                        {t.type === 'TRANSFER' ? (
+                        {isTransfer ? (
                           <ArrowRightLeft size={14} />
                         ) : isExpense ? (
                           <ArrowUpRight size={14} />
@@ -921,13 +925,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-white tracking-tight truncate">
-                          {t.description}
-                        </div>
+                        {isTransfer ? (
+                          <div className="text-xs font-bold text-white tracking-tight truncate flex items-center gap-1.5">
+                            <span className="text-slate-200">{fromAccName}</span>
+                            <ArrowRight size={11} className="text-blue-400 shrink-0" />
+                            <span className="text-slate-200">{toAccName}</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs font-bold text-white tracking-tight truncate">
+                            {t.description}
+                          </div>
+                        )}
                         <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 truncate">
                           <span>{formatDate(t.date)}</span>
                           <span>•</span>
-                          <span className="text-amber-300/80">{t.category}</span>
+                          <span className={isTransfer ? "text-blue-300/80 font-medium" : "text-amber-300/80"}>
+                            {t.category || (isTransfer ? 'Transfer' : 'General')}
+                          </span>
                           {t.fuelLiters && <span>({t.fuelLiters}L)</span>}
                         </div>
                       </div>
@@ -936,10 +950,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <div className="text-right shrink-0 ml-2">
                       <div
                         className={`text-xs font-bold font-mono ${
-                          isExpense ? 'text-rose-400' : isIncome ? 'text-emerald-400' : 'text-blue-300'
+                          isTransfer
+                            ? 'text-slate-200'
+                            : isExpense
+                            ? 'text-rose-400'
+                            : 'text-emerald-400'
                         }`}
                       >
-                        {isExpense ? '-' : isIncome ? '+' : ''}{formatCurrency(t.amount)}
+                        {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
                       </div>
                       <div className="text-[10px] text-slate-500 capitalize">{t.type.toLowerCase()}</div>
                     </div>

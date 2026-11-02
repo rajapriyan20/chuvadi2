@@ -429,21 +429,31 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                 Paid From Account *
               </label>
-              <select
-                id="txn-modal-from-account"
-                value={fromAccountId}
-                onChange={(e) => setFromAccountId(e.target.value)}
-                required
-                disabled={!isEditing}
-                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition disabled:cursor-default"
-              >
-                <option value="">Select Account</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({formatCurrency(a.balance)})
-                  </option>
-                ))}
-              </select>
+              {!isEditing ? (
+                <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white font-medium flex items-center justify-between">
+                  <span>{accounts.find(a => a.id === fromAccountId)?.name || 'Not Selected'}</span>
+                  {fromAccountId && (
+                    <span className="text-xs text-slate-400 font-mono">
+                      {formatCurrency(accounts.find(a => a.id === fromAccountId)?.balance || 0)}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <select
+                  id="txn-modal-from-account"
+                  value={fromAccountId}
+                  onChange={(e) => setFromAccountId(e.target.value)}
+                  required
+                  className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition cursor-pointer"
+                >
+                  <option value="">Select Account</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({formatCurrency(a.balance)})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -452,104 +462,160 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                 Deposited Into Account *
               </label>
-              <select
-                id="txn-modal-to-account"
-                value={toAccountId}
-                onChange={(e) => setToAccountId(e.target.value)}
-                required
-                disabled={!isEditing}
-                className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition disabled:cursor-default"
-              >
-                <option value="">Select Account</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({formatCurrency(a.balance)})
-                  </option>
-                ))}
-              </select>
+              {!isEditing ? (
+                <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white font-medium flex items-center justify-between">
+                  <span>{accounts.find(a => a.id === toAccountId)?.name || 'Not Selected'}</span>
+                  {toAccountId && (
+                    <span className="text-xs text-slate-400 font-mono">
+                      {formatCurrency(accounts.find(a => a.id === toAccountId)?.balance || 0)}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <select
+                  id="txn-modal-to-account"
+                  value={toAccountId}
+                  onChange={(e) => setToAccountId(e.target.value)}
+                  required
+                  className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer"
+                >
+                  <option value="">Select Account</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({formatCurrency(a.balance)})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
           {type === 'TRANSFER' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Transfer From
-                </label>
-                <select
-                  value={fromAccountId}
-                  onChange={(e) => setFromAccountId(e.target.value)}
-                  required
-                  disabled={!isEditing}
-                  className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 disabled:cursor-default"
-                >
-                  <option value="">Source</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
+            !isEditing ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Transfer From
+                  </label>
+                  <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-medium truncate">
+                    {accounts.find(a => a.id === fromAccountId)?.name || 'None'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Transfer To
+                  </label>
+                  <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-medium truncate">
+                    {accounts.find(a => a.id === toAccountId)?.name || 'None'}
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Transfer To
-                </label>
-                <select
-                  value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                  required
-                  disabled={!isEditing}
-                  className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 disabled:cursor-default"
-                >
-                  <option value="">Destination</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Transfer From
+                  </label>
+                  <select
+                    value={fromAccountId}
+                    onChange={(e) => setFromAccountId(e.target.value)}
+                    required
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Source</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Transfer To
+                  </label>
+                  <select
+                    value={toAccountId}
+                    onChange={(e) => setToAccountId(e.target.value)}
+                    required
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Destination</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )
           )}
 
-          {/* Mapping & Settlement Dropdown for Mapping-Enabled Accounts */}
+          {/* Mapping & Settlement Section */}
           {isMappingEnabled && (
-            <div className="p-3.5 bg-[#0a0e14] rounded-2xl border border-amber-500/30 space-y-2">
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-amber-300 font-bold">
-                  <Link2 size={14} />
-                  <span>Map / Settle Against Unsettled Transaction</span>
-                </span>
-                <span className="text-[10px] text-amber-400 font-mono font-semibold">
-                  {mappingAccounts.map(a => a.name).join(' / ') || 'Mapping Active'}
-                </span>
-              </label>
-
-              <select
-                id="txn-modal-mapped-transaction-select"
-                disabled={!isEditing}
-                value={mappedTransactionId || ''}
-                onChange={(e) => setMappedTransactionId(e.target.value || null)}
-                className="w-full bg-[#121820] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 disabled:cursor-default cursor-pointer"
-              >
-                <option value="">None / New Transaction (Do not link)</option>
-                {unsettledTransactions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {type === 'TRANSFER' && opt.accountName ? `[${opt.accountName}] ` : ''}
-                    {formatDate(opt.date)} • {opt.description} — ₹{opt.amount} (Unsettled: ₹{opt.remainingDifference})
-                  </option>
-                ))}
-              </select>
-
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                {mappedTransactionId ? (
-                  <span className="text-amber-300 font-medium">
-                    This transaction will settle against the chosen entry. Differences within the threshold will be considered fully settled.
+            !isEditing ? (
+              /* View Mode: Compact summary without dropdowns */
+              !mappedTransactionId ? (
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#090d12] rounded-xl border border-slate-800 text-xs">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Settlement Mapping</span>
+                  <span className="text-slate-400 font-medium">Not mapped</span>
+                </div>
+              ) : (
+                <div className="p-3 bg-[#0a0e14] rounded-2xl border border-amber-500/25 space-y-1">
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-amber-300 font-bold">
+                      <Link2 size={13} />
+                      <span>Settlement Mapping</span>
+                    </span>
+                    <span className="text-emerald-400 font-semibold text-[10px]">Linked</span>
+                  </div>
+                  <div className="text-xs text-white font-medium pt-0.5">
+                    {(() => {
+                      const mappedTxn = allTransactions.find(t => t.id === mappedTransactionId);
+                      if (!mappedTxn) return `Linked to Transaction (${mappedTransactionId})`;
+                      return `${formatDate(mappedTxn.date)} • ${mappedTxn.description} — ${formatCurrency(mappedTxn.amount)}`;
+                    })()}
+                  </div>
+                </div>
+              )
+            ) : (
+              /* Edit Mode: Full interactive dropdown with choices & instructions */
+              <div className="p-3.5 bg-[#0a0e14] rounded-2xl border border-amber-500/30 space-y-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-amber-300 font-bold">
+                    <Link2 size={14} />
+                    <span>Map / Settle Against Unsettled Transaction</span>
                   </span>
-                ) : (
-                  <span>
-                    Select an earlier unsettled entry to settle against, or leave as "None / New Transaction" if this is a new independent record.
+                  <span className="text-[10px] text-amber-400 font-mono font-semibold">
+                    {mappingAccounts.map(a => a.name).join(' / ') || 'Mapping Active'}
                   </span>
-                )}
-              </p>
-            </div>
+                </label>
+
+                <select
+                  id="txn-modal-mapped-transaction-select"
+                  value={mappedTransactionId || ''}
+                  onChange={(e) => setMappedTransactionId(e.target.value || null)}
+                  className="w-full bg-[#121820] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                >
+                  <option value="">None / New Transaction (Do not link)</option>
+                  {unsettledTransactions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {type === 'TRANSFER' && opt.accountName ? `[${opt.accountName}] ` : ''}
+                      {formatDate(opt.date)} • {opt.description} — ₹{opt.amount} (Unsettled: ₹{opt.remainingDifference})
+                    </option>
+                  ))}
+                </select>
+
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  {mappedTransactionId ? (
+                    <span className="text-amber-300 font-medium">
+                      This transaction will settle against the chosen entry. Differences within the threshold will be considered fully settled.
+                    </span>
+                  ) : (
+                    <span>
+                      Select an earlier unsettled entry to settle against, or leave as "None / New Transaction" if this is a new independent record.
+                    </span>
+                  )}
+                </p>
+              </div>
+            )
           )}
 
           {/* Date & Category Grid */}
@@ -637,19 +703,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       <p className="text-[10px] text-rose-400 font-medium">{categoryError}</p>
                     )}
                   </div>
+                ) : !isEditing ? (
+                  <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-3 py-2 text-sm text-white font-medium">
+                    {category || 'Uncategorized'}
+                  </div>
                 ) : (
                   <select
                     value={category}
-                    disabled={!isEditing}
                     onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 disabled:cursor-default"
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
                     {availableCategories.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
-                    {isEditing && (
-                      <option value="__NEW_CATEGORY__">+ Add New Category...</option>
-                    )}
+                    <option value="__NEW_CATEGORY__">+ Add New Category...</option>
                   </select>
                 )}
               </div>
@@ -676,24 +743,29 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
                     Vehicle
                   </label>
-                  <select
-                    value={vehicleId}
-                    disabled={!isEditing}
-                    onChange={(e) => {
-                      const vId = e.target.value;
-                      setVehicleId(vId);
-                      const sel = vehicles.find(v => v.id === vId);
-                      if (sel && sel.currentOdometer && !odometer) {
-                        setOdometer(String(sel.currentOdometer));
-                      }
-                    }}
-                    className="w-full bg-[#0e131a] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500 disabled:cursor-default"
-                  >
-                    <option value="">Select Vehicle (Optional)</option>
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name} ({v.vehicleNumber || v.type})</option>
-                    ))}
-                  </select>
+                  {!isEditing ? (
+                    <div className="w-full bg-[#090d12] border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white truncate">
+                      {vehicles.find(v => v.id === vehicleId)?.name || 'Not Linked'}
+                    </div>
+                  ) : (
+                    <select
+                      value={vehicleId}
+                      onChange={(e) => {
+                        const vId = e.target.value;
+                        setVehicleId(vId);
+                        const sel = vehicles.find(v => v.id === vId);
+                        if (sel && sel.currentOdometer && !odometer) {
+                          setOdometer(String(sel.currentOdometer));
+                        }
+                      }}
+                      className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="">Select Vehicle (Optional)</option>
+                      {vehicles.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name} ({v.vehicleNumber || v.type})</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>

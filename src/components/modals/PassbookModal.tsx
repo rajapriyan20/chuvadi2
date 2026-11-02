@@ -441,29 +441,37 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121820] w-full max-w-2xl rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28]">
+    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn">
+      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden">
+        {/* Full-Screen Header */}
+        <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: account.color || '#0284c7' }} />
-              <h2 className="text-base font-bold text-white tracking-tight">{account.name} Passbook</h2>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: account.color || '#0284c7' }} />
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">{account.name} Passbook</h2>
               {account.enableMapping && (
                 <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-[10px] font-semibold text-amber-400">
                   Mapping Enabled
                 </span>
               )}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              {account.institution || account.type} {account.accountNumber ? `•••• ${account.accountNumber}` : ''}
+            <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+              <span>{account.institution || account.type}</span>
+              {account.accountNumber && (
+                <>
+                  <span>•</span>
+                  <span className="font-mono">•••• {account.accountNumber}</span>
+                </>
+              )}
+              <span>•</span>
+              <span className="text-amber-400 font-mono font-medium">{accountTxns.length} records</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* PDF Export Button (Opens Date Filter Modal) */}
             <button
               onClick={() => setShowPdfModal(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95"
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer"
               title="Export Passbook to PDF"
             >
               <FileText size={14} className="stroke-[2.5]" />
@@ -471,7 +479,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
             </button>
             <button
               onClick={exportCSV}
-              className="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs flex items-center gap-1 border border-slate-700"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 border border-slate-700 transition cursor-pointer"
               title="Export Passbook CSV"
             >
               <Download size={14} />
@@ -479,7 +487,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white ml-1"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition cursor-pointer ml-1"
+              title="Close Full Screen Passbook"
+              aria-label="Close"
             >
               <X size={18} />
             </button>
@@ -487,7 +497,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
         </div>
 
         {/* Summary Metric Cards: Opening + Inflow - Outflow = Current Balance */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-[#0d1217] border-b border-slate-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 px-4 sm:px-8 py-3 bg-[#0d1217] border-b border-slate-800/80 shrink-0">
           <div className="p-2.5 sm:p-3 bg-[#161c24] rounded-2xl border border-slate-800">
             <div className="text-[10px] uppercase font-bold text-slate-400">Opening Balance</div>
             <div className="text-sm sm:text-base font-bold text-slate-200 font-mono mt-0.5">
@@ -516,7 +526,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
         {/* Mapping Summary Bar (if account has enableMapping enabled) */}
         {account.enableMapping && settlementStats && (
-          <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/15 flex items-center justify-between text-xs">
+          <div className="px-4 sm:px-8 py-2 bg-amber-500/5 border-b border-amber-500/15 flex items-center justify-between text-xs shrink-0">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               <span className="text-slate-300 font-medium">
@@ -535,21 +545,21 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
         )}
 
         {/* Search filter */}
-        <div className="px-4 py-2 border-b border-slate-800/80 bg-[#121820]">
-          <div className="relative">
+        <div className="px-4 sm:px-8 py-2.5 border-b border-slate-800/80 bg-[#121820] shrink-0">
+          <div className="relative max-w-md">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search by description, category, or amount..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#0a0e14] border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-[#0a0e14] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition"
             />
           </div>
         </div>
 
         {/* Transaction Ledger Table */}
-        <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-800/60">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 divide-y divide-slate-800/60">
           {accountTxns.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs">
               No transactions recorded for this account.
