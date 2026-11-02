@@ -1592,6 +1592,7 @@ export function App() {
         accounts={computedAccounts}
         vehicles={vehicles}
         initialData={editingTxn}
+        allTransactions={transactions}
       />
 
       {/* 2. Account Create / Edit Modal */}

@@ -29,6 +29,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [color, setColor] = useState('#0284c7');
   const [icon, setIcon] = useState('none');
   const [categoryId, setCategoryId] = useState('BANK');
+  const [enableMapping, setEnableMapping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Available categories list (custom or default)
@@ -91,6 +92,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setColor(initialData.color || '#0284c7');
       setIcon(initialData.icon || resolveBankLogoId(initialData.icon, initialData.name, initialData.institution));
       setCategoryId(initialData.categoryId || initialData.type || 'BANK');
+      setEnableMapping(!!initialData.enableMapping);
     } else {
       setName('');
       setIsLiability(false);
@@ -100,6 +102,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setColor('#0284c7');
       setIcon('none');
       setCategoryId('BANK');
+      setEnableMapping(false);
     }
   }, [initialData, isOpen]);
 
@@ -158,7 +161,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         institution: institution.trim() || undefined,
         accountNumber: accountNumber.trim() || undefined,
         color,
-        icon
+        icon,
+        enableMapping
       });
       onClose();
     } catch (err) {
@@ -303,6 +307,32 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   {isLiability 
                     ? 'Balances in this account (e.g. credit card dues, loan payable) subtract from your Net Worth.' 
                     : 'Balances in this account add positively to your Total Funds & Net Worth.'}
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Enable Mapping Option */}
+          <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                id="account-enable-mapping-checkbox"
+                type="checkbox"
+                checked={enableMapping}
+                onChange={(e) => setEnableMapping(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-amber-500"
+              />
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-white flex items-center gap-2">
+                  <span>Enable mapping</span>
+                  {enableMapping && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                  When enabled, transactions on this account can be linked to settle against prior unsettled transactions, tracking their settlement status in the passbook.
                 </p>
               </div>
             </label>

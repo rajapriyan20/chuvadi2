@@ -24,6 +24,7 @@ export interface Account {
   institution?: string;
   reconciledDate?: string;
   categoryId?: string;
+  enableMapping?: boolean;
   updatedAt?: number;
 }
 
@@ -39,6 +40,7 @@ export interface Transaction {
   category: string;
   fromAccountId?: string | null;
   toAccountId?: string | null;
+  mappedTransactionId?: string | null;
   vehicleId?: string | null;
   isFuel?: boolean;
   fuelLiters?: number | null;

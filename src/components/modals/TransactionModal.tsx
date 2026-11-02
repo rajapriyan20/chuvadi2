@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus, Pencil, Copy, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Check, Trash2, Fuel, ArrowRightLeft, TrendingDown, TrendingUp, Plus, Pencil, Copy, AlertTriangle, Link2 } from 'lucide-react';
 import { 
   DEFAULT_CATEGORIES, 
   getAllExpenseCategories, 
@@ -9,6 +9,7 @@ import {
   getTodayLocalDateString 
 } from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
+import { getUnsettledTransactionsForAccount, getStoredSettlementTolerance } from '../../utils/settlement';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface TransactionModalProps {
   initialData?: Transaction | null;
   accounts: Account[];
   vehicles: Vehicle[];
+  allTransactions?: Transaction[];
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -27,7 +29,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onDelete,
   initialData,
   accounts,
-  vehicles
+  vehicles,
+  allTransactions = []
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(!initialData);
   const [isDuplicateNewRecord, setIsDuplicateNewRecord] = useState<boolean>(false);
@@ -44,6 +47,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [categoryError, setCategoryError] = useState('');
   const [fromAccountId, setFromAccountId] = useState<string>('');
   const [toAccountId, setToAccountId] = useState<string>('');
+  const [mappedTransactionId, setMappedTransactionId] = useState<string | null>(null);
   const [date, setDate] = useState<string>(getTodayLocalDateString());
   const [vehicleId, setVehicleId] = useState<string>('');
   const [isFuel, setIsFuel] = useState<boolean>(false);
@@ -86,6 +90,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setCategory(initialData.category || 'Other');
         setFromAccountId(initialData.fromAccountId || '');
         setToAccountId(initialData.toAccountId || '');
+        setMappedTransactionId(initialData.mappedTransactionId || null);
         setDate(initialData.date || getTodayLocalDateString());
         setVehicleId(initialData.vehicleId || '');
         setIsFuel(!!initialData.isFuel);
@@ -99,6 +104,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setCategory('Food & Dining');
         setFromAccountId(accounts[0]?.id || '');
         setToAccountId(accounts[1]?.id || '');
+        setMappedTransactionId(null);
         setDate(getTodayLocalDateString());
         setVehicleId('');
         setIsFuel(false);
@@ -108,6 +114,31 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       }
     }
   }, [isOpen, initialData?.id]);
+
+  // Determine active account and if mapping is enabled on it
+  const activeAccountId = useMemo(() => {
+    if (type === 'EXPENSE') return fromAccountId;
+    if (type === 'INCOME') return toAccountId;
+    if (type === 'TRANSFER') return toAccountId || fromAccountId;
+    return fromAccountId || toAccountId;
+  }, [type, fromAccountId, toAccountId]);
+
+  const selectedAccount = useMemo(() => {
+    return accounts.find(a => a.id === activeAccountId);
+  }, [accounts, activeAccountId]);
+
+  const isMappingEnabled = !!selectedAccount?.enableMapping;
+
+  // Retrieve unsettled transactions for this mapping-enabled account
+  const unsettledTransactions = useMemo(() => {
+    if (!isMappingEnabled || !activeAccountId) return [];
+    return getUnsettledTransactionsForAccount(
+      activeAccountId,
+      allTransactions,
+      getStoredSettlementTolerance(),
+      initialData?.id
+    );
+  }, [isMappingEnabled, activeAccountId, allTransactions, initialData?.id]);
 
   if (!isOpen) return null;
 
@@ -182,6 +213,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         category: type === 'TRANSFER' ? 'Transfer' : category,
         fromAccountId: (type === 'EXPENSE' || type === 'TRANSFER') ? fromAccountId : null,
         toAccountId: (type === 'INCOME' || type === 'TRANSFER') ? toAccountId : null,
+        mappedTransactionId: isMappingEnabled ? (mappedTransactionId || null) : (initialData?.mappedTransactionId || null),
         date,
         timestamp: isDuplicateNewRecord ? Date.now() : (initialData?.timestamp || Date.now()),
         vehicleId: isFuelRecord ? (vehicleId || null) : null,
@@ -430,6 +462,48 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* Mapping & Settlement Dropdown for Mapping-Enabled Accounts */}
+          {isMappingEnabled && (
+            <div className="p-3.5 bg-[#0a0e14] rounded-2xl border border-amber-500/30 space-y-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-amber-300 font-bold">
+                  <Link2 size={14} />
+                  <span>Map / Settle Against Unsettled Transaction</span>
+                </span>
+                <span className="text-[10px] text-amber-400 font-mono font-semibold">
+                  {selectedAccount?.name}
+                </span>
+              </label>
+
+              <select
+                id="txn-modal-mapped-transaction-select"
+                disabled={!isEditing}
+                value={mappedTransactionId || ''}
+                onChange={(e) => setMappedTransactionId(e.target.value || null)}
+                className="w-full bg-[#121820] disabled:bg-[#090d12] border border-slate-700/80 disabled:border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 disabled:cursor-default cursor-pointer"
+              >
+                <option value="">None / New Transaction (Do not link)</option>
+                {unsettledTransactions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {formatDate(opt.date)} • {opt.description} — ₹{opt.amount} (Unsettled: ₹{opt.remainingDifference})
+                  </option>
+                ))}
+              </select>
+
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                {mappedTransactionId ? (
+                  <span className="text-amber-300 font-medium">
+                    This transaction will settle against the chosen entry. Differences within the threshold will be considered fully settled.
+                  </span>
+                ) : (
+                  <span>
+                    Select an earlier unsettled entry to settle against, or leave as "None / New Transaction" if this is a new independent record.
+                  </span>
+                )}
+              </p>
             </div>
           )}
 

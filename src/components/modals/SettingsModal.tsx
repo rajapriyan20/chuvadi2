@@ -18,13 +18,15 @@ import {
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { InstallAppModal } from './InstallAppModal';
 import { useTheme } from '../../context/ThemeContext';
-import type { ActiveTab, TabVisibilityMap } from '../../types';
 import { 
   LayoutGrid, 
   EyeOff,
-  Bell
+  Bell,
+  Sliders
 } from 'lucide-react';
 import appletConfig from '../../../firebase-applet-config.json';
+import { getStoredSettlementTolerance, saveStoredSettlementTolerance } from '../../utils/settlement';
+import type { ActiveTab, TabVisibilityMap } from '../../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -83,6 +85,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [cacheReset, setCacheReset] = useState(false);
   const [clearingUser, setClearingUser] = useState(false);
   const [clearedSuccess, setClearedSuccess] = useState(false);
+  const [toleranceInput, setToleranceInput] = useState<string>(() => String(getStoredSettlementTolerance()));
+  const [toleranceSaved, setToleranceSaved] = useState(false);
 
   if (!isOpen) return null;
 
@@ -300,6 +304,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
               </div>
             )}
+
+            {/* Settlement Mapping Disregard Threshold (Setting 1) */}
+            <div className="p-4 bg-[#141b24] rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <Sliders size={16} className="text-amber-400" />
+                  <span>Settlement Disregard Threshold</span>
+                </div>
+                {toleranceSaved && (
+                  <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
+                    <Check size={12} /> Saved
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Disregard differences up to this amount (in ₹) when reconciling and settling mapped transactions. Amounts differing by this threshold or less will be considered fully settled.
+              </p>
+              <div className="flex items-center gap-3 pt-0.5">
+                <div className="relative flex-1 max-w-[150px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={toleranceInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setToleranceInput(val);
+                      const num = parseFloat(val);
+                      if (!isNaN(num) && num >= 0) {
+                        saveStoredSettlementTolerance(num);
+                        setToleranceSaved(true);
+                        setTimeout(() => setToleranceSaved(false), 2000);
+                      }
+                    }}
+                    placeholder="10"
+                    className="w-full bg-[#0a0e14] border border-slate-700/80 rounded-xl pl-7 pr-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Tolerance Amount (INR)
+                </span>
+              </div>
+            </div>
 
             {/* Install to Phone / Desktop Button */}
             <div className="p-4 bg-gradient-to-r from-amber-500/10 via-[#151c26] to-emerald-500/10 rounded-2xl border border-amber-500/30 space-y-2.5">

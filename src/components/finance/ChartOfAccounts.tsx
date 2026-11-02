@@ -35,13 +35,15 @@ import {
   ShieldCheck,
   CircleDollarSign,
   Table,
-  GitFork
+  GitFork,
+  Clock
 } from 'lucide-react';
 import { formatCurrency, formatDate, getTodayLocalDateString } from '../../utils/formatters';
 import type { Account, AccountType, Transaction } from '../../types';
 import { BankLogo, BankLogoPicker, resolveBankLogoId } from '../common/BankLogo';
 import { CoaTableView } from './CoaTableView';
 import { CoaDiagramView } from './CoaDiagramView';
+import { getSettlementStatus, getStoredSettlementTolerance } from '../../utils/settlement';
 
 interface ChartOfAccountsProps {
   accounts: Account[];
@@ -274,6 +276,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [popupAccountAccountNumber, setPopupAccountAccountNumber] = useState<string>('');
   const [popupAccountColor, setPopupAccountColor] = useState<string>('#0284c7');
   const [popupAccountIsLiability, setPopupAccountIsLiability] = useState<boolean>(false);
+  const [popupAccountEnableMapping, setPopupAccountEnableMapping] = useState<boolean>(false);
   const [popupTxnSearch, setPopupTxnSearch] = useState<string>('');
   const [isSavingAccountPopup, setIsSavingAccountPopup] = useState<boolean>(false);
   const [isDeletingAccountPopup, setIsDeletingAccountPopup] = useState<boolean>(false);
@@ -288,6 +291,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [newAccountIcon, setNewAccountIcon] = useState<string>('none');
   const [newAccountColor, setNewAccountColor] = useState<string>('#0284c7');
   const [newAccountIsLiability, setNewAccountIsLiability] = useState<boolean>(false);
+  const [newAccountEnableMapping, setNewAccountEnableMapping] = useState<boolean>(false);
   const [isSavingNewAccount, setIsSavingNewAccount] = useState<boolean>(false);
 
   // Category Heading Pop-up State (Triggered by clicking on category heading)
@@ -442,6 +446,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       ? acc.openingBalance
       : (typeof acc.balance === 'number' ? acc.balance : 0);
     setPopupAccountOpeningBalance(String(op));
+    setPopupAccountEnableMapping(!!acc.enableMapping);
     setIsEditingAccountInPopup(false);
     setPopupTxnSearch('');
   };
@@ -556,6 +561,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         icon: popupAccountIcon,
         openingBalance: opNum,
         balance: finalBalance,
+        enableMapping: popupAccountEnableMapping,
         updatedAt: Date.now()
       };
 
@@ -598,6 +604,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setNewAccountIcon('none');
     setNewAccountColor(cat?.color || '#0284c7');
     setNewAccountIsLiability(isLiab);
+    setNewAccountEnableMapping(false);
     setIsAddAccountModalOpen(true);
   };
 
@@ -629,6 +636,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         accountNumber: newAccountAccountNumber.trim() || undefined,
         icon: newAccountIcon,
         color: newAccountColor,
+        enableMapping: newAccountEnableMapping,
         reconciledDate: undefined,
         updatedAt: Date.now()
       };
@@ -1585,6 +1593,31 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                 </label>
               </div>
 
+              {/* Field: Enable Mapping Option Card */}
+              <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newAccountEnableMapping}
+                    onChange={(e) => setNewAccountEnableMapping(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-amber-500"
+                  />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2">
+                      <span>Enable mapping</span>
+                      {newAccountEnableMapping && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                      When enabled, transactions on this account can be linked to settle against prior unsettled transactions, tracking their settlement status in the passbook.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
               {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1711,6 +1744,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         <>
                           <span>•</span>
                           <span className="font-mono">•••• {selectedAccountForPopup.accountNumber.slice(-4)}</span>
+                        </>
+                      )}
+                      {selectedAccountForPopup.enableMapping && (
+                        <>
+                          <span>•</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                            Mapping Enabled
+                          </span>
                         </>
                       )}
                     </div>
@@ -1900,6 +1941,31 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     </label>
                   </div>
 
+                  {/* Field: Enable Mapping Option Card */}
+                  <div className="p-3 bg-[#0a0e14] rounded-xl border border-slate-800">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={popupAccountEnableMapping}
+                        onChange={(e) => setPopupAccountEnableMapping(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer accent-amber-500"
+                      />
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-white flex items-center gap-2">
+                          <span>Enable mapping</span>
+                          {popupAccountEnableMapping && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                          When enabled, transactions on this account can be linked to settle against prior unsettled transactions, tracking their settlement status in the passbook.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* Field 5: Bank / Provider & Last 4 Digits Grid */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1986,6 +2052,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         setPopupAccountColor(selectedAccountForPopup.color || '#0284c7');
                         setPopupAccountIsLiability(selectedAccountForPopup.type === 'CREDIT_CARD' || selectedAccountForPopup.type === 'LOAN');
                         setPopupAccountOpeningBalance(String(selectedAccountForPopup.openingBalance ?? (selectedAccountForPopup.balance || 0)));
+                        setPopupAccountEnableMapping(!!selectedAccountForPopup.enableMapping);
                         setIsEditingAccountInPopup(false);
                       }}
                       disabled={isSavingAccountPopup}
@@ -2067,6 +2134,21 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         Today
                       </button>
                     </div>
+                  </div>
+
+                  <div className="h-[1px] bg-slate-800/80" />
+
+                  {/* Row 3: Settlement Mapping */}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-slate-400">Settlement Mapping</span>
+                    {selectedAccountForPopup.enableMapping ? (
+                      <span className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        Enabled
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500">Disabled</span>
+                    )}
                   </div>
                 </div>
 
@@ -2156,6 +2238,19 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                   <span>{formatDate(t.date)}</span>
                                   <span>•</span>
                                   <span className="truncate">{t.category || t.type}</span>
+                                  {selectedAccountForPopup.enableMapping && (
+                                    <>
+                                      <span>•</span>
+                                      {(() => {
+                                        const s = getSettlementStatus(t, transactions || [], getStoredSettlementTolerance());
+                                        return s.isSettled ? (
+                                          <span className="text-emerald-400 font-medium">Settled</span>
+                                        ) : (
+                                          <span className="text-amber-300 font-medium">Unsettled</span>
+                                        );
+                                      })()}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
