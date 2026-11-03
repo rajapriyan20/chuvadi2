@@ -39,7 +39,8 @@ import {
   Clock,
   FileText,
   Download,
-  Link2
+  Link2,
+  ArrowUpDown
 } from 'lucide-react';
 import { formatCurrency, formatDate, getTodayLocalDateString, getTransferFlowStyle } from '../../utils/formatters';
 import type { Account, AccountType, Transaction } from '../../types';
@@ -467,20 +468,32 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setSelectedAccountForPopup(null);
     setIsEditingAccountInPopup(false);
     setPopupTxnSearch('');
+    setPopupFilterType('ALL');
+    setPopupFilterStatus('ALL');
+    setPopupSortBy('DATE_DESC');
+    setShowPopupFilterMenu(false);
+    setShowPopupSortMenu(false);
   };
 
   const [popupPassbookViewMode, setPopupPassbookViewMode] = useState<'chronological' | 'mapped'>('chronological');
+  const [popupFilterType, setPopupFilterType] = useState<'ALL' | 'INFLOW' | 'OUTFLOW' | 'TRANSFER'>('ALL');
+  const [popupFilterStatus, setPopupFilterStatus] = useState<'ALL' | 'SETTLED' | 'UNSETTLED'>('ALL');
+  const [popupSortBy, setPopupSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_DESC' | 'AMOUNT_ASC'>('DATE_DESC');
+  const [showPopupFilterMenu, setShowPopupFilterMenu] = useState<boolean>(false);
+  const [showPopupSortMenu, setShowPopupSortMenu] = useState<boolean>(false);
 
-  // Transactions involving the currently selected account for the popup, sorted strictly by transaction date
+  // Transactions involving the currently selected account for the popup, sorted strictly by transaction date & time
   const selectedAccountTxns = useMemo(() => {
     if (!selectedAccountForPopup) return [];
     const accId = selectedAccountForPopup.id;
     return (transactions || [])
       .filter((t) => t.fromAccountId === accId || t.toAccountId === accId)
       .sort((a, b) => {
-        // Strict sort based on transaction date
+        // Strict sort based on transaction date and time
         const dateComp = (b.date || '').localeCompare(a.date || '');
         if (dateComp !== 0) return dateComp;
+        const timeComp = (b.time || '00:00').localeCompare(a.time || '00:00');
+        if (timeComp !== 0) return timeComp;
         return (b.timestamp || 0) - (a.timestamp || 0);
       });
   }, [selectedAccountForPopup, transactions]);
@@ -512,7 +525,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     return openingAccountBalance + netTransactions;
   }, [openingAccountBalance, netTransactions]);
 
-  // Running balance calculated strictly chronologically based on transaction date
+  // Running balance calculated strictly chronologically based on transaction date & time
   const popupRunningBalancesMap = useMemo(() => {
     const map = new Map<string, number>();
     if (!selectedAccountForPopup) return map;
@@ -523,6 +536,8 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       .sort((a, b) => {
         const dateComp = (a.date || '').localeCompare(b.date || '');
         if (dateComp !== 0) return dateComp;
+        const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+        if (timeComp !== 0) return timeComp;
         return (a.timestamp || 0) - (b.timestamp || 0);
       });
 
@@ -549,17 +564,72 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   // Check if at least one transaction entry exists
   const hasTransactions = selectedAccountTxns.length > 0;
 
-  // Filtered popup transactions for embedded passbook search
+  // Filtered popup transactions for embedded passbook search, type filter, status filter, and custom sort
   const filteredPopupTxns = useMemo(() => {
-    if (!popupTxnSearch.trim()) return selectedAccountTxns;
-    const query = popupTxnSearch.toLowerCase();
-    return selectedAccountTxns.filter((t) => 
-      t.description?.toLowerCase().includes(query) ||
-      t.category?.toLowerCase().includes(query) ||
-      t.date?.includes(query) ||
-      String(t.amount).includes(query)
-    );
-  }, [popupTxnSearch, selectedAccountTxns]);
+    if (!selectedAccountForPopup) return [];
+    const accId = selectedAccountForPopup.id;
+    const tolerance = getStoredSettlementTolerance();
+
+    let list = selectedAccountTxns;
+
+    // Search filter
+    if (popupTxnSearch.trim()) {
+      const query = popupTxnSearch.toLowerCase();
+      list = list.filter((t) => 
+        t.description?.toLowerCase().includes(query) ||
+        t.category?.toLowerCase().includes(query) ||
+        t.date?.includes(query) ||
+        (t.time && t.time.includes(query)) ||
+        String(t.amount).includes(query)
+      );
+    }
+
+    // Type filter
+    if (popupFilterType === 'INFLOW') {
+      list = list.filter(t => (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId));
+    } else if (popupFilterType === 'OUTFLOW') {
+      list = list.filter(t => (t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId));
+    } else if (popupFilterType === 'TRANSFER') {
+      list = list.filter(t => t.type === 'TRANSFER');
+    }
+
+    // Settlement status filter (if mapping is enabled)
+    if (selectedAccountForPopup.enableMapping && popupFilterStatus !== 'ALL') {
+      list = list.filter(t => {
+        const s = getSettlementStatus(t, transactions || [], tolerance);
+        return popupFilterStatus === 'SETTLED' ? s.isSettled : !s.isSettled;
+      });
+    }
+
+    // Sorting
+    return [...list].sort((a, b) => {
+      if (popupSortBy === 'DATE_DESC') {
+        const dateComp = (b.date || '').localeCompare(a.date || '');
+        if (dateComp !== 0) return dateComp;
+        const timeComp = (b.time || '00:00').localeCompare(a.time || '00:00');
+        if (timeComp !== 0) return timeComp;
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      if (popupSortBy === 'DATE_ASC') {
+        const dateComp = (a.date || '').localeCompare(b.date || '');
+        if (dateComp !== 0) return dateComp;
+        const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+        if (timeComp !== 0) return timeComp;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      }
+      if (popupSortBy === 'AMOUNT_DESC') {
+        const amtComp = (b.amount || 0) - (a.amount || 0);
+        if (amtComp !== 0) return amtComp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      if (popupSortBy === 'AMOUNT_ASC') {
+        const amtComp = (a.amount || 0) - (b.amount || 0);
+        if (amtComp !== 0) return amtComp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      return 0;
+    });
+  }, [selectedAccountTxns, selectedAccountForPopup, popupTxnSearch, popupFilterType, popupFilterStatus, popupSortBy, transactions]);
 
   // Grouped transactions based on settlement mapping for toggle view in ChartOfAccounts
   const popupMappedGroupsData = useMemo(() => {
@@ -2430,42 +2500,40 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
           </div>
 
-          {/* Account Balance & Reco Strip: Space-saving compact row with Date of Reco adjacent */}
-          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-2.5 shrink-0 flex items-center gap-3 sm:gap-4 flex-wrap">
+          {/* Side-by-Side Current Balance & Date of Reco Strip */}
+          <div className="bg-[#121820] border-b border-slate-800/80 px-4 sm:px-8 py-2 shrink-0 flex items-center gap-2.5 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none">
             {/* Current Balance */}
-            <div className="flex items-center gap-2.5 bg-[#0a0e14] px-3.5 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
-              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Current Balance:</span>
-              <span className="text-base sm:text-lg font-extrabold text-amber-200 font-mono tabular-nums">
+            <div className="flex items-center gap-2 bg-[#0a0e14] px-3 py-1 rounded-xl border border-amber-500/30 bg-amber-500/5 shrink-0">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0">Current Balance:</span>
+              <span className="text-sm sm:text-base font-extrabold text-amber-200 font-mono tabular-nums shrink-0">
                 {formatCurrency(currentAccountBalance)}
               </span>
             </div>
 
-            {/* Date of Reco (directly adjacent to current balance) */}
-            <div className="flex items-center gap-2 bg-[#0a0e14] px-3 py-1.5 rounded-xl border border-slate-800">
+            {/* Date of Reco (strictly side by side) */}
+            <div className="flex items-center gap-2 bg-[#0a0e14] px-3 py-1 rounded-xl border border-slate-800 shrink-0">
               <label htmlFor="account-reco-date" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
                 Date of Reco:
               </label>
-              <div className="flex items-center gap-1.5">
-                <input
-                  id="account-reco-date"
-                  type="date"
-                  value={selectedAccountForPopup.reconciledDate || ''}
-                  onChange={(e) => handleUpdateRecoDate(e.target.value)}
-                  className="bg-[#121820] hover:bg-[#161f2b] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
-                  className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition cursor-pointer"
-                >
-                  Today
-                </button>
-              </div>
+              <input
+                id="account-reco-date"
+                type="date"
+                value={selectedAccountForPopup.reconciledDate || ''}
+                onChange={(e) => handleUpdateRecoDate(e.target.value)}
+                className="bg-[#121820] hover:bg-[#161f2b] border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white font-mono focus:outline-none [color-scheme:dark]"
+              />
+              <button
+                type="button"
+                onClick={() => handleUpdateRecoDate(getTodayLocalDateString())}
+                className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition cursor-pointer"
+              >
+                Today
+              </button>
             </div>
           </div>
 
-          {/* Subheader: Search bar and adjacent icon-only view mode toggle */}
-          <div className="px-4 sm:px-8 py-2 bg-[#0e141c] border-b border-slate-800/60 flex items-center gap-2 shrink-0">
+          {/* Subheader: Search bar, Filter, Sort, and View Mode Toggle */}
+          <div className="px-4 sm:px-8 py-2 bg-[#0e141c] border-b border-slate-800/60 flex items-center gap-2 shrink-0 relative">
             <div className="relative flex-1 max-w-sm">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
@@ -2477,6 +2545,174 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
               />
             </div>
 
+            {/* Filter Button & Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPopupFilterMenu(!showPopupFilterMenu);
+                  setShowPopupSortMenu(false);
+                }}
+                title="Filter Transactions"
+                aria-label="Filter Transactions"
+                className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                  popupFilterType !== 'ALL' || popupFilterStatus !== 'ALL'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-[#121820] text-slate-400 hover:text-white border-slate-800'
+                }`}
+              >
+                <Filter size={15} />
+                {(popupFilterType !== 'ALL' || popupFilterStatus !== 'ALL') && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                )}
+              </button>
+
+              {showPopupFilterMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowPopupFilterMenu(false)} 
+                  />
+                  <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-52 bg-[#121820] border border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 space-y-2 text-xs animate-fadeIn">
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Transaction Type
+                      </div>
+                      <div className="grid grid-cols-2 gap-1">
+                        {[
+                          { id: 'ALL', label: 'All' },
+                          { id: 'INFLOW', label: 'Inflow (+)' },
+                          { id: 'OUTFLOW', label: 'Outflow (-)' },
+                          { id: 'TRANSFER', label: 'Transfers' }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setPopupFilterType(opt.id as any);
+                              setShowPopupFilterMenu(false);
+                            }}
+                            className={`px-2 py-1 rounded text-left text-[11px] font-medium transition cursor-pointer ${
+                              popupFilterType === opt.id
+                                ? 'bg-amber-500/20 text-amber-300 font-bold'
+                                : 'text-slate-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedAccountForPopup.enableMapping && (
+                      <div className="pt-1.5 border-t border-slate-800">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                          Settlement Status
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {[
+                            { id: 'ALL', label: 'All' },
+                            { id: 'SETTLED', label: 'Settled' },
+                            { id: 'UNSETTLED', label: 'Unsettled' }
+                          ].map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setPopupFilterStatus(opt.id as any);
+                                setShowPopupFilterMenu(false);
+                              }}
+                              className={`px-1.5 py-1 rounded text-center text-[10px] font-medium transition cursor-pointer ${
+                                popupFilterStatus === opt.id
+                                  ? 'bg-amber-500/20 text-amber-300 font-bold'
+                                  : 'text-slate-300 hover:bg-slate-800'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(popupFilterType !== 'ALL' || popupFilterStatus !== 'ALL') && (
+                      <div className="pt-1 border-t border-slate-800 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPopupFilterType('ALL');
+                            setPopupFilterStatus('ALL');
+                            setShowPopupFilterMenu(false);
+                          }}
+                          className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer py-0.5"
+                        >
+                          Reset Filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sort Button & Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPopupSortMenu(!showPopupSortMenu);
+                  setShowPopupFilterMenu(false);
+                }}
+                title="Sort Transactions"
+                aria-label="Sort Transactions"
+                className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                  popupSortBy !== 'DATE_DESC'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-[#121820] text-slate-400 hover:text-white border-slate-800'
+                }`}
+              >
+                <ArrowUpDown size={15} />
+              </button>
+
+              {showPopupSortMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowPopupSortMenu(false)} 
+                  />
+                  <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-48 bg-[#121820] border border-slate-700 rounded-xl shadow-2xl p-2 z-50 space-y-1 text-xs animate-fadeIn">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                      Sort Entries By
+                    </div>
+                    {[
+                      { id: 'DATE_DESC', label: 'Date: Newest First' },
+                      { id: 'DATE_ASC', label: 'Date: Oldest First' },
+                      { id: 'AMOUNT_DESC', label: 'Amount: High to Low' },
+                      { id: 'AMOUNT_ASC', label: 'Amount: Low to High' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setPopupSortBy(opt.id as any);
+                          setShowPopupSortMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs font-medium transition cursor-pointer flex items-center justify-between ${
+                          popupSortBy === opt.id
+                            ? 'bg-amber-500/20 text-amber-300 font-bold'
+                            : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {popupSortBy === opt.id && <Check size={12} />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* View Mode Toggle */}
             {selectedAccountForPopup.enableMapping && (
               <div className="flex items-center gap-1 bg-[#121820] p-1 rounded-xl border border-slate-800 shrink-0">
                 <button

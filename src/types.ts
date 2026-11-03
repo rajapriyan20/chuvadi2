@@ -35,6 +35,7 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   date: string; // ISO format YYYY-MM-DD
+  time?: string; // Format "HH:mm" (e.g. "00:00" or "14:30")
   timestamp: number;
   description: string;
   category: string;

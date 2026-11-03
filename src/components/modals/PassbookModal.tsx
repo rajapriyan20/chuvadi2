@@ -13,7 +13,9 @@ import {
   Clock, 
   AlertCircle,
   Link2,
-  Filter
+  Filter,
+  ArrowUpDown,
+  Check
 } from 'lucide-react';
 import { formatCurrency, formatDate, getTransferFlowStyle } from '../../utils/formatters';
 import type { Account, Transaction } from '../../types';
@@ -43,6 +45,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [tolerance, setTolerance] = useState<number>(() => getStoredSettlementTolerance());
   const [passbookViewMode, setPassbookViewMode] = useState<'chronological' | 'mapped'>('chronological');
+  const [filterType, setFilterType] = useState<'ALL' | 'INFLOW' | 'OUTFLOW' | 'TRANSFER'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'SETTLED' | 'UNSETTLED'>('ALL');
+  const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_DESC' | 'AMOUNT_ASC'>('DATE_DESC');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
   
   // Date filter dialog state for PDF Export
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -118,17 +125,19 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
       : (typeof account.balance === 'number' ? account.balance : 0);
   }, [account]);
 
-  // Running balance calculated strictly chronologically based on transaction date
+  // Running balance calculated strictly chronologically based on transaction date & time
   const runningBalancesMap = useMemo(() => {
     const map = new Map<string, number>();
     if (!account) return map;
 
-    // All transactions for this account sorted chronologically (oldest to newest by date)
+    // All transactions for this account sorted chronologically (oldest to newest by date & time)
     const chronologicalTxns = transactions
       .filter((t) => t.fromAccountId === account.id || t.toAccountId === account.id)
       .sort((a, b) => {
         const dateComp = (a.date || '').localeCompare(b.date || '');
         if (dateComp !== 0) return dateComp;
+        const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+        if (timeComp !== 0) return timeComp;
         return (a.timestamp || 0) - (b.timestamp || 0);
       });
 
@@ -147,28 +156,69 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     return map;
   }, [account, transactions, openingBalance]);
 
-  // Filter transactions involving this account, sorted strictly by transaction date (newest first)
+  // Filter transactions involving this account, supporting search, type filter, status filter, and custom sorting
   const accountTxns = useMemo(() => {
     if (!account) return [];
-    return transactions
-      .filter((t) => t.fromAccountId === account.id || t.toAccountId === account.id)
-      .sort((a, b) => {
-        // Strict sort based on transaction date
+    let list = transactions.filter((t) => t.fromAccountId === account.id || t.toAccountId === account.id);
+
+    // Search filter
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      list = list.filter((t) => 
+        t.description?.toLowerCase().includes(s) ||
+        t.category?.toLowerCase().includes(s) ||
+        t.date?.includes(s) ||
+        (t.time && t.time.includes(s)) ||
+        String(t.amount).includes(s)
+      );
+    }
+
+    // Type filter
+    if (filterType === 'INFLOW') {
+      list = list.filter(t => (t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id));
+    } else if (filterType === 'OUTFLOW') {
+      list = list.filter(t => (t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id));
+    } else if (filterType === 'TRANSFER') {
+      list = list.filter(t => t.type === 'TRANSFER');
+    }
+
+    // Settlement status filter
+    if (account.enableMapping && filterStatus !== 'ALL') {
+      list = list.filter(t => {
+        const s = getSettlementStatus(t, transactions, tolerance);
+        return filterStatus === 'SETTLED' ? s.isSettled : !s.isSettled;
+      });
+    }
+
+    // Sort
+    return [...list].sort((a, b) => {
+      if (sortBy === 'DATE_DESC') {
         const dateComp = (b.date || '').localeCompare(a.date || '');
         if (dateComp !== 0) return dateComp;
+        const timeComp = (b.time || '00:00').localeCompare(a.time || '00:00');
+        if (timeComp !== 0) return timeComp;
         return (b.timestamp || 0) - (a.timestamp || 0);
-      })
-      .filter((t) => {
-        if (!searchTerm) return true;
-        const s = searchTerm.toLowerCase();
-        return (
-          t.description?.toLowerCase().includes(s) ||
-          t.category?.toLowerCase().includes(s) ||
-          t.date?.includes(s) ||
-          String(t.amount).includes(s)
-        );
-      });
-  }, [account, transactions, searchTerm]);
+      }
+      if (sortBy === 'DATE_ASC') {
+        const dateComp = (a.date || '').localeCompare(b.date || '');
+        if (dateComp !== 0) return dateComp;
+        const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+        if (timeComp !== 0) return timeComp;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      }
+      if (sortBy === 'AMOUNT_DESC') {
+        const amtComp = (b.amount || 0) - (a.amount || 0);
+        if (amtComp !== 0) return amtComp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      if (sortBy === 'AMOUNT_ASC') {
+        const amtComp = (a.amount || 0) - (b.amount || 0);
+        if (amtComp !== 0) return amtComp;
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      return 0;
+    });
+  }, [account, transactions, searchTerm, filterType, filterStatus, sortBy, tolerance]);
 
   // Compute stats
   const { totalCredits, totalDebits } = useMemo(() => {
@@ -584,17 +634,17 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         </div>
 
-        {/* Metric Card: Show current balance and adjacent reco date */}
-        <div className="px-4 sm:px-8 py-2.5 bg-[#0d1217] border-b border-slate-800/80 shrink-0 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2.5 bg-[#161c24] px-3.5 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <span className="text-[10px] uppercase font-bold text-amber-400">Current Balance:</span>
-            <span className="text-base sm:text-lg font-extrabold text-amber-200 font-mono">
+        {/* Side-by-Side Current Balance & Date of Reco Strip */}
+        <div className="px-4 sm:px-8 py-2 bg-[#0d1217] border-b border-slate-800/80 shrink-0 flex items-center gap-2.5 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none">
+          <div className="flex items-center gap-2 bg-[#161c24] px-3 py-1 rounded-xl border border-amber-500/30 bg-amber-500/5 shrink-0">
+            <span className="text-[10px] uppercase font-bold text-amber-400 shrink-0">Current Balance:</span>
+            <span className="text-sm sm:text-base font-extrabold text-amber-200 font-mono shrink-0">
               {formatCurrency(currentBalance)}
             </span>
           </div>
           {account.reconciledDate && (
-            <div className="flex items-center gap-2 bg-[#121820] px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Date of Reco:</span>
+            <div className="flex items-center gap-2 bg-[#121820] px-3 py-1 rounded-xl border border-slate-800 text-xs shrink-0">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Date of Reco:</span>
               <span className="text-slate-200 font-mono">{formatDate(account.reconciledDate)}</span>
             </div>
           )}
@@ -620,8 +670,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         )}
 
-        {/* Toolbar: Search & Adjacent Icon-Only Mapped Group Toggle */}
-        <div className="px-4 sm:px-8 py-2 border-b border-slate-800/80 bg-[#121820] flex items-center gap-2 shrink-0">
+        {/* Toolbar: Search, Filter, Sort & View Mode Toggle */}
+        <div className="px-4 sm:px-8 py-2 border-b border-slate-800/80 bg-[#121820] flex items-center gap-2 shrink-0 relative">
           <div className="relative flex-1 max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
@@ -631,6 +681,173 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#0a0e14] border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 transition"
             />
+          </div>
+
+          {/* Filter Button & Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowFilterMenu(!showFilterMenu);
+                setShowSortMenu(false);
+              }}
+              title="Filter Transactions"
+              aria-label="Filter Transactions"
+              className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                filterType !== 'ALL' || filterStatus !== 'ALL'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                  : 'bg-[#0a0e14] text-slate-400 hover:text-white border-slate-800'
+              }`}
+            >
+              <Filter size={15} />
+              {(filterType !== 'ALL' || filterStatus !== 'ALL') && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+
+            {showFilterMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowFilterMenu(false)} 
+                />
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-52 bg-[#121820] border border-slate-700 rounded-xl shadow-2xl p-2.5 z-50 space-y-2 text-xs animate-fadeIn">
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Transaction Type
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {[
+                        { id: 'ALL', label: 'All' },
+                        { id: 'INFLOW', label: 'Inflow (+)' },
+                        { id: 'OUTFLOW', label: 'Outflow (-)' },
+                        { id: 'TRANSFER', label: 'Transfers' }
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            setFilterType(opt.id as any);
+                            setShowFilterMenu(false);
+                          }}
+                          className={`px-2 py-1 rounded text-left text-[11px] font-medium transition cursor-pointer ${
+                            filterType === opt.id
+                              ? 'bg-amber-500/20 text-amber-300 font-bold'
+                              : 'text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {account.enableMapping && (
+                    <div className="pt-1.5 border-t border-slate-800">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Settlement Status
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { id: 'ALL', label: 'All' },
+                          { id: 'SETTLED', label: 'Settled' },
+                          { id: 'UNSETTLED', label: 'Unsettled' }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setFilterStatus(opt.id as any);
+                              setShowFilterMenu(false);
+                            }}
+                            className={`px-1.5 py-1 rounded text-center text-[10px] font-medium transition cursor-pointer ${
+                              filterStatus === opt.id
+                                ? 'bg-amber-500/20 text-amber-300 font-bold'
+                                : 'text-slate-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(filterType !== 'ALL' || filterStatus !== 'ALL') && (
+                    <div className="pt-1 border-t border-slate-800 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterType('ALL');
+                          setFilterStatus('ALL');
+                          setShowFilterMenu(false);
+                        }}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer py-0.5"
+                      >
+                        Reset Filters
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Sort Button & Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSortMenu(!showSortMenu);
+                setShowFilterMenu(false);
+              }}
+              title="Sort Transactions"
+              aria-label="Sort Transactions"
+              className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                sortBy !== 'DATE_DESC'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                  : 'bg-[#0a0e14] text-slate-400 hover:text-white border-slate-800'
+              }`}
+            >
+              <ArrowUpDown size={15} />
+            </button>
+
+            {showSortMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowSortMenu(false)} 
+                />
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-48 bg-[#121820] border border-slate-700 rounded-xl shadow-2xl p-2 z-50 space-y-1 text-xs animate-fadeIn">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                    Sort Entries By
+                  </div>
+                  {[
+                    { id: 'DATE_DESC', label: 'Date: Newest First' },
+                    { id: 'DATE_ASC', label: 'Date: Oldest First' },
+                    { id: 'AMOUNT_DESC', label: 'Amount: High to Low' },
+                    { id: 'AMOUNT_ASC', label: 'Amount: Low to High' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setSortBy(opt.id as any);
+                        setShowSortMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs font-medium transition cursor-pointer flex items-center justify-between ${
+                        sortBy === opt.id
+                          ? 'bg-amber-500/20 text-amber-300 font-bold'
+                          : 'text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {sortBy === opt.id && <Check size={12} />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {account.enableMapping && (

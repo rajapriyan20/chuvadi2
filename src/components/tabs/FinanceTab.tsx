@@ -168,11 +168,15 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
       if (sortBy === 'DATE_DESC') {
         const cmp = (b.date || '').localeCompare(a.date || '');
         if (cmp !== 0) return cmp;
+        const timeCmp = (b.time || '00:00').localeCompare(a.time || '00:00');
+        if (timeCmp !== 0) return timeCmp;
         return (b.timestamp || 0) - (a.timestamp || 0);
       }
       if (sortBy === 'DATE_ASC') {
         const cmp = (a.date || '').localeCompare(b.date || '');
         if (cmp !== 0) return cmp;
+        const timeCmp = (a.time || '00:00').localeCompare(b.time || '00:00');
+        if (timeCmp !== 0) return timeCmp;
         return (a.timestamp || 0) - (b.timestamp || 0);
       }
       if (sortBy === 'AMOUNT_DESC') {

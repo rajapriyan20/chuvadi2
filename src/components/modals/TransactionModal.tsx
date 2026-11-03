@@ -102,6 +102,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [toAccountId, setToAccountId] = useState<string>('');
   const [mappedTransactionId, setMappedTransactionId] = useState<string | null>(null);
   const [date, setDate] = useState<string>(getTodayLocalDateString());
+  const [time, setTime] = useState<string>('00:00');
   const [vehicleId, setVehicleId] = useState<string>('');
   const [isFuel, setIsFuel] = useState<boolean>(false);
   const [fuelLiters, setFuelLiters] = useState<string>('');
@@ -148,6 +149,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setToAccountId(initialData.toAccountId || '');
         setMappedTransactionId(initialData.mappedTransactionId || null);
         setDate(initialData.date || getTodayLocalDateString());
+        setTime(initialData.time || '00:00');
         setVehicleId(initialData.vehicleId || '');
         setIsFuel(!!initialData.isFuel);
         setFuelLiters(initialData.fuelLiters ? String(initialData.fuelLiters) : '');
@@ -162,6 +164,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setToAccountId(accounts[1]?.id || '');
         setMappedTransactionId(null);
         setDate(getTodayLocalDateString());
+        setTime('00:00');
         setVehicleId('');
         setIsFuel(false);
         setFuelLiters('');
@@ -308,6 +311,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
     setIsSaving(true);
     try {
+      const chosenTime = time?.trim() || '00:00';
+      let computedTimestamp = Date.now();
+      try {
+        const parsed = new Date(`${date}T${chosenTime}:00`);
+        if (!isNaN(parsed.getTime())) {
+          computedTimestamp = parsed.getTime();
+        }
+      } catch {}
+
       await onSave({
         id: isDuplicateNewRecord ? undefined : (initialData?.id ? initialData.id : undefined),
         type,
@@ -318,7 +330,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         toAccountId: (type === 'INCOME' || type === 'TRANSFER') ? toAccountId : null,
         mappedTransactionId: isMappingEnabled ? (mappedTransactionId || null) : (initialData?.mappedTransactionId || null),
         date,
-        timestamp: isDuplicateNewRecord ? Date.now() : (initialData?.timestamp || Date.now()),
+        time: chosenTime,
+        timestamp: isDuplicateNewRecord ? computedTimestamp : (initialData?.timestamp ? computedTimestamp : Date.now()),
         vehicleId: isFuelRecord ? (vehicleId || null) : null,
         isFuel: isFuelRecord,
         fuelLiters: isFuelRecord && fuelLiters ? parseFloat(fuelLiters) : null,
@@ -447,9 +460,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   {initialData.description || 'Transaction Record'}
                 </h3>
 
-                {/* Unboxed Metadata: Date, Day, Relative */}
-                <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mt-2 font-medium">
+                {/* Unboxed Metadata: Date, Time, Day, Relative */}
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mt-2 font-medium flex-wrap">
                   <span>{formatDate(initialData.date)}</span>
+                  {initialData.time && initialData.time !== '00:00' && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono text-amber-300/80">{initialData.time}</span>
+                    </>
+                  )}
                   <span aria-hidden="true">·</span>
                   <span>{getRelativeDateLabel(initialData.date)}</span>
                   {initialData.type !== 'TRANSFER' && (
@@ -935,104 +954,122 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </div>
               )}
 
-              {/* Date & Category Grid */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Date & Time Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Date
+                    Date *
                   </label>
                   <input
                     type="date"
+                    required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 [color-scheme:dark]"
                   />
                 </div>
-                {type !== 'TRANSFER' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                        Category
-                      </label>
-                      {!isAddingNewCategory && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                      <Clock size={11} className="text-slate-400" />
+                      <span>Time</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">default 00:00</span>
+                  </div>
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+
+              {/* Category (if not transfer) */}
+              {type !== 'TRANSFER' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Category *
+                    </label>
+                    {!isAddingNewCategory && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewCategory(true);
+                          setNewCategoryInput('');
+                          setCategoryError('');
+                        }}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus size={11} />
+                        <span>Add New</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingNewCategory ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="e.g. Subscriptions"
+                          value={newCategoryInput}
+                          onChange={(e) => {
+                            setNewCategoryInput(e.target.value);
+                            if (categoryError) setCategoryError('');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleConfirmNewCategory();
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setIsAddingNewCategory(false);
+                              setCategoryError('');
+                            }
+                          }}
+                          className="flex-1 min-w-0 bg-[#0e131a] border border-amber-500/80 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleConfirmNewCategory}
+                          title="Add Category"
+                          className="p-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shrink-0 cursor-pointer"
+                        >
+                          <Check size={14} />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
-                            setIsAddingNewCategory(true);
-                            setNewCategoryInput('');
+                            setIsAddingNewCategory(false);
                             setCategoryError('');
                           }}
-                          className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Cancel"
+                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors shrink-0 cursor-pointer"
                         >
-                          <Plus size={11} />
-                          <span>Add New</span>
+                          <X size={14} />
                         </button>
+                      </div>
+                      {categoryError && (
+                        <p className="text-[10px] text-rose-400 font-medium">{categoryError}</p>
                       )}
                     </div>
-
-                    {isAddingNewCategory ? (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            autoFocus
-                            placeholder="e.g. Subscriptions"
-                            value={newCategoryInput}
-                            onChange={(e) => {
-                              setNewCategoryInput(e.target.value);
-                              if (categoryError) setCategoryError('');
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleConfirmNewCategory();
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                setIsAddingNewCategory(false);
-                                setCategoryError('');
-                              }
-                            }}
-                            className="flex-1 min-w-0 bg-[#0e131a] border border-amber-500/80 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleConfirmNewCategory}
-                            title="Add Category"
-                            className="p-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shrink-0 cursor-pointer"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsAddingNewCategory(false);
-                              setCategoryError('');
-                            }}
-                            title="Cancel"
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors shrink-0 cursor-pointer"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                        {categoryError && (
-                          <p className="text-[10px] text-rose-400 font-medium">{categoryError}</p>
-                        )}
-                      </div>
-                    ) : (
-                      <select
-                        value={category}
-                        onChange={(e) => handleCategoryChange(e.target.value)}
-                        className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                      >
-                        {availableCategories.map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                        <option value="__NEW_CATEGORY__">+ Add New Category...</option>
-                      </select>
-                    )}
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <select
+                      value={category}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      {availableCategories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="__NEW_CATEGORY__">+ Add New Category...</option>
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* Vehicle Link & Odometer Reading: ONLY shown when EXPENSE and category is Fuel */}
               {type === 'EXPENSE' && category === 'Fuel' && (
