@@ -186,18 +186,18 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn overscroll-contain">
+      <div className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col overscroll-contain">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
           <div className="text-amber-300 font-bold text-base">
             {initialData && initialData.id ? 'Edit Account' : 'New Account'}
           </div>
-          <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:text-white">
+          <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:text-white cursor-pointer">
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 overscroll-contain">
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
               Account Name *

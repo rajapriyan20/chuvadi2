@@ -127,6 +127,8 @@ import type {
   BodyProfileLog,
   TabVisibilityMap
 } from './types';
+import { useBodyScrollLock } from './hooks/useBodyScrollLock';
+import { triggerBackNavigation } from './utils/backNavigation';
 
 export const APP_TAB_ORDER: ActiveTab[] = [
   'dashboard',
@@ -277,11 +279,31 @@ export function App() {
   const activeTabRef = React.useRef<ActiveTab>(activeTab);
   activeTabRef.current = activeTab;
 
+  const financeSubTabRef = React.useRef(financeSubTab);
+  financeSubTabRef.current = financeSubTab;
+
   const tabVisibilityRef = React.useRef<TabVisibilityMap>(tabVisibility);
   tabVisibilityRef.current = tabVisibility;
 
   const lastBackPressTimeRef = React.useRef<number>(0);
   const exitToastTimerRef = React.useRef<any>(null);
+
+  // Global modal lock to completely prevent background page scroll bleed
+  const isAnyGlobalModalOpen = Boolean(
+    isTxnModalOpen ||
+    isAccountModalOpen ||
+    isPassbookOpen ||
+    isVehicleModalOpen ||
+    isServiceLogModalOpen ||
+    isTodoModalOpen ||
+    isEntityModalOpen ||
+    isExportModalOpen ||
+    isSettingsModalOpen ||
+    isNotificationSettingsOpen ||
+    isNotificationsListOpen ||
+    isExitModalOpen
+  );
+  useBodyScrollLock(isAnyGlobalModalOpen);
 
   // Helper to close whichever modal/drawer is open
   const closeOpenModalOrDrawer = () => {
@@ -363,46 +385,73 @@ export function App() {
 
   // Intercept Device / Browser Back Button (popstate)
   useEffect(() => {
-    const initialDefaultTab = getResolvedDefaultTab(tabVisibilityRef.current);
     try {
-      window.history.replaceState({ tab: initialDefaultTab, modal: null }, '', window.location.href);
+      window.history.replaceState({ app: 'chuvadi', level: 0 }, '', window.location.href);
+      window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
     } catch {}
 
     const handlePopState = () => {
-      // 1. If any modal or drawer is open, close it!
+      // 1. Check child overlays first (e.g. Passbook view in CoA, PDF modal, email preview)
+      if (triggerBackNavigation()) {
+        try {
+          window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 2. If any global modal or drawer is open in App.tsx, close it!
       if (closeOpenModalOrDrawerRef.current()) {
         try {
-          window.history.pushState({ tab: activeTabRef.current, modal: null }, '', window.location.href);
+          window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
         } catch {}
         return;
       }
 
       const isDashboardVisible = tabVisibilityRef.current.dashboard !== false;
 
-      // 2. If dashboard is visible:
+      // 3. If inside Finance module and on another sub-tab (transactions, reports, or inbox), take user back to Chart of Accounts!
+      if (activeTabRef.current === 'finance' && financeSubTabRef.current !== 'coa') {
+        setFinanceSubTab('coa');
+        try {
+          window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 4. If dashboard is visible:
       if (isDashboardVisible) {
         if (activeTabRef.current !== 'dashboard') {
           // Navigating back to dashboard screen
           setActiveTab('dashboard');
           try {
-            window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+            window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
           } catch {}
           return;
         } else {
           // User is on Dashboard screen only -> ask whether to close the app!
           setIsExitModalOpen(true);
           try {
-            window.history.pushState({ tab: 'dashboard', modal: null }, '', window.location.href);
+            window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
           } catch {}
           return;
         }
       }
 
-      // 3. If dashboard is hidden:
-      // "If dashboard is hidden, it should straight away ask whether to close the app."
+      // 5. If dashboard is hidden:
+      // "From the chart of accounts screen (if there is no dashboard module) only the back button should close the app. Check this across the app."
+      if (activeTabRef.current !== 'finance') {
+        setActiveTab('finance');
+        setFinanceSubTab('coa');
+        try {
+          window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // User is already on Chart of Accounts screen (and dashboard is hidden) -> ask whether to close the app!
       setIsExitModalOpen(true);
       try {
-        window.history.pushState({ tab: activeTabRef.current, modal: null }, '', window.location.href);
+        window.history.pushState({ app: 'chuvadi', level: 1 }, '', window.location.href);
       } catch {}
     };
 

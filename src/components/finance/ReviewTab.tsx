@@ -14,6 +14,8 @@ import {
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import type { Account, GmailExpenseEmail, FieldSuggestionRule } from '../../types';
 import { applyFieldSuggestionRules } from '../../services/gmail';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { registerBackHandler } from '../../utils/backNavigation';
 
 interface ReviewTabProps {
   accounts: Account[];
@@ -48,6 +50,16 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
 }) => {
   const [filterStatus, setFilterStatus] = useState<'PENDING' | 'ADDED' | 'IGNORED' | 'ALL'>('PENDING');
   const [selectedEmailForPreview, setSelectedEmailForPreview] = useState<GmailExpenseEmail | null>(null);
+
+  useBodyScrollLock(Boolean(selectedEmailForPreview));
+
+  React.useEffect(() => {
+    if (!selectedEmailForPreview) return;
+    return registerBackHandler('review-email-preview', 55, () => {
+      setSelectedEmailForPreview(null);
+      return true;
+    });
+  }, [selectedEmailForPreview]);
 
   const filteredEmails = emails.filter(e => {
     if (filterStatus === 'ALL') return true;

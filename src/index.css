@@ -75,3 +75,8 @@ html, body {
   scrollbar-width: none;
 }
 
+body.modal-open {
+  overflow: hidden !important;
+  overscroll-behavior: contain !important;
+}
+

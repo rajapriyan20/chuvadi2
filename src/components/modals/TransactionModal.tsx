@@ -37,6 +37,8 @@ import {
 } from '../../utils/formatters';
 import type { Account, Transaction, TransactionType, Vehicle } from '../../types';
 import { getUnsettledTransactionsForAccount, getStoredSettlementTolerance, type UnsettledTransactionItem } from '../../utils/settlement';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { registerBackHandler } from '../../utils/backNavigation';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -82,7 +84,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   vehicles,
   allTransactions = []
 }) => {
-  const [isEditing, setIsEditing] = useState<boolean>(!initialData);
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler('transaction-modal', 45, () => {
+      onClose();
+      return true;
+    });
+  }, [isOpen, onClose]);
+
+  const [isEditing, setIsEditing] = useState<boolean>(!initialData?.id);
   const [isDuplicateNewRecord, setIsDuplicateNewRecord] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<boolean>(false);
@@ -138,7 +150,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setIsAddingNewCategory(false);
       setNewCategoryInput('');
       setCategoryError('');
-      setIsEditing(!initialData);
+      setIsEditing(!initialData?.id);
 
       if (initialData) {
         setType(initialData.type);
@@ -367,7 +379,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   };
 
   // Check if viewing an existing saved transaction in View Mode
-  const isViewingMode = !isEditing && !!initialData && !isDuplicateNewRecord;
+  const isViewingMode = !isEditing && Boolean(initialData && initialData.id) && !isDuplicateNewRecord;
 
   // Resolved accounts for view mode
   const fromAccount = accounts.find(a => a.id === (initialData?.fromAccountId || fromAccountId));
@@ -378,13 +390,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col relative">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn overscroll-contain">
+      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col relative overscroll-contain">
         
         {/* ================================================================= */}
         {/* VIEW MODE: Redesigned Transaction Details & Ledger Dossier        */}
         {/* ================================================================= */}
-        {isViewingMode ? (
+        {isViewingMode && initialData ? (
           <div className="flex flex-col h-full max-h-[92vh]">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
@@ -393,7 +405,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   Transaction Details
                 </span>
                 <span className="text-slate-500 text-xs font-mono">
-                  #{initialData.id.slice(-6)}
+                  #{initialData.id ? initialData.id.slice(-6) : ''}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -644,15 +656,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               {/* Audit & Record Details */}
               <div className="border-t border-slate-800/80 pt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                 <div className="flex items-center gap-1.5 font-mono">
-                  <span>ID: {initialData.id}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyId(initialData.id)}
-                    className="p-1 hover:text-white transition cursor-pointer text-slate-400"
-                    title="Copy full transaction ID"
-                  >
-                    {copiedId ? <CheckCheck size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                  </button>
+                  <span>ID: {initialData.id || 'New'}</span>
+                  {initialData.id && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopyId(initialData.id)}
+                      className="p-1 hover:text-white transition cursor-pointer text-slate-400"
+                      title="Copy full transaction ID"
+                    >
+                      {copiedId ? <CheckCheck size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                  )}
                   {copiedId && <span className="text-[10px] text-emerald-400 font-semibold">Copied!</span>}
                 </div>
                 {initialData.timestamp && (
@@ -954,8 +968,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </div>
               )}
 
-              {/* Date & Time Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Date & Time Row - Always side by side */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                     Date *
@@ -969,13 +983,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <Clock size={11} className="text-slate-400" />
-                      <span>Time</span>
-                    </label>
-                    <span className="text-[10px] text-slate-500 font-mono">default 00:00</span>
-                  </div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+                    <Clock size={11} className="text-slate-400" />
+                    <span>Time</span>
+                  </label>
                   <input
                     type="time"
                     value={time}

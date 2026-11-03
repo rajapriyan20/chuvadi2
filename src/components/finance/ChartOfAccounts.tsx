@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Folder, 
   FolderOpen, 
@@ -50,6 +50,8 @@ import { CoaDiagramView } from './CoaDiagramView';
 import { getSettlementStatus, getStoredSettlementTolerance } from '../../utils/settlement';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { registerBackHandler } from '../../utils/backNavigation';
 
 interface ChartOfAccountsProps {
   accounts: Account[];
@@ -317,6 +319,45 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   const [popupCategoryColor, setPopupCategoryColor] = useState<string>('#0284c7');
   const [isSavingCategoryPopup, setIsSavingCategoryPopup] = useState<boolean>(false);
   const [isDeletingCategoryPopup, setIsDeletingCategoryPopup] = useState<boolean>(false);
+
+  const isAnyCoaOverlayOpen = Boolean(
+    selectedAccountForPopup || 
+    isAddAccountModalOpen || 
+    isAddCategoryModalOpen || 
+    selectedCategoryForPopup || 
+    showPdfModal
+  );
+  useBodyScrollLock(isAnyCoaOverlayOpen);
+
+  useEffect(() => {
+    return registerBackHandler('chart-of-accounts-view', 60, () => {
+      if (showPdfModal) {
+        setShowPdfModal(false);
+        return true;
+      }
+      if (isEditingAccountInPopup) {
+        setIsEditingAccountInPopup(false);
+        return true;
+      }
+      if (selectedAccountForPopup) {
+        handleCloseAccountPopup();
+        return true;
+      }
+      if (isAddAccountModalOpen) {
+        setIsAddAccountModalOpen(false);
+        return true;
+      }
+      if (isAddCategoryModalOpen) {
+        setIsAddCategoryModalOpen(false);
+        return true;
+      }
+      if (selectedCategoryForPopup) {
+        setSelectedCategoryForPopup(null);
+        return true;
+      }
+      return false;
+    });
+  }, [showPdfModal, isEditingAccountInPopup, selectedAccountForPopup, isAddAccountModalOpen, isAddCategoryModalOpen, selectedCategoryForPopup]);
 
   // Separate top-level / main categories from sub-categories
   const { mainCategories, subCategoriesByParent, allCategoryKeys } = useMemo(() => {
@@ -2398,7 +2439,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
       {/* Full Screen Account Passbook View */}
       {selectedAccountForPopup && !isEditingAccountInPopup && (
-        <div className="fixed inset-0 z-50 bg-[#0d1217] w-full h-full flex flex-col overflow-hidden animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-[#0d1217] w-full h-full flex flex-col overflow-hidden animate-fadeIn overscroll-contain">
           {/* Full-Screen Header */}
           <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0 gap-3">
             <div className="flex items-center gap-3 min-w-0">

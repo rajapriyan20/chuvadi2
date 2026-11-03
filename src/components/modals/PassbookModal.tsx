@@ -22,6 +22,8 @@ import type { Account, Transaction } from '../../types';
 import { getSettlementStatus, getStoredSettlementTolerance } from '../../utils/settlement';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { registerBackHandler } from '../../utils/backNavigation';
 
 interface PassbookModalProps {
   isOpen: boolean;
@@ -57,6 +59,20 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   const [pdfStartDate, setPdfStartDate] = useState('');
   const [pdfEndDate, setPdfEndDate] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  useBodyScrollLock(isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler('passbook-modal', 45, () => {
+      if (showPdfModal) {
+        setShowPdfModal(false);
+        return true;
+      }
+      onClose();
+      return true;
+    });
+  }, [isOpen, showPdfModal, onClose]);
 
   // Listen for settlement tolerance changes from Settings
   useEffect(() => {
@@ -586,8 +602,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn">
-      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn overscroll-contain">
+      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden overscroll-contain">
         {/* Full-Screen Header */}
         <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0">
           <div>
