@@ -582,6 +582,18 @@ export function loadFieldSuggestionRules(accounts: Account[] = [], userIdentifie
       label: 'Contains "uber" -> Transportation',
       enabled: true,
       createdAt: Date.now()
+    },
+    {
+      id: 'field_rule_desc_1',
+      keyword: 'debited',
+      targetType: 'DESCRIPTION',
+      targetValue: 'DESCRIPTION',
+      extractMode: 'BETWEEN',
+      startMarker: 'to ',
+      endMarker: ' on ',
+      label: 'Extract merchant between "to " and " on "',
+      enabled: true,
+      createdAt: Date.now()
     }
   ];
 
@@ -797,22 +809,86 @@ export function matchAccountByLast4Digits(text: string, accounts: Account[]): st
 }
 
 /**
+ * Dynamic extraction helper for description rules:
+ * - extractMode 'BETWEEN': extracts text between startMarker and endMarker
+ * - extractMode 'REGEX': evaluates regex pattern and takes group 1
+ */
+export function extractDynamicDescriptionFromText(
+  rawText: string,
+  rule: FieldSuggestionRule
+): string | undefined {
+  if (!rawText) return undefined;
+
+  // 1. Regex Mode
+  if (rule.extractMode === 'REGEX' && rule.regexPattern?.trim()) {
+    try {
+      const reg = new RegExp(rule.regexPattern.trim(), 'i');
+      const match = rawText.match(reg);
+      if (match) {
+        const captured = match[1] !== undefined ? match[1] : match[0];
+        const cleaned = captured.replace(/[\n\r]+/g, ' ').trim();
+        if (cleaned.length > 0) return cleaned;
+      }
+    } catch (err) {
+      console.warn('Invalid regex in description rule:', rule.regexPattern, err);
+    }
+  }
+
+  // 2. Between Markers Mode (default or when startMarker provided)
+  const startMarker = rule.startMarker !== undefined ? rule.startMarker : '';
+  const endMarker = rule.endMarker !== undefined ? rule.endMarker : '';
+
+  if (startMarker && startMarker.length > 0) {
+    const lowerRaw = rawText.toLowerCase();
+    const lowerStart = startMarker.toLowerCase();
+    const startIdx = lowerRaw.indexOf(lowerStart);
+
+    if (startIdx !== -1) {
+      const textAfterStart = rawText.slice(startIdx + startMarker.length);
+      if (endMarker && endMarker.length > 0) {
+        const lowerEnd = endMarker.toLowerCase();
+        const endIdx = textAfterStart.toLowerCase().indexOf(lowerEnd);
+        if (endIdx !== -1) {
+          const extracted = textAfterStart.slice(0, endIdx).replace(/[\n\r]+/g, ' ').trim();
+          if (extracted.length > 0) return extracted;
+        }
+      } else {
+        // No end marker: extract up to end of line or sentence delimiter
+        const firstLine = textAfterStart.split(/[\n\r,.]/)[0]?.trim();
+        if (firstLine && firstLine.length > 0) return firstLine;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Apply field suggestion rules to parsed email.
  * Priority order:
- * 1. User custom field suggestion rules
+ * 1. User custom field suggestion rules (Account, Category, Description)
  * 2. Bank account last 4 digit number added in account details
  * 3. Default account heuristics (Credit Card / Bank)
+ * 4. Smart merchant fallback for Description if no custom rule matched
  */
 export function applyFieldSuggestionRules(
   email: { subject: string; bodyText: string; snippet: string },
   rules: FieldSuggestionRule[],
   accounts: Account[]
-): { suggestedAccountId?: string; suggestedCategory?: string } {
-  const text = `${email.subject} ${email.snippet} ${email.bodyText}`.toLowerCase();
+): { 
+  suggestedAccountId?: string; 
+  suggestedCategory?: string;
+  suggestedDescription?: string;
+  matchedDescriptionRuleLabel?: string;
+} {
+  const rawCombinedText = `${email.subject} ${email.snippet} ${email.bodyText}`;
+  const text = rawCombinedText.toLowerCase();
   let suggestedAccountId: string | undefined = undefined;
   let suggestedCategory: string | undefined = undefined;
+  let suggestedDescription: string | undefined = undefined;
+  let matchedDescriptionRuleLabel: string | undefined = undefined;
 
-  // 1. FIRST PREFERENCE: User custom field suggestion rules
+  // 1. FIRST PREFERENCE: User custom field suggestion rules for Account & Category
   for (const rule of rules) {
     if (!rule.enabled || !rule.keyword) continue;
     const kw = rule.keyword.toLowerCase().trim();
@@ -825,7 +901,10 @@ export function applyFieldSuggestionRules(
           suggestedAccountId = rule.targetValue;
         }
       } else if (rule.targetType === 'CATEGORY' && !suggestedCategory) {
-        suggestedCategory = rule.targetValue;
+        // If scoped to a specific bank account, only apply if account matches
+        if (!rule.accountId || rule.accountId === suggestedAccountId) {
+          suggestedCategory = rule.targetValue;
+        }
       }
     }
   }
@@ -834,6 +913,41 @@ export function applyFieldSuggestionRules(
   // Suggest based on the bank account last 4 digit number added during account details
   if (!suggestedAccountId) {
     suggestedAccountId = matchAccountByLast4Digits(text, accounts);
+  }
+
+  // Fallback account heuristics
+  if (!suggestedAccountId && accounts.length > 0) {
+    if (text.includes('credit card') || text.includes('creditcard')) {
+      const card = accounts.find(a => a.type === 'CREDIT_CARD');
+      if (card) suggestedAccountId = card.id;
+    }
+    if (!suggestedAccountId) {
+      const bank = accounts.find(a => a.type === 'BANK');
+      suggestedAccountId = bank ? bank.id : accounts[0].id;
+    }
+  }
+
+  // 3. User Custom Description Rules (Account-Specific Rules take precedence over Global Rules)
+  const descRules = rules.filter(r => r.enabled && r.targetType === 'DESCRIPTION' && r.keyword?.trim());
+  const specificAccountRules = descRules.filter(r => r.accountId && r.accountId === suggestedAccountId);
+  const globalRules = descRules.filter(r => !r.accountId);
+  const candidateDescRules = [...specificAccountRules, ...globalRules];
+
+  for (const rule of candidateDescRules) {
+    const kw = rule.keyword.toLowerCase().trim();
+    if (text.includes(kw)) {
+      const extracted = extractDynamicDescriptionFromText(rawCombinedText, rule);
+      if (extracted && extracted.trim().length > 0) {
+        suggestedDescription = extracted.trim();
+        matchedDescriptionRuleLabel = rule.label || `Rule: ${rule.keyword}`;
+        break;
+      }
+    }
+  }
+
+  // Fallback description: Existing smart merchant extraction
+  if (!suggestedDescription) {
+    suggestedDescription = extractMerchantFromText(email.subject, email.bodyText);
   }
 
   // Fallback category detection
@@ -857,19 +971,12 @@ export function applyFieldSuggestionRules(
     }
   }
 
-  // 3. Fallback account (if still neither custom rule nor last 4 digits matched)
-  if (!suggestedAccountId && accounts.length > 0) {
-    if (text.includes('credit card') || text.includes('creditcard')) {
-      const card = accounts.find(a => a.type === 'CREDIT_CARD');
-      if (card) suggestedAccountId = card.id;
-    }
-    if (!suggestedAccountId) {
-      const bank = accounts.find(a => a.type === 'BANK');
-      suggestedAccountId = bank ? bank.id : accounts[0].id;
-    }
-  }
-
-  return { suggestedAccountId, suggestedCategory };
+  return { 
+    suggestedAccountId, 
+    suggestedCategory,
+    suggestedDescription,
+    matchedDescriptionRuleLabel
+  };
 }
 
 function decodeBase64Url(base64Url: string): string {
@@ -1029,7 +1136,7 @@ export async function fetchExpenseEmailsFromGmail(
       const merchant = extractMerchantFromText(subject, bodyText);
       const detectedType = detectTransactionType(combinedText);
 
-      const { suggestedAccountId, suggestedCategory } = applyFieldSuggestionRules(
+      const { suggestedAccountId, suggestedCategory, suggestedDescription, matchedDescriptionRuleLabel } = applyFieldSuggestionRules(
         { subject, bodyText, snippet },
         fieldRules,
         accounts
@@ -1048,7 +1155,8 @@ export async function fetchExpenseEmailsFromGmail(
         timestamp,
         suggestedAmount: amount || 0,
         suggestedDate: dateIso,
-        suggestedDescription: merchant,
+        suggestedDescription: suggestedDescription || merchant,
+        matchedDescriptionRuleLabel,
         suggestedCategory: suggestedCategory || 'Other',
         suggestedAccountId: suggestedAccountId || accounts[0]?.id || '',
         suggestedType: detectedType,

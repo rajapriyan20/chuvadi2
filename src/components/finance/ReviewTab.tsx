@@ -195,6 +195,8 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             const resolvedAccountId = email.suggestedAccountId || liveSuggestions.suggestedAccountId;
             const matchedAccount = accounts.find(a => a.id === resolvedAccountId);
             const displayCategory = email.suggestedCategory || liveSuggestions.suggestedCategory || 'Other';
+            const displayDescription = liveSuggestions.suggestedDescription || email.suggestedDescription || 'Expense';
+            const ruleLabel = liveSuggestions.matchedDescriptionRuleLabel || email.matchedDescriptionRuleLabel;
             const isAdded = email.status === 'ADDED';
             const isIgnored = email.status === 'IGNORED';
 
@@ -260,8 +262,14 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
 
                     <div className="text-slate-600">•</div>
 
-                    <div className="text-xs text-slate-300 font-medium truncate max-w-xs">
-                      Desc: <span className="text-white">{email.suggestedDescription || 'Expense'}</span>
+                    <div className="text-xs text-slate-300 font-medium truncate max-w-md flex items-center gap-1.5">
+                      <span className="text-slate-400">Desc:</span>
+                      <span className="text-white font-medium truncate">{displayDescription}</span>
+                      {ruleLabel && (
+                        <span className="shrink-0 text-[10px] text-amber-300 font-normal px-1.5 py-0.2 bg-amber-500/10 border border-amber-500/20 rounded">
+                          {ruleLabel}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

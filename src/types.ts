@@ -126,14 +126,26 @@ export interface GmailFilterRule {
   createdAt: number;
 }
 
-export type FieldSuggestionRuleType = 'ACCOUNT' | 'CATEGORY';
+export type FieldSuggestionRuleType = 'ACCOUNT' | 'CATEGORY' | 'DESCRIPTION';
+
+export type DescriptionExtractMode = 'BETWEEN' | 'REGEX';
 
 export interface FieldSuggestionRule {
   id: string;
-  keyword: string; // Substring to match in email subject or body (e.g. "HDFC Bank Credit Card ending 5304", "biryani", "swiggy", "uber")
-  targetType: FieldSuggestionRuleType; // 'ACCOUNT' or 'CATEGORY'
-  targetValue: string; // accountId if 'ACCOUNT', or category title/name if 'CATEGORY'
-  label?: string; // friendly description e.g. "Match ending 5304 -> HDFC Millennia Card"
+  keyword: string; // Substring to match in email subject or body (e.g. "HDFC Bank", "VPA", "debited")
+  targetType: FieldSuggestionRuleType; // 'ACCOUNT' | 'CATEGORY' | 'DESCRIPTION'
+  targetValue: string; // accountId if 'ACCOUNT', category name if 'CATEGORY', or descriptive template if 'DESCRIPTION'
+  
+  // Bank Account Scoping: null/undefined = All Accounts; or specific account.id
+  accountId?: string | null;
+
+  // Dynamic Extraction Configuration (when targetType === 'DESCRIPTION')
+  extractMode?: DescriptionExtractMode;
+  startMarker?: string; // Substring preceding payee/merchant (e.g. "to ", "at ", "towards ", "VPA ")
+  endMarker?: string;   // Substring succeeding payee/merchant (e.g. " on ", " via ", " using ", "\n", ",")
+  regexPattern?: string; // Regex pattern with capture group 1
+
+  label?: string; // Friendly description e.g. "HDFC: Extract payee between 'to' and 'on'"
   enabled: boolean;
   createdAt: number;
 }
@@ -154,6 +166,7 @@ export interface GmailExpenseEmail {
   suggestedCategory?: string;
   suggestedAccountId?: string;
   suggestedType?: TransactionType;
+  matchedDescriptionRuleLabel?: string;
   // Status
   status: 'PENDING' | 'ADDED' | 'IGNORED';
   addedTxnId?: string;

@@ -214,11 +214,12 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
     const liveSuggestions = applyFieldSuggestionRules(email, fieldRules, accounts);
     const resolvedAccountId = liveSuggestions.suggestedAccountId || email.suggestedAccountId || (accounts[0]?.id || '');
     const resolvedCategory = liveSuggestions.suggestedCategory || email.suggestedCategory || 'Food & Dining';
+    const resolvedDescription = liveSuggestions.suggestedDescription || email.suggestedDescription || email.subject;
 
     onOpenNewTxnWithDefaults({
       type: email.suggestedType || 'EXPENSE',
       amount: email.suggestedAmount || 0,
-      description: email.suggestedDescription || email.subject,
+      description: resolvedDescription,
       category: resolvedCategory,
       fromAccountId: resolvedAccountId,
       date: email.suggestedDate || email.date,

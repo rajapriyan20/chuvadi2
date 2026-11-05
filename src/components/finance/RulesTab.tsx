@@ -13,8 +13,9 @@ import {
   Lightbulb,
   Pencil
 } from 'lucide-react';
-import type { Account, GmailFilterRule, FieldSuggestionRule } from '../../types';
+import type { Account, GmailFilterRule, FieldSuggestionRule, FieldSuggestionRuleType, DescriptionExtractMode } from '../../types';
 import { getAllExpenseCategories } from '../../utils/formatters';
+import { extractDynamicDescriptionFromText } from '../../services/gmail';
 
 interface RulesTabProps {
   accounts: Account[];
@@ -40,11 +41,35 @@ export const RulesTab: React.FC<RulesTabProps> = ({
 
   // Field Suggestion Rule form state
   const [newKeyword, setNewKeyword] = useState('');
-  const [newTargetType, setNewTargetType] = useState<'ACCOUNT' | 'CATEGORY'>('ACCOUNT');
+  const [newTargetType, setNewTargetType] = useState<FieldSuggestionRuleType>('ACCOUNT');
   const [newTargetValue, setNewTargetValue] = useState(accounts[0]?.id || '');
+  const [newAccountId, setNewAccountId] = useState('');
+  const [newExtractMode, setNewExtractMode] = useState<DescriptionExtractMode>('BETWEEN');
+  const [newStartMarker, setNewStartMarker] = useState('');
+  const [newEndMarker, setNewEndMarker] = useState('');
+  const [newRegexPattern, setNewRegexPattern] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [testSampleText, setTestSampleText] = useState('');
   const [showAddFieldRule, setShowAddFieldRule] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+
+  // Live preview for dynamic description extraction in the test sandbox
+  const liveExtractedPreview = React.useMemo(() => {
+    if (newTargetType !== 'DESCRIPTION' || !testSampleText.trim()) return null;
+    const dummyRule: FieldSuggestionRule = {
+      id: 'test',
+      keyword: newKeyword || '',
+      targetType: 'DESCRIPTION',
+      targetValue: 'DESCRIPTION',
+      extractMode: newExtractMode,
+      startMarker: newStartMarker,
+      endMarker: newEndMarker,
+      regexPattern: newRegexPattern,
+      enabled: true,
+      createdAt: Date.now()
+    };
+    return extractDynamicDescriptionFromText(testSampleText, dummyRule);
+  }, [newTargetType, testSampleText, newKeyword, newExtractMode, newStartMarker, newEndMarker, newRegexPattern]);
 
   // Apps Script code copy state
   const [copiedScript, setCopiedScript] = useState(false);
@@ -99,7 +124,13 @@ export const RulesTab: React.FC<RulesTabProps> = ({
     setNewKeyword('');
     setNewTargetType('ACCOUNT');
     setNewTargetValue(accounts[0]?.id || '');
+    setNewAccountId('');
+    setNewExtractMode('BETWEEN');
+    setNewStartMarker('to ');
+    setNewEndMarker(' on ');
+    setNewRegexPattern('');
     setNewLabel('');
+    setTestSampleText('');
     setShowAddFieldRule(true);
   };
 
@@ -108,7 +139,13 @@ export const RulesTab: React.FC<RulesTabProps> = ({
     setNewKeyword(rule.keyword);
     setNewTargetType(rule.targetType);
     setNewTargetValue(rule.targetValue);
+    setNewAccountId(rule.accountId || '');
+    setNewExtractMode(rule.extractMode || 'BETWEEN');
+    setNewStartMarker(rule.startMarker || '');
+    setNewEndMarker(rule.endMarker || '');
+    setNewRegexPattern(rule.regexPattern || '');
     setNewLabel(rule.label || '');
+    setTestSampleText('');
     setShowAddFieldRule(true);
   };
 
@@ -116,37 +153,47 @@ export const RulesTab: React.FC<RulesTabProps> = ({
     e.preventDefault();
     if (!newKeyword.trim()) return;
 
-    const targetVal = newTargetType === 'ACCOUNT' 
-      ? (newTargetValue || accounts[0]?.id || '')
-      : (newTargetValue || categories[0] || 'Food & Dining');
+    let targetVal = newTargetValue;
+    let defaultLabel = '';
 
-    const targetName = newTargetType === 'ACCOUNT' 
-      ? accounts.find(a => a.id === targetVal)?.name || 'Selected Account'
-      : targetVal;
+    if (newTargetType === 'ACCOUNT') {
+      targetVal = newTargetValue || accounts[0]?.id || '';
+      const accName = accounts.find(a => a.id === targetVal)?.name || 'Account';
+      defaultLabel = `"${newKeyword.trim()}" -> ${accName}`;
+    } else if (newTargetType === 'CATEGORY') {
+      targetVal = newTargetValue || categories[0] || 'Food & Dining';
+      defaultLabel = `"${newKeyword.trim()}" -> ${targetVal}`;
+    } else if (newTargetType === 'DESCRIPTION') {
+      targetVal = 'DESCRIPTION';
+      if (newExtractMode === 'REGEX') {
+        defaultLabel = `Extract via /${newRegexPattern.trim()}/`;
+      } else {
+        const parts = [];
+        if (newStartMarker) parts.push(`after "${newStartMarker}"`);
+        if (newEndMarker) parts.push(`before "${newEndMarker}"`);
+        defaultLabel = parts.length > 0 ? `Extract ${parts.join(' ')}` : `Extract Description`;
+      }
+    }
+
+    const ruleData: FieldSuggestionRule = {
+      id: editingRuleId || `field_${Date.now()}`,
+      keyword: newKeyword.trim(),
+      targetType: newTargetType,
+      targetValue: targetVal,
+      accountId: newAccountId.trim() ? newAccountId.trim() : undefined,
+      extractMode: newTargetType === 'DESCRIPTION' ? newExtractMode : undefined,
+      startMarker: newTargetType === 'DESCRIPTION' && newExtractMode === 'BETWEEN' ? newStartMarker : undefined,
+      endMarker: newTargetType === 'DESCRIPTION' && newExtractMode === 'BETWEEN' ? newEndMarker : undefined,
+      regexPattern: newTargetType === 'DESCRIPTION' && newExtractMode === 'REGEX' ? newRegexPattern.trim() : undefined,
+      label: newLabel.trim() || defaultLabel,
+      enabled: true,
+      createdAt: editingRuleId ? (fieldRules.find(r => r.id === editingRuleId)?.createdAt || Date.now()) : Date.now()
+    };
 
     if (editingRuleId) {
-      const updated = fieldRules.map(r => {
-        if (r.id !== editingRuleId) return r;
-        return {
-          ...r,
-          keyword: newKeyword.trim(),
-          targetType: newTargetType,
-          targetValue: targetVal,
-          label: newLabel.trim() || `"${newKeyword.trim()}" -> ${targetName}`
-        };
-      });
-      onSaveFieldRules(updated);
+      onSaveFieldRules(fieldRules.map(r => r.id === editingRuleId ? ruleData : r));
     } else {
-      const newRule: FieldSuggestionRule = {
-        id: `field_${Date.now()}`,
-        keyword: newKeyword.trim(),
-        targetType: newTargetType,
-        targetValue: targetVal,
-        label: newLabel.trim() || `"${newKeyword.trim()}" -> ${targetName}`,
-        enabled: true,
-        createdAt: Date.now()
-      };
-      onSaveFieldRules([...fieldRules, newRule]);
+      onSaveFieldRules([...fieldRules, ruleData]);
     }
 
     setEditingRuleId(null);
@@ -318,12 +365,12 @@ function processChuvadiBankingEmails() {
               <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-mono text-xs font-bold">2</span>
               <div>
                 <h4 className="text-xs font-bold text-white">Field Suggestion Rules</h4>
-                <p className="text-[11px] text-slate-400">Match text in email to auto-fill Account or Category</p>
+                <p className="text-[11px] text-slate-400">Auto-fill Account, Category, or dynamic Description from emails</p>
               </div>
             </div>
             <button
               onClick={handleOpenAddFieldRule}
-              className="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 transition shadow-sm"
+              className="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1 transition shadow-sm cursor-pointer"
             >
               <Plus size={14} />
               <span>Add Rule</span>
@@ -332,7 +379,7 @@ function processChuvadiBankingEmails() {
 
           {/* Add / Edit Field Rule Form */}
           {showAddFieldRule && (
-            <form onSubmit={handleSaveFieldRule} className="p-4 bg-[#0d1218] rounded-2xl border border-emerald-500/40 space-y-3 animate-fadeIn">
+            <form onSubmit={handleSaveFieldRule} className="p-4 bg-[#0d1218] rounded-2xl border border-emerald-500/40 space-y-3.5 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-bold text-emerald-300">
                   {editingRuleId ? 'Edit Field Suggestion Rule' : 'Add Field Suggestion Rule'}
@@ -351,65 +398,249 @@ function processChuvadiBankingEmails() {
                 <input
                   type="text"
                   required
-                  placeholder='e.g. "HDFC Bank Credit Card ending 5304" or "biryani"'
+                  placeholder='e.g. "debited for", "VPA", or "HDFC Bank Credit Card ending 5304"'
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
                   className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Then Auto-Suggest</label>
-                  <select
-                    value={newTargetType}
-                    onChange={(e) => {
-                      const type = e.target.value as 'ACCOUNT' | 'CATEGORY';
-                      setNewTargetType(type);
-                      setNewTargetValue(type === 'ACCOUNT' ? (accounts[0]?.id || '') : (categories[0] || 'Food & Dining'));
-                    }}
-                    className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="ACCOUNT">Bank / Card Account</option>
-                    <option value="CATEGORY">Expense Category</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
-                    {newTargetType === 'ACCOUNT' ? 'Select Existing Account' : 'Select Category'}
+              {/* Bank Account Scoping */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] uppercase font-bold text-slate-400">
+                    Applicable Bank Account (Optional)
                   </label>
-                  {newTargetType === 'ACCOUNT' ? (
-                    <select
-                      value={newTargetValue}
-                      onChange={(e) => setNewTargetValue(e.target.value)}
-                      className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      {accounts.map(acc => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.type})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <select
-                      value={newTargetValue}
-                      onChange={(e) => setNewTargetValue(e.target.value)}
-                      className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  )}
+                  <span className="text-[10px] text-slate-500">Specific account rules take priority</span>
+                </div>
+                <select
+                  value={newAccountId}
+                  onChange={(e) => setNewAccountId(e.target.value)}
+                  className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Any Bank Account (Global Rule)</option>
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Target Field Selector Tabs */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">
+                  Target Field To Auto-Suggest *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTargetType('ACCOUNT');
+                      setNewTargetValue(accounts[0]?.id || '');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition text-center cursor-pointer ${
+                      newTargetType === 'ACCOUNT'
+                        ? 'bg-sky-500/20 border-sky-500 text-sky-200'
+                        : 'bg-[#121820] border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTargetType('CATEGORY');
+                      setNewTargetValue(categories[0] || 'Food & Dining');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition text-center cursor-pointer ${
+                      newTargetType === 'CATEGORY'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-200'
+                        : 'bg-[#121820] border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Category
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTargetType('DESCRIPTION');
+                      setNewTargetValue('DESCRIPTION');
+                      if (!newStartMarker && !newRegexPattern) {
+                        setNewStartMarker('to ');
+                        setNewEndMarker(' on ');
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition text-center cursor-pointer ${
+                      newTargetType === 'DESCRIPTION'
+                        ? 'bg-purple-500/20 border-purple-500 text-purple-200'
+                        : 'bg-[#121820] border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Description
+                  </button>
                 </div>
               </div>
+
+              {/* Conditional Target Field Details */}
+              {newTargetType === 'ACCOUNT' && (
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                    Select Existing Account
+                  </label>
+                  <select
+                    value={newTargetValue}
+                    onChange={(e) => setNewTargetValue(e.target.value)}
+                    className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {newTargetType === 'CATEGORY' && (
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                    Select Expense Category
+                  </label>
+                  <select
+                    value={newTargetValue}
+                    onChange={(e) => setNewTargetValue(e.target.value)}
+                    className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {newTargetType === 'DESCRIPTION' && (
+                <div className="space-y-3 pt-1">
+                  {/* Extract Mode Toggle */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Extraction Method
+                    </label>
+                    <div className="inline-flex p-1 bg-[#121820] rounded-xl border border-slate-800 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setNewExtractMode('BETWEEN')}
+                        className={`px-3 py-1 rounded-lg transition font-medium cursor-pointer ${
+                          newExtractMode === 'BETWEEN'
+                            ? 'bg-purple-600 text-white font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Between Markers
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewExtractMode('REGEX')}
+                        className={`px-3 py-1 rounded-lg transition font-medium cursor-pointer ${
+                          newExtractMode === 'REGEX'
+                            ? 'bg-purple-600 text-white font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Regex Pattern
+                      </button>
+                    </div>
+                  </div>
+
+                  {newExtractMode === 'BETWEEN' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                          Start Marker (Text before description) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder='e.g. "to " or "at " or "VPA "'
+                          value={newStartMarker}
+                          onChange={(e) => setNewStartMarker(e.target.value)}
+                          className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-1 block">Exact text before merchant (include space if needed)</span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                          End Marker (Text after description)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder='e.g. " on " or " through " (optional)'
+                          value={newEndMarker}
+                          onChange={(e) => setNewEndMarker(e.target.value)}
+                          className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-1 block">Leave empty to capture until line end</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                        Regular Expression Pattern *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder='e.g. to\s+([A-Za-z0-9\s]+?)\s+on or VPA\s+([^\s]+)'
+                        value={newRegexPattern}
+                        onChange={(e) => setNewRegexPattern(e.target.value)}
+                        className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">Group 1 in parentheses <code>(...)</code> will be captured as description</span>
+                    </div>
+                  )}
+
+                  {/* Interactive Test Pattern Sandbox */}
+                  <div className="p-3 bg-[#111722] rounded-2xl border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                      <span>Live Test Pattern Sandbox</span>
+                      <span className="text-[10px] text-slate-500 font-normal">Test against sample email snippet</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder='e.g. "Rs 450.00 debited from a/c **1234 to Swiggy on 12-Nov-2024"'
+                      value={testSampleText}
+                      onChange={(e) => setTestSampleText(e.target.value)}
+                      className="w-full bg-[#0d1218] border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500"
+                    />
+                    <div>
+                      {liveExtractedPreview ? (
+                        <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
+                          <Check size={13} className="shrink-0" />
+                          <span>Extracted Description:</span>
+                          <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded-lg font-bold font-mono">
+                            "{liveExtractedPreview}"
+                          </span>
+                        </div>
+                      ) : testSampleText.trim() ? (
+                        <div className="text-xs text-amber-400/80 italic">
+                          No match with current extraction pattern. Check your markers or regex.
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-500">
+                          Paste a sample email snippet above to verify live extraction before saving.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Friendly Note (Optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. Card 5304 -> HDFC Millennia"
+                  placeholder="e.g. HDFC UPI -> Merchant Payee name"
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
                   className="w-full bg-[#121820] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
@@ -423,13 +654,13 @@ function processChuvadiBankingEmails() {
                     setEditingRuleId(null);
                     setShowAddFieldRule(false);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition"
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 transition cursor-pointer"
                 >
                   {editingRuleId ? 'Update Rule' : 'Save Suggestion Rule'}
                 </button>
@@ -441,10 +672,19 @@ function processChuvadiBankingEmails() {
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
             {fieldRules.map(rule => {
               const matchedAccount = accounts.find(a => a.id === rule.targetValue);
-              const targetDisplayName = rule.targetType === 'ACCOUNT'
-                ? (matchedAccount ? matchedAccount.name : 'Account not found')
-                : rule.targetValue;
+              const scopedAccount = accounts.find(a => a.id === rule.accountId);
               const isBeingEdited = editingRuleId === rule.id;
+
+              let targetDisplayName = rule.targetValue;
+              if (rule.targetType === 'ACCOUNT') {
+                targetDisplayName = matchedAccount ? matchedAccount.name : 'Account not found';
+              } else if (rule.targetType === 'DESCRIPTION') {
+                if (rule.extractMode === 'REGEX') {
+                  targetDisplayName = `Regex: /${rule.regexPattern || ''}/`;
+                } else {
+                  targetDisplayName = `Between "${rule.startMarker || ''}" and "${rule.endMarker || 'end of line'}"`;
+                }
+              }
 
               return (
                 <div
@@ -465,20 +705,37 @@ function processChuvadiBankingEmails() {
                       className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500 shrink-0"
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-bold text-white">contains "{rule.keyword}"</span>
+                        
+                        {/* Target Field Badge */}
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
                           rule.targetType === 'ACCOUNT'
                             ? 'bg-sky-500/10 text-sky-300 border-sky-500/20'
-                            : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                            : rule.targetType === 'CATEGORY'
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                            : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
                         }`}>
-                          {rule.targetType === 'ACCOUNT' ? 'Account' : 'Category'}
+                          {rule.targetType === 'ACCOUNT' ? 'Account' : rule.targetType === 'CATEGORY' ? 'Category' : 'Description'}
                         </span>
+
+                        {/* Account Scope Badge */}
+                        {scopedAccount ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                            {scopedAccount.name}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            Any Account
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+
+                      <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5 truncate">
                         <ChevronRight size={12} className="text-slate-500 shrink-0" />
-                        <span className="text-slate-200 font-semibold truncate">{targetDisplayName}</span>
+                        <span className="text-slate-200 font-medium font-mono text-[11px] truncate">{targetDisplayName}</span>
                       </div>
+                      
                       {rule.label && (
                         <div className="text-[10px] text-slate-400 italic mt-0.5 truncate">
                           {rule.label}
@@ -491,7 +748,7 @@ function processChuvadiBankingEmails() {
                     <button
                       type="button"
                       onClick={() => handleStartEditFieldRule(rule)}
-                      className={`p-1.5 rounded-lg transition ${
+                      className={`p-1.5 rounded-lg transition cursor-pointer ${
                         isBeingEdited
                           ? 'text-emerald-400 bg-emerald-500/10'
                           : 'text-slate-400 hover:text-amber-400 hover:bg-amber-500/10'
@@ -503,7 +760,7 @@ function processChuvadiBankingEmails() {
                     <button
                       type="button"
                       onClick={() => handleDeleteFieldRule(rule.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
                       title="Delete rule"
                     >
                       <Trash2 size={14} />
@@ -519,7 +776,13 @@ function processChuvadiBankingEmails() {
             <div className="space-y-0.5">
               <div><strong>Field Auto-Suggestion Hierarchy:</strong></div>
               <p className="text-[10px] text-slate-400">
-                1st preference: Your custom rules above. In the absence of a custom rule, accounts are auto-suggested based on the bank account last 4 digits entered in Account Details.
+                1. <strong>Bank Account</strong>: Custom rules first &rarr; Account matching last 4 digits &rarr; Card/Bank heuristics.
+              </p>
+              <p className="text-[10px] text-slate-400">
+                2. <strong>Description</strong>: Bank-specific description rules &rarr; Global description rules &rarr; Smart merchant detector.
+              </p>
+              <p className="text-[10px] text-slate-400">
+                3. <strong>Category</strong>: Custom category rules &rarr; Keyword pattern heuristics &rarr; 'Other'.
               </p>
             </div>
           </div>

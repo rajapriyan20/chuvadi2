@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for user-defined, bank-account-specific Description extraction rules in the Gmail Inbox & Review module. Supports dynamic pattern extraction between keywords and regex, with fallback to smart merchant extraction.",
+  "updatedAt": "2026-11-04T16:40:46.652798480Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
