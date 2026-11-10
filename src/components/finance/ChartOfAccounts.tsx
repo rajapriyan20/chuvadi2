@@ -1039,29 +1039,23 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         doc.setFontSize(9.5);
         doc.text('SCHEDULE OF UNSETTLED TRANSACTIONS', 46, secondStartY + 16);
 
-        let unsettledRunningBalance = 0;
+        let unsettledBalance = 0;
         let totalUnsettledDebits = 0;
         let totalUnsettledCredits = 0;
-        let totalUnsettledDiff = 0;
 
         const unsettledTableRows = unsettledTxns.map((t) => {
           const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.fromAccountId === selectedAccountForPopup.id);
           const isCredit = (t.type === 'INCOME' && t.toAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.toAccountId === selectedAccountForPopup.id);
           const isTransfer = t.type === 'TRANSFER';
           const amt = Number(t.amount) || 0;
-          const s = getSettlementStatus(t, transactions || [], tolerance);
-          const diff = s.remainingDifference;
 
           if (isDebit) {
             totalUnsettledDebits += amt;
-            unsettledRunningBalance -= diff;
+            unsettledBalance -= amt;
           } else if (isCredit) {
             totalUnsettledCredits += amt;
-            unsettledRunningBalance += diff;
-          } else {
-            unsettledRunningBalance -= diff;
+            unsettledBalance += amt;
           }
-          totalUnsettledDiff += diff;
 
           const fromAcc = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
           const toAcc = accounts.find(a => a.id === t.toAccountId)?.name || 'Dest';
@@ -1073,18 +1067,17 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             t.category || (isTransfer ? 'Transfer' : '-'),
             isDebit ? formatPdfAmount(amt) : '-',
             isCredit ? formatPdfAmount(amt) : '-',
-            formatPdfAmount(diff),
-            formatPdfAmount(unsettledRunningBalance)
+            formatPdfAmount(unsettledBalance)
           ];
         });
 
         doc.setFontSize(8);
         doc.setTextColor(245, 158, 11);
-        doc.text(`${unsettledTxns.length} UNSETTLED ITEM${unsettledTxns.length === 1 ? '' : 'S'} | TOTAL PENDING: INR ${formatPdfAmount(totalUnsettledDiff)}`, 320, secondStartY + 16);
+        doc.text(`${unsettledTxns.length} UNSETTLED ITEM${unsettledTxns.length === 1 ? '' : 'S'} | NET BALANCE: INR ${formatPdfAmount(unsettledBalance)}`, 320, secondStartY + 16);
 
         autoTable(doc, {
           head: [
-            ['Date', 'Description', 'Category', 'Debit (INR)', 'Credit (INR)', 'Unsettled Diff (INR)', 'Running Balance (INR)']
+            ['Date', 'Description', 'Category', 'Debit (INR)', 'Credit (INR)', 'Balance (INR)']
           ],
           body: unsettledTableRows,
           foot: [
@@ -1094,8 +1087,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
               '-',
               formatPdfAmount(totalUnsettledDebits),
               formatPdfAmount(totalUnsettledCredits),
-              formatPdfAmount(totalUnsettledDiff),
-              formatPdfAmount(unsettledRunningBalance)
+              formatPdfAmount(unsettledBalance)
             ]
           ],
           startY: secondStartY + 30,
@@ -1120,13 +1112,12 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             fontStyle: 'bold'
           },
           columnStyles: {
-            0: { cellWidth: 55 },
+            0: { cellWidth: 60 },
             // 1 (Description) is auto-sized
-            2: { cellWidth: 65 },
-            3: { cellWidth: 68, halign: 'right', textColor: [220, 38, 38] },
-            4: { cellWidth: 68, halign: 'right', textColor: [22, 163, 74] },
-            5: { cellWidth: 72, halign: 'right', fontStyle: 'bold', textColor: [217, 119, 6] },
-            6: { cellWidth: 72, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] }
+            2: { cellWidth: 70 },
+            3: { cellWidth: 72, halign: 'right', textColor: [220, 38, 38] },
+            4: { cellWidth: 72, halign: 'right', textColor: [22, 163, 74] },
+            5: { cellWidth: 78, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] }
           },
           alternateRowStyles: {
             fillColor: [248, 250, 252]
