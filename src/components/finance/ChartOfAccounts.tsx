@@ -769,6 +769,20 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setShowPdfModal(true);
   };
 
+  /**
+   * Helper to format numbers for PDF export with Indian digit grouping and 2 decimal places
+   * Avoids unrenderable unicode currency glyphs in standard PDF Helvetica
+   */
+  const formatPdfAmount = (val: number | undefined | null): string => {
+    if (val === undefined || val === null || isNaN(val)) return '0.00';
+    const abs = Math.abs(val);
+    const formatted = abs.toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return val < 0 ? `-${formatted}` : formatted;
+  };
+
   const handleGeneratePdf = () => {
     if (!selectedAccountForPopup) return;
     setIsExportingPdf(true);
@@ -799,7 +813,13 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
       const rangeTxns = (transactions || [])
         .filter(t => (t.fromAccountId === selectedAccountForPopup.id || t.toAccountId === selectedAccountForPopup.id) && t.date >= sDate && t.date <= eDate)
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+        .sort((a, b) => {
+          const dateComp = (a.date || '').localeCompare(b.date || '');
+          if (dateComp !== 0) return dateComp;
+          const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+          if (timeComp !== 0) return timeComp;
+          return (a.timestamp || 0) - (b.timestamp || 0);
+        });
 
       let periodCredits = 0;
       let periodDebits = 0;
@@ -821,7 +841,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         '-',
         '-',
         '-',
-        formatCurrency(periodOpening)
+        formatPdfAmount(periodOpening)
       ];
       if (selectedAccountForPopup.enableMapping) {
         initialRow.push('-');
@@ -850,21 +870,23 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           formatDate(t.date),
           descText,
           t.category || (isTransfer ? 'Transfer' : '-'),
-          isDebit ? formatCurrency(amt) : '-',
-          isCredit ? formatCurrency(amt) : '-',
-          formatCurrency(runningBalance)
+          isDebit ? formatPdfAmount(amt) : '-',
+          isCredit ? formatPdfAmount(amt) : '-',
+          formatPdfAmount(runningBalance)
         ];
 
         if (selectedAccountForPopup.enableMapping) {
           const s = getSettlementStatus(t, transactions || [], tolerance);
           const statusText = s.isSettled 
             ? 'SETTLED' 
-            : `UNSETTLED (Diff: ${formatCurrency(s.remainingDifference)})`;
+            : `UNSETTLED (Diff: ${formatPdfAmount(s.remainingDifference)})`;
           row.push(statusText);
         }
 
         tableRows.push(row);
       }
+
+      const periodClosing = runningBalance;
 
       doc.setFillColor(15, 23, 42);
       doc.rect(0, 0, 595, 75, 'F');
@@ -891,49 +913,54 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139);
+      doc.setTextColor(71, 85, 105);
       const accDetails = [
         `Type: ${selectedAccountForPopup.type}`,
         selectedAccountForPopup.institution ? `Institution: ${selectedAccountForPopup.institution}` : null,
         selectedAccountForPopup.accountNumber ? `Account #: •••• ${selectedAccountForPopup.accountNumber.slice(-4)}` : null,
-        `Period: ${formatDate(sDate)} to ${formatDate(eDate)}`
-      ].filter(Boolean).join('   |   ');
-      doc.text(accDetails, 48, 122);
+        selectedAccountForPopup.enableMapping ? `Settlement Mapping: Enabled (Disregard: ${formatCurrency(tolerance)})` : null
+      ].filter(Boolean).join(' | ');
+      doc.text(accDetails, 48, 120);
+
+      doc.text(`Statement Period: ${formatDate(sDate)} to ${formatDate(eDate)}`, 48, 134);
 
       const kpis = [
-        { label: 'Opening Balance', value: formatCurrency(periodOpening) },
-        { label: 'Total Inflow (+)', value: formatCurrency(periodCredits) },
-        { label: 'Total Outflow (-)', value: formatCurrency(periodDebits) },
-        { label: 'Closing Balance', value: formatCurrency(runningBalance) }
+        { label: 'OPENING BALANCE (INR)', value: formatPdfAmount(periodOpening), color: [15, 23, 42] },
+        { label: 'TOTAL INFLOW (INR)', value: `+${formatPdfAmount(periodCredits)}`, color: [16, 185, 129] },
+        { label: 'TOTAL OUTFLOW (INR)', value: `-${formatPdfAmount(periodDebits)}`, color: [239, 68, 68] },
+        { label: 'CLOSING BALANCE (INR)', value: formatPdfAmount(periodClosing), color: [217, 119, 6] }
       ];
 
       const kpiCardWidth = 124;
       kpis.forEach((kpi, idx) => {
         const x = 36 + idx * (kpiCardWidth + 9);
-        doc.setFillColor(241, 245, 249);
-        doc.roundedRect(x, 162, kpiCardWidth, 38, 3, 3, 'F');
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(x, 162, kpiCardWidth, 38, 3, 3, 'D');
+        doc.roundedRect(x, 162, kpiCardWidth, 44, 4, 4, 'FD');
 
         doc.setFontSize(7.5);
         doc.setTextColor(100, 116, 139);
-        doc.text(kpi.label.toUpperCase(), x + 8, 174);
-
-        doc.setFontSize(9.5);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(15, 23, 42);
-        doc.text(kpi.value, x + 8, 191);
+        doc.text(kpi.label, x + 8, 176);
+
+        doc.setFontSize(10);
+        doc.setTextColor(kpi.color[0], kpi.color[1], kpi.color[2]);
+        doc.text(kpi.value, x + 8, 192);
       });
 
+      // Table 1: Ledger Table
       autoTable(doc, {
         head: tableHeaders,
         body: tableRows,
-        startY: 212,
-        theme: 'grid',
+        startY: 218,
+        margin: { left: 36, right: 36 },
+        theme: 'striped',
         styles: {
+          font: 'helvetica',
           fontSize: 8,
-          cellPadding: 5,
-          font: 'helvetica'
+          cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
+          valign: 'middle',
+          overflow: 'linebreak'
         },
         headStyles: {
           fillColor: [30, 41, 59],
@@ -941,27 +968,181 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           fontStyle: 'bold',
           halign: 'left'
         },
-        columnStyles: {
-          0: { cellWidth: 62 },
-          1: { cellWidth: selectedAccountForPopup.enableMapping ? 120 : 160 },
-          2: { cellWidth: 70 },
-          3: { halign: 'right', cellWidth: 65, textColor: [220, 38, 38] },
-          4: { halign: 'right', cellWidth: 65, textColor: [22, 163, 74] },
-          5: { halign: 'right', cellWidth: 70, fontStyle: 'bold', textColor: [15, 23, 42] },
-          ...(selectedAccountForPopup.enableMapping ? { 6: { cellWidth: 70, fontSize: 7, halign: 'center' } } : {})
+        columnStyles: selectedAccountForPopup.enableMapping ? {
+          0: { cellWidth: 55 },
+          // 1 (Description) is auto-sized
+          2: { cellWidth: 65 },
+          3: { halign: 'right', cellWidth: 68, textColor: [220, 38, 38] },
+          4: { halign: 'right', cellWidth: 68, textColor: [22, 163, 74] },
+          5: { halign: 'right', cellWidth: 72, fontStyle: 'bold', textColor: [15, 23, 42] },
+          6: { cellWidth: 70, fontSize: 7, halign: 'center' }
+        } : {
+          0: { cellWidth: 65 },
+          // 1 (Description) is auto-sized
+          2: { cellWidth: 75 },
+          3: { halign: 'right', cellWidth: 75, textColor: [220, 38, 38] },
+          4: { halign: 'right', cellWidth: 75, textColor: [22, 163, 74] },
+          5: { halign: 'right', cellWidth: 80, fontStyle: 'bold', textColor: [15, 23, 42] }
         },
         alternateRowStyles: {
           fillColor: [248, 250, 252]
-        },
-        didDrawPage: (data) => {
-          const pageCount = (doc as any).internal?.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;
-          const currentPage = (data as any).pageNumber || 1;
-          doc.setFontSize(7.5);
-          doc.setTextColor(148, 163, 184);
-          doc.text(`Chuvadi Passbook • Page ${currentPage} of ${pageCount}`, 36, 825);
-          doc.text(`Account ID: ${selectedAccountForPopup.id}`, 460, 825);
         }
       });
+
+      // Table 2: Separate Unsettled Transactions Table
+      const accountTransactionsUpToEnd = (transactions || []).filter(t => 
+        (t.fromAccountId === selectedAccountForPopup.id || t.toAccountId === selectedAccountForPopup.id) && 
+        t.date <= eDate
+      );
+
+      const unsettledTxns = accountTransactionsUpToEnd
+        .filter(t => {
+          const status = getSettlementStatus(t, transactions || [], tolerance);
+          return !status.isSettled;
+        })
+        .sort((a, b) => {
+          const dateComp = (a.date || '').localeCompare(b.date || '');
+          if (dateComp !== 0) return dateComp;
+          const timeComp = (a.time || '00:00').localeCompare(b.time || '00:00');
+          if (timeComp !== 0) return timeComp;
+          return (a.timestamp || 0) - (b.timestamp || 0);
+        });
+
+      let secondStartY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 28 : 250;
+      
+      if (secondStartY + 110 > doc.internal.pageSize.height - 40) {
+        doc.addPage();
+        secondStartY = 40;
+      }
+
+      if (unsettledTxns.length === 0) {
+        doc.setFillColor(240, 253, 244);
+        doc.roundedRect(36, secondStartY, 523, 36, 4, 4, 'F');
+        doc.setDrawColor(187, 247, 208);
+        doc.roundedRect(36, secondStartY, 523, 36, 4, 4, 'D');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(22, 101, 52);
+        doc.text('SCHEDULE OF UNSETTLED TRANSACTIONS: ALL SETTLED', 48, secondStartY + 15);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(21, 128, 61);
+        doc.text(`All transactions for ${selectedAccountForPopup.name} are fully settled as of ${formatDate(eDate)} (0 pending items).`, 48, secondStartY + 27);
+      } else {
+        doc.setFillColor(30, 41, 59);
+        doc.roundedRect(36, secondStartY, 523, 24, 3, 3, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.text('SCHEDULE OF UNSETTLED TRANSACTIONS', 46, secondStartY + 16);
+
+        let unsettledRunningBalance = 0;
+        let totalUnsettledDebits = 0;
+        let totalUnsettledCredits = 0;
+        let totalUnsettledDiff = 0;
+
+        const unsettledTableRows = unsettledTxns.map((t) => {
+          const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.fromAccountId === selectedAccountForPopup.id);
+          const isCredit = (t.type === 'INCOME' && t.toAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.toAccountId === selectedAccountForPopup.id);
+          const isTransfer = t.type === 'TRANSFER';
+          const amt = Number(t.amount) || 0;
+          const s = getSettlementStatus(t, transactions || [], tolerance);
+          const diff = s.remainingDifference;
+
+          if (isDebit) {
+            totalUnsettledDebits += amt;
+            unsettledRunningBalance -= diff;
+          } else if (isCredit) {
+            totalUnsettledCredits += amt;
+            unsettledRunningBalance += diff;
+          } else {
+            unsettledRunningBalance -= diff;
+          }
+          totalUnsettledDiff += diff;
+
+          const fromAcc = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
+          const toAcc = accounts.find(a => a.id === t.toAccountId)?.name || 'Dest';
+          const descText = isTransfer ? `${fromAcc} -> ${toAcc}` : (t.description || 'Transaction');
+
+          return [
+            formatDate(t.date),
+            descText,
+            t.category || (isTransfer ? 'Transfer' : '-'),
+            isDebit ? formatPdfAmount(amt) : '-',
+            isCredit ? formatPdfAmount(amt) : '-',
+            formatPdfAmount(diff),
+            formatPdfAmount(unsettledRunningBalance)
+          ];
+        });
+
+        doc.setFontSize(8);
+        doc.setTextColor(245, 158, 11);
+        doc.text(`${unsettledTxns.length} UNSETTLED ITEM${unsettledTxns.length === 1 ? '' : 'S'} | TOTAL PENDING: INR ${formatPdfAmount(totalUnsettledDiff)}`, 320, secondStartY + 16);
+
+        autoTable(doc, {
+          head: [
+            ['Date', 'Description', 'Category', 'Debit (INR)', 'Credit (INR)', 'Unsettled Diff (INR)', 'Running Balance (INR)']
+          ],
+          body: unsettledTableRows,
+          foot: [
+            [
+              'TOTAL',
+              `Total ${unsettledTxns.length} Unsettled Entries`,
+              '-',
+              formatPdfAmount(totalUnsettledDebits),
+              formatPdfAmount(totalUnsettledCredits),
+              formatPdfAmount(totalUnsettledDiff),
+              formatPdfAmount(unsettledRunningBalance)
+            ]
+          ],
+          startY: secondStartY + 30,
+          margin: { left: 36, right: 36 },
+          theme: 'striped',
+          styles: {
+            font: 'helvetica',
+            fontSize: 8,
+            cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
+            valign: 'middle',
+            overflow: 'linebreak'
+          },
+          headStyles: {
+            fillColor: [30, 41, 59],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            halign: 'left'
+          },
+          footStyles: {
+            fillColor: [15, 23, 42],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold'
+          },
+          columnStyles: {
+            0: { cellWidth: 55 },
+            // 1 (Description) is auto-sized
+            2: { cellWidth: 65 },
+            3: { cellWidth: 68, halign: 'right', textColor: [220, 38, 38] },
+            4: { cellWidth: 68, halign: 'right', textColor: [22, 163, 74] },
+            5: { cellWidth: 72, halign: 'right', fontStyle: 'bold', textColor: [217, 119, 6] },
+            6: { cellWidth: 72, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] }
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252]
+          }
+        });
+      }
+
+      const totalPages = (doc as any).internal?.getNumberOfPages ? (doc as any).internal.getNumberOfPages() : 1;
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`Chuvadi Passbook • Page ${i} of ${totalPages}`, 36, 825);
+        doc.text(`Account ID: ${selectedAccountForPopup.id}`, 460, 825);
+      }
 
       const sanitizedName = selectedAccountForPopup.name.replace(/[^a-zA-Z0-9_-]/g, '_');
       doc.save(`${sanitizedName}_Passbook_${sDate}_to_${eDate}.pdf`);
