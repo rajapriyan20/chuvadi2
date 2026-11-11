@@ -5,7 +5,6 @@ import {
   CreditCard, 
   Tag, 
   Edit3, 
-  Eye, 
   AlertCircle,
   Settings as SettingsIcon,
   Check,
@@ -213,37 +212,44 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
               >
                 {/* Email Info Left Column */}
                 <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-white truncate max-w-md">
-                      {email.subject}
-                    </span>
-                    {isAdded && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                        <Check size={10} /> Added to Ledger
+                  {/* Card Header: Touching header opens the snippet */}
+                  <div
+                    onClick={() => setSelectedEmailForPreview(email)}
+                    className="cursor-pointer group/header space-y-1 transition hover:opacity-90 select-none"
+                    title="Touch header to view snippet"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedEmailForPreview(email);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-white group-hover/header:text-amber-400 transition-colors truncate max-w-md">
+                        {email.subject}
                       </span>
-                    )}
-                    {isIgnored && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
-                        Ignored
-                      </span>
-                    )}
-                  </div>
+                      {isAdded && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                          <Check size={10} /> Added to Ledger
+                        </span>
+                      )}
+                      {isIgnored && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                          Ignored
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
-                    <span className="text-slate-300">{email.from}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 text-slate-400">
-                      <Calendar size={11} />
-                      {formatDate(email.date)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmailForPreview(email)}
-                      className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] ml-1 font-medium underline cursor-pointer"
-                    >
-                      <Eye size={12} />
-                      <span>View snippet</span>
-                    </button>
+                    <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
+                      <span className="text-slate-300">{email.from}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <Calendar size={11} />
+                        {formatDate(email.date)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Suggested Transaction Preview Card */}
@@ -265,11 +271,6 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                     <div className="text-xs text-slate-300 font-medium truncate max-w-md flex items-center gap-1.5">
                       <span className="text-slate-400">Desc:</span>
                       <span className="text-white font-medium truncate">{displayDescription}</span>
-                      {ruleLabel && (
-                        <span className="shrink-0 text-[10px] text-amber-300 font-normal px-1.5 py-0.2 bg-amber-500/10 border border-amber-500/20 rounded">
-                          {ruleLabel}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>

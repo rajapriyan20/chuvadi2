@@ -253,6 +253,62 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     return result.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [isMappingEnabled, mappingAccounts, accounts, allTransactions, initialData?.id, initialData?.mappedTransactionId]);
 
+  // Categorize available categories: already used in transactions vs unused, sorted alphabetically
+  const { usedCategories, unusedCategories } = useMemo(() => {
+    // 1. Identify used categories from existing transactions (excluding Transfer)
+    const usedSet = new Set<string>();
+    for (const t of allTransactions) {
+      if (t.category && typeof t.category === 'string') {
+        const trimmed = t.category.trim();
+        if (trimmed && trimmed.toLowerCase() !== 'transfer') {
+          usedSet.add(trimmed);
+        }
+      }
+    }
+
+    // 2. Collect all unique known categories
+    const allSet = new Set<string>();
+    for (const c of availableCategories) {
+      if (c && typeof c === 'string') {
+        const trimmed = c.trim();
+        if (trimmed && trimmed.toLowerCase() !== 'transfer') {
+          allSet.add(trimmed);
+        }
+      }
+    }
+    for (const t of allTransactions) {
+      if (t.category && typeof t.category === 'string') {
+        const trimmed = t.category.trim();
+        if (trimmed && trimmed.toLowerCase() !== 'transfer') {
+          allSet.add(trimmed);
+        }
+      }
+    }
+    if (category && typeof category === 'string') {
+      const trimmed = category.trim();
+      if (trimmed && trimmed.toLowerCase() !== 'transfer') {
+        allSet.add(trimmed);
+      }
+    }
+
+    const used: string[] = [];
+    const unused: string[] = [];
+
+    for (const catName of allSet) {
+      if (usedSet.has(catName)) {
+        used.push(catName);
+      } else {
+        unused.push(catName);
+      }
+    }
+
+    // Sort each set alphabetically
+    used.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    unused.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    return { usedCategories: used, unusedCategories: unused };
+  }, [availableCategories, allTransactions, category]);
+
   if (!isOpen) return null;
 
   const handleConfirmNewCategory = () => {
@@ -745,7 +801,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <span className="text-amber-400 font-bold text-base">
                   {isDuplicateNewRecord
                     ? 'New Transaction (Duplicate)'
-                    : !initialData
+                    : !initialData?.id
                     ? 'New Transaction'
                     : 'Edit Transaction'}
                 </span>
@@ -1073,9 +1129,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       onChange={(e) => handleCategoryChange(e.target.value)}
                       className="w-full bg-[#0e131a] border border-slate-700/80 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                     >
-                      {availableCategories.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
+                      {usedCategories.length > 0 && (
+                        <optgroup label="Used Categories">
+                          {usedCategories.map((c) => (
+                            <option key={`used-${c}`} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {unusedCategories.length > 0 && (
+                        <optgroup label={usedCategories.length > 0 ? "Unused Categories" : "Categories"}>
+                          {unusedCategories.map((c) => (
+                            <option key={`unused-${c}`} value={c}>{c}</option>
+                          ))}
+                        </optgroup>
+                      )}
                       <option value="__NEW_CATEGORY__">+ Add New Category...</option>
                     </select>
                   )}
@@ -1173,12 +1240,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (isDuplicateNewRecord) {
+                    if (isDuplicateNewRecord || !initialData?.id) {
                       onClose();
-                    } else if (initialData) {
-                      setIsEditing(false);
                     } else {
-                      onClose();
+                      setIsEditing(false);
                     }
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
