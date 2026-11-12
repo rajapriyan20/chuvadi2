@@ -55,10 +55,6 @@ export function calculateNextDueDate(
       const d = new Date(targetYear, month, targetDay);
       return formatDateToLocalYMD(d);
     }
-    case 'CUSTOM_DAYS': {
-      const d = new Date(year, month, day + safeInterval);
-      return formatDateToLocalYMD(d);
-    }
     default:
       return currentDateStr;
   }
@@ -96,8 +92,6 @@ export function formatRecurrenceLabel(
         : `Every ${safeInterval} months${dayOfMonth ? ` on day ${dayOfMonth}` : ''}`;
     case 'YEARLY':
       return safeInterval === 1 ? 'Repeats Yearly' : `Every ${safeInterval} years`;
-    case 'CUSTOM_DAYS':
-      return `Every ${safeInterval} days`;
     default:
       return 'Recurring';
   }
@@ -158,7 +152,7 @@ export function createStaticTransactionFromRule(
   rule: RecurringTransaction,
   dueDate: string
 ): Omit<Transaction, 'id'> {
-  const chosenTime = rule.time || '09:00';
+  const chosenTime = '09:00';
   let timestamp = Date.now();
   try {
     const parsed = new Date(`${dueDate}T${chosenTime}:00`);
@@ -173,7 +167,7 @@ export function createStaticTransactionFromRule(
     ? `${ruleNotes} · ${recurrenceSuffix}` 
     : recurrenceSuffix;
 
-  const tags = Array.from(new Set([...(rule.tags || []), 'Recurring', rule.frequency]));
+  const tags = ['Recurring', rule.frequency];
 
   return {
     type: rule.type,
@@ -188,7 +182,8 @@ export function createStaticTransactionFromRule(
     vehicleId: rule.vehicleId || null,
     notes: combinedNotes,
     tags,
-    recurringId: rule.id
+    recurringTransactionId: rule.id,
+    isRecurringGenerated: true
   };
 }
 
@@ -227,7 +222,7 @@ export function evaluateAndAdvanceRecurringRule(
 
     // Duplicate guard: check if a transaction for this rule on currentDue was already posted
     const alreadyExists = existingTransactions.some(
-      t => t.recurringId === rule.id && t.date === currentDue
+      t => t.recurringTransactionId === rule.id && t.date === currentDue
     );
 
     if (!alreadyExists) {

@@ -783,8 +783,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn">
-      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col min-h-0 overflow-hidden animate-fadeIn">
+      <div className="bg-[#121820] w-full h-full flex flex-col min-h-0 overflow-hidden">
         {/* Full-Screen Header */}
         <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0">
           <div>
@@ -1081,10 +1081,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
         {/* Transaction Ledger List */}
         <div 
-          className="flex-1 overflow-y-auto overscroll-y-contain touch-pan-y px-4 sm:px-8 py-4 pb-28 sm:pb-12 space-y-3 select-none sm:select-auto"
+          className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-4 pb-28 sm:pb-12 space-y-3"
           style={{ 
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehaviorY: 'contain'
+            WebkitOverflowScrolling: 'touch'
           }}
         >
           {accountTxns.length === 0 ? (

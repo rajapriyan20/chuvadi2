@@ -25,6 +25,59 @@ import {
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { registerBackHandler } from '../../utils/backNavigation';
 
+function computeNextDueDateFromDay(day: number): string {
+  const today = new Date();
+  const clampedDay = Math.min(31, Math.max(1, day));
+  
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth(); // 0-indexed
+  const currentDay = today.getDate();
+  
+  // Find the target date in current month (clamping to max days in current month)
+  const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const actualTargetDayThisMonth = Math.min(clampedDay, daysInCurrentMonth);
+  
+  let targetYear = currentYear;
+  let targetMonth = currentMonth;
+  let targetDay = actualTargetDayThisMonth;
+  
+  if (currentDay > actualTargetDayThisMonth) {
+    // Current day has already passed this month's target day -> move to next month
+    targetMonth += 1;
+    if (targetMonth > 11) {
+      targetMonth = 0;
+      targetYear += 1;
+    }
+    const daysInNextMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    targetDay = Math.min(clampedDay, daysInNextMonth);
+  }
+  
+  const yyyy = String(targetYear);
+  const mm = String(targetMonth + 1).padStart(2, '0');
+  const dd = String(targetDay).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getOrdinalSuffix(n: number): string {
+  const j = n % 10;
+  const k = n % 100;
+  if (j === 1 && k !== 11) return `${n}st`;
+  if (j === 2 && k !== 12) return `${n}nd`;
+  if (j === 3 && k !== 13) return `${n}rd`;
+  return `${n}th`;
+}
+
+function formatDisplayDate(dateStr: string): string {
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+  } catch {}
+  return dateStr;
+}
+
 interface RecurringModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,8 +124,7 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
   const [toAccountId, setToAccountId] = useState<string>('');
   const [frequency, setFrequency] = useState<RecurringFrequency>('MONTHLY');
   const [interval, setInterval] = useState<number>(1);
-  const [startDate, setStartDate] = useState<string>(getTodayLocalDateString());
-  const [nextDueDate, setNextDueDate] = useState<string>(getTodayLocalDateString());
+  const [dayOfMonth, setDayOfMonth] = useState<number | string>(1);
   const [hasEndDate, setHasEndDate] = useState<boolean>(false);
   const [endDate, setEndDate] = useState<string>('');
   const [isActive, setIsActive] = useState<boolean>(true);
@@ -98,8 +150,10 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
       setToAccountId(initialData.toAccountId || '');
       setFrequency(initialData.frequency || 'MONTHLY');
       setInterval(initialData.interval || 1);
-      setStartDate(initialData.startDate || getTodayLocalDateString());
-      setNextDueDate(initialData.nextDueDate || initialData.startDate || getTodayLocalDateString());
+      const parsedDay = initialData.nextDueDate
+        ? parseInt(initialData.nextDueDate.split('-')[2], 10)
+        : (initialData.startDate ? parseInt(initialData.startDate.split('-')[2], 10) : 1);
+      setDayOfMonth(parsedDay || 1);
       setHasEndDate(Boolean(initialData.endDate));
       setEndDate(initialData.endDate || '');
       setIsActive(initialData.isActive !== false);
@@ -115,9 +169,10 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
       setToAccountId(prefillDefaults.toAccountId || accounts[1]?.id || accounts[0]?.id || '');
       setFrequency(prefillDefaults.frequency || 'MONTHLY');
       setInterval(prefillDefaults.interval || 1);
-      const today = getTodayLocalDateString();
-      setStartDate(prefillDefaults.startDate || today);
-      setNextDueDate(prefillDefaults.nextDueDate || prefillDefaults.startDate || today);
+      const parsedDay = prefillDefaults.nextDueDate
+        ? parseInt(prefillDefaults.nextDueDate.split('-')[2], 10)
+        : (prefillDefaults.startDate ? parseInt(prefillDefaults.startDate.split('-')[2], 10) : 1);
+      setDayOfMonth(parsedDay || 1);
       setHasEndDate(Boolean(prefillDefaults.endDate));
       setEndDate(prefillDefaults.endDate || '');
       setIsActive(prefillDefaults.isActive !== false);
@@ -133,9 +188,7 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
       setToAccountId(accounts[1]?.id || accounts[0]?.id || '');
       setFrequency('MONTHLY');
       setInterval(1);
-      const today = getTodayLocalDateString();
-      setStartDate(today);
-      setNextDueDate(today);
+      setDayOfMonth(1);
       setHasEndDate(false);
       setEndDate('');
       setIsActive(true);
@@ -161,11 +214,16 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
     setCategoryError('');
   };
 
+  const numDay = Math.min(31, Math.max(1, Number(dayOfMonth) || 1));
+  const computedNextDueDate = computeNextDueDateFromDay(numDay);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmt = parseFloat(amount);
     if (!numAmt || numAmt <= 0) return;
     if (!description.trim()) return;
+
+    const resolvedStartDate = initialData?.startDate || computedNextDueDate;
 
     setIsSaving(true);
     try {
@@ -179,8 +237,8 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
         toAccountId: (type === 'INCOME' || type === 'TRANSFER') ? toAccountId : null,
         frequency,
         interval: Math.max(1, interval || 1),
-        startDate: startDate || getTodayLocalDateString(),
-        nextDueDate: nextDueDate || startDate || getTodayLocalDateString(),
+        startDate: resolvedStartDate,
+        nextDueDate: computedNextDueDate,
         endDate: hasEndDate && endDate ? endDate : null,
         isActive,
         autoPost,
@@ -344,42 +402,77 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
               ))}
             </div>
 
-            {/* Dates: Start Date & Next Due Date */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Start Date
-                </label>
-                <div className="relative">
-                  <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            {/* Day of the Month (1 – 31) */}
+            <div className="pt-1 space-y-2">
+              <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Calendar size={13} className="text-amber-400" />
+                  <span>Day of the Month (1 – 31) *</span>
+                </span>
+                <span className="text-[10px] font-mono text-amber-300 normal-case">
+                  Day {numDay} ({getOrdinalSuffix(numDay)})
+                </span>
+              </label>
+
+              <div className="flex items-center gap-3">
+                <div className="relative w-24 shrink-0">
                   <input
-                    type="date"
+                    type="number"
+                    min={1}
+                    max={31}
                     required
-                    value={startDate}
+                    placeholder="2"
+                    value={dayOfMonth}
                     onChange={(e) => {
-                      setStartDate(e.target.value);
-                      if (!initialData) {
-                        setNextDueDate(e.target.value);
+                      const val = e.target.value;
+                      if (val === '') {
+                        setDayOfMonth('');
+                        return;
+                      }
+                      const num = parseInt(val, 10);
+                      if (!isNaN(num)) {
+                        setDayOfMonth(Math.min(31, Math.max(1, num)));
                       }
                     }}
-                    className="w-full bg-[#0b0f15] border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition"
+                    className="w-full bg-[#0b0f15] border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-center text-base font-bold font-mono text-white focus:outline-none focus:ring-1 focus:ring-amber-500 transition"
                   />
+                </div>
+
+                <div className="flex-1 text-[11px] text-slate-400 leading-snug">
+                  Collects just the recurring day (e.g. choose <span className="text-amber-300 font-semibold">2</span> for 2nd day of the month).
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Next Expected Due Date *
-                </label>
-                <div className="relative">
-                  <Clock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" />
-                  <input
-                    type="date"
-                    required
-                    value={nextDueDate}
-                    onChange={(e) => setNextDueDate(e.target.value)}
-                    className="w-full bg-[#0b0f15] border border-amber-500/40 rounded-xl pl-8 pr-3 py-2 text-xs text-amber-200 font-semibold focus:outline-none focus:border-amber-500 transition"
-                  />
+              {/* Quick Select Day Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-500 font-semibold mr-1">Quick pick:</span>
+                {[1, 2, 5, 7, 10, 15, 20, 25, 31].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDayOfMonth(d)}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                      numDay === d
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-sm'
+                        : 'bg-[#0b0f15] text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  >
+                    {d === 31 ? 'Last Day' : `${d}${d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Live Scheduled Due Date Calculation Badge */}
+              <div className="p-2.5 rounded-xl bg-[#0b0f15]/90 border border-slate-800/80 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Clock size={13} className="text-amber-400 shrink-0" />
+                  <span>Next automatic post:</span>
+                </div>
+                <div className="font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                  <span>{formatDisplayDate(computedNextDueDate)}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400/90 border border-amber-500/20 font-sans font-medium">
+                    Auto
+                  </span>
                 </div>
               </div>
             </div>

@@ -2617,7 +2617,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
       {/* Full Screen Account Passbook View */}
       {selectedAccountForPopup && !isEditingAccountInPopup && (
-        <div className="fixed inset-0 z-50 bg-[#0d1217] w-full h-full flex flex-col overflow-hidden animate-fadeIn overscroll-contain">
+        <div className="fixed inset-0 z-50 bg-[#0d1217] w-full h-full flex flex-col min-h-0 overflow-hidden animate-fadeIn">
           {/* Full-Screen Header */}
           <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0 gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -2965,7 +2965,10 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           </div>
 
           {/* Ledger Entries List */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-2">
+          <div 
+            className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-4 space-y-2 pb-28 sm:pb-12"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {filteredPopupTxns.length === 0 ? (
               <div className="py-16 text-center bg-[#121820]/40 rounded-2xl border border-slate-800/80 px-4">
                 <BookOpen size={28} className="text-slate-600 mx-auto mb-2" />

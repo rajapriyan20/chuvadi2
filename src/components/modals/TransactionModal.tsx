@@ -787,94 +787,102 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               </div>
             </div>
 
-            {/* Bottom Actions Bar */}
-            <div className="p-4 sm:p-5 border-t border-slate-800 bg-[#161d26] flex items-center gap-2 sm:gap-3">
-              {onDelete && (
+            {/* Bottom Actions Bar: 2-tier structured layout */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-[#161d26] space-y-2.5">
+              {/* Row 1: Contextual Utility Actions (wrapping cleanly on small screens) */}
+              <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+                {onDelete ? (
+                  <button
+                    key="delete-txn-btn"
+                    id="delete-txn-btn"
+                    type="button"
+                    onClick={handleDeleteClick}
+                    disabled={isSaving}
+                    className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                    title="Delete this transaction"
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete</span>
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+                  <button
+                    key="toggle-disable-txn-btn"
+                    id="toggle-disable-txn-btn"
+                    type="button"
+                    onClick={handleToggleDisabled}
+                    disabled={isSaving}
+                    className={`py-2 px-2.5 sm:px-3 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer border ${
+                      initialData.disabled
+                        ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 shadow-sm'
+                        : 'bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700/80'
+                    }`}
+                    title={initialData.disabled ? "Enable transaction to re-include in balance calculations" : "Disable transaction to exclude from balance calculations"}
+                  >
+                    {initialData.disabled ? <CheckCircle size={13} className="text-emerald-400" /> : <Ban size={13} />}
+                    <span>{initialData.disabled ? 'Enable' : 'Disable'}</span>
+                  </button>
+
+                  {onConvertToRecurring && (
+                    <button
+                      key="make-recurring-txn-btn"
+                      id="make-recurring-txn-btn"
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onConvertToRecurring(initialData);
+                      }}
+                      className="py-2 px-2.5 sm:px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                      title="Create recurring rule based on this transaction"
+                    >
+                      <Repeat size={13} className="text-amber-400" />
+                      <span>Set Recurring</span>
+                    </button>
+                  )}
+
+                  <button
+                    key="duplicate-txn-btn"
+                    id="duplicate-transaction-btn"
+                    type="button"
+                    onClick={handleDuplicate}
+                    className="py-2 px-2.5 sm:px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Create a new transaction pre-filled with these details"
+                  >
+                    <Copy size={13} />
+                    <span>Duplicate</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: Primary Dialog Actions */}
+              <div className="flex items-center gap-2.5 pt-0.5">
                 <button
-                  key="delete-txn-btn"
-                  id="delete-txn-btn"
+                  key="close-view-btn"
+                  id="close-view-btn"
                   type="button"
-                  onClick={handleDeleteClick}
-                  disabled={isSaving}
-                  className="px-3 sm:px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                  title="Delete this transaction"
+                  onClick={onClose}
+                  className="py-2.5 px-4 sm:px-6 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
                 >
-                  <Trash2 size={15} />
-                  <span className="hidden sm:inline">Delete</span>
+                  Close
                 </button>
-              )}
 
-              <button
-                key="close-view-btn"
-                id="close-view-btn"
-                type="button"
-                onClick={onClose}
-                className="py-2.5 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
-              >
-                Close
-              </button>
-
-              <button
-                key="toggle-disable-txn-btn"
-                id="toggle-disable-txn-btn"
-                type="button"
-                onClick={handleToggleDisabled}
-                disabled={isSaving}
-                className={`py-2.5 px-3 sm:px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 border ${
-                  initialData.disabled
-                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm'
-                    : 'bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border-amber-500/30 shadow-sm'
-                }`}
-                title={initialData.disabled ? "Enable transaction to re-include in all balance calculations" : "Disable transaction to exclude from balance calculations"}
-              >
-                {initialData.disabled ? <CheckCircle size={15} /> : <Ban size={15} />}
-                <span>{initialData.disabled ? 'Enable' : 'Disable'}</span>
-              </button>
-
-              {onConvertToRecurring && (
                 <button
-                  key="make-recurring-txn-btn"
-                  id="make-recurring-txn-btn"
+                  key="enter-edit-mode-btn"
+                  id="edit-transaction-btn"
                   type="button"
-                  onClick={() => {
-                    onClose();
-                    onConvertToRecurring(initialData);
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    justSwitchedToEditRef.current = Date.now();
+                    setIsEditing(true);
                   }}
-                  className="py-2.5 px-3 sm:px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                  title="Create recurring rule based on this transaction"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 cursor-pointer"
                 >
-                  <Repeat size={14} className="text-amber-400" />
-                  <span className="hidden sm:inline">Set Recurring</span>
+                  <Pencil size={15} strokeWidth={2.5} />
+                  <span>Edit Transaction</span>
                 </button>
-              )}
-
-              <button
-                key="duplicate-txn-btn"
-                id="duplicate-transaction-btn"
-                type="button"
-                onClick={handleDuplicate}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                title="Create a new transaction pre-filled with these details"
-              >
-                <Copy size={15} strokeWidth={2.2} />
-                <span>Duplicate</span>
-              </button>
-
-              <button
-                key="enter-edit-mode-btn"
-                id="edit-transaction-btn"
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  justSwitchedToEditRef.current = Date.now();
-                  setIsEditing(true);
-                }}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-              >
-                <Pencil size={15} strokeWidth={2.5} />
-                <span>Edit Transaction</span>
-              </button>
+              </div>
             </div>
           </div>
         ) : (

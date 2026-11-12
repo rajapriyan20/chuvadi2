@@ -290,74 +290,78 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
     <div className="space-y-3 pb-20 md:pb-8">
       {/* Sub-tab Switcher: Chart of Accounts FIRST, then Transactions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-0.5">
-        <div className="inline-flex p-1 bg-[#121820] rounded-2xl border border-slate-800 self-start sm:self-auto">
-          <button
-            id="finance-subtab-coa-btn"
-            onClick={() => setSubTab('coa')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'coa'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Layers size={14} />
-            <span>Chart of Accounts</span>
-          </button>
-          <button
-            id="finance-subtab-transactions-btn"
-            onClick={() => setSubTab('transactions')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'transactions'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Receipt size={14} />
-            <span>Transactions</span>
-          </button>
-          <button
-            id="finance-subtab-recurring-btn"
-            onClick={() => setSubTab('recurring')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'recurring'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Repeat size={14} />
-            <span>Recurring</span>
-            {recurringTransactions && recurringTransactions.length > 0 && (
-              <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
-                subTab === 'recurring' ? 'bg-slate-950/25 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
-              }`}>
-                {recurringTransactions.length}
-              </span>
-            )}
-          </button>
-          <button
-            id="finance-subtab-reports-btn"
-            onClick={() => setSubTab('reports')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'reports'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <PieChart size={14} />
-            <span>Reports & Analytics</span>
-          </button>
-          <button
-            id="finance-subtab-inbox-btn"
-            onClick={() => setSubTab('inbox')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-              subTab === 'inbox'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-            }`}
-          >
-            <Inbox size={14} />
-            <span>Inbox / Review</span>
-          </button>
+        <div className="w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5">
+          <div className="inline-flex p-1 bg-[#121820] rounded-2xl border border-slate-800 shrink-0">
+            <button
+              id="finance-subtab-coa-btn"
+              onClick={() => setSubTab('coa')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                subTab === 'coa'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Layers size={14} />
+              <span>Chart of Accounts</span>
+            </button>
+            <button
+              id="finance-subtab-transactions-btn"
+              onClick={() => setSubTab('transactions')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                subTab === 'transactions'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Receipt size={14} />
+              <span>Transactions</span>
+            </button>
+            <button
+              id="finance-subtab-recurring-btn"
+              onClick={() => setSubTab('recurring')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                subTab === 'recurring'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Repeat size={14} />
+              <span>Recurring</span>
+              {recurringTransactions && recurringTransactions.length > 0 && (
+                <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
+                  subTab === 'recurring' ? 'bg-slate-950/25 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+                }`}>
+                  {recurringTransactions.length}
+                </span>
+              )}
+            </button>
+            <button
+              id="finance-subtab-reports-btn"
+              onClick={() => setSubTab('reports')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                subTab === 'reports'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <PieChart size={14} />
+              <span>Reports</span>
+              <span className="hidden md:inline">& Analytics</span>
+            </button>
+            <button
+              id="finance-subtab-inbox-btn"
+              onClick={() => setSubTab('inbox')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                subTab === 'inbox'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Inbox size={14} />
+              <span>Inbox</span>
+              <span className="hidden md:inline">/ Review</span>
+            </button>
+          </div>
         </div>
 
         <div className="text-xs text-slate-400 hidden lg:block">
