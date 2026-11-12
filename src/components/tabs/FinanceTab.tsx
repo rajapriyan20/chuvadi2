@@ -455,8 +455,8 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                 <span>Total Outflow</span>
                 <TrendingDown size={14} className="text-rose-400" />
               </div>
-              <div className="text-base sm:text-lg font-bold font-mono tabular-nums text-rose-400 mt-1">
-                -{formatCurrency(summaryMetrics.expenses)}
+              <div className={`text-base sm:text-lg font-bold font-mono tabular-nums mt-1 ${summaryMetrics.expenses < 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {summaryMetrics.expenses < 0 ? '+' : '-'}{formatCurrency(Math.abs(summaryMetrics.expenses))}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">Expenses in view</div>
             </div>
@@ -733,6 +733,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                               Spent: {formatCurrency(group.dayExpenses)}
                             </span>
                           )}
+                          {group.dayExpenses < 0 && (
+                            <span className="text-emerald-400 font-semibold">
+                              Cashback: +{formatCurrency(Math.abs(group.dayExpenses))}
+                            </span>
+                          )}
                           {group.dayIncome > 0 && (
                             <span className="text-emerald-400 font-semibold">
                               Inflow: +{formatCurrency(group.dayIncome)}
@@ -764,14 +769,14 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                   className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                                     isTransfer
                                       ? transferStyle?.badgeBgClass
-                                      : isExpense
+                                      : isExpense && t.amount >= 0
                                       ? 'bg-rose-500/15 text-rose-400'
                                       : 'bg-emerald-500/15 text-emerald-400'
                                   }`}
                                 >
                                   {isTransfer ? (
                                     <ArrowRightLeft size={16} />
-                                  ) : isExpense ? (
+                                  ) : isExpense && t.amount >= 0 ? (
                                     <ArrowUpRight size={16} />
                                   ) : (
                                     <ArrowDownLeft size={16} />
@@ -836,7 +841,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                       ? 'line-through text-slate-500 opacity-60'
                                       : isTransfer 
                                       ? transferStyle?.colorClass 
-                                      : isExpense 
+                                      : isExpense && t.amount >= 0
                                       ? 'text-rose-400' 
                                       : 'text-emerald-400'
                                   }`}
@@ -844,11 +849,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                   {isTransfer 
                                     ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
                                     : isExpense 
-                                    ? `-${formatCurrency(t.amount)}` 
+                                    ? (t.amount < 0 ? `+${formatCurrency(Math.abs(t.amount))}` : `-${formatCurrency(t.amount)}`)
                                     : `+${formatCurrency(t.amount)}`}
                                 </div>
                                 <div className="text-[10px] text-slate-500 capitalize flex items-center justify-end gap-1 mt-0.5">
-                                  <span>{t.type.toLowerCase()}</span>
+                                  <span>{isExpense && t.amount < 0 ? 'expense · cashback' : t.type.toLowerCase()}</span>
                                   {t.disabled && (
                                     <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                                       Disabled
@@ -951,12 +956,12 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                 className={`text-[10px] font-bold uppercase tracking-wider ${
                                   isTransfer
                                     ? (transferStyle?.isBankInTo ? 'text-emerald-400' : transferStyle?.isBankInFrom ? 'text-rose-400' : 'text-blue-400')
-                                    : isExpense
+                                    : isExpense && t.amount >= 0
                                     ? 'text-rose-400'
                                     : 'text-emerald-400'
                                 }`}
                               >
-                                {t.type}
+                                {isExpense && t.amount < 0 ? 'CASHBACK' : t.type}
                               </span>
                             </td>
 
@@ -968,7 +973,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                     ? 'line-through text-slate-500 opacity-60'
                                     : isTransfer
                                     ? transferStyle?.colorClass
-                                    : isExpense
+                                    : isExpense && t.amount >= 0
                                     ? 'text-rose-400'
                                     : 'text-emerald-400'
                                 }
@@ -976,7 +981,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                 {isTransfer 
                                   ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
                                   : isExpense 
-                                  ? `-${formatCurrency(t.amount)}` 
+                                  ? (t.amount < 0 ? `+${formatCurrency(Math.abs(t.amount))}` : `-${formatCurrency(t.amount)}`)
                                   : `+${formatCurrency(t.amount)}`}
                               </span>
                               {t.disabled && (

@@ -125,6 +125,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [fuelLiters, setFuelLiters] = useState<string>('');
   const [odometer, setOdometer] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [amountError, setAmountError] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
 
   const prevIsOpenRef = React.useRef(false);
@@ -155,6 +156,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setIsAddingNewCategory(false);
       setNewCategoryInput('');
       setCategoryError('');
+      setAmountError('');
       setIsEditing(!initialData?.id);
 
       if (initialData) {
@@ -404,7 +406,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
 
     const numAmt = parseFloat(amount);
-    if (!numAmt || numAmt <= 0) return;
+    if (isNaN(numAmt) || numAmt === 0) {
+      setAmountError('Please enter a valid non-zero amount.');
+      return;
+    }
+    if (type !== 'EXPENSE' && numAmt < 0) {
+      setAmountError('Negative amounts are only supported for Expense entries (cashback / refund).');
+      return;
+    }
+    setAmountError('');
 
     const isFuelRecord = type === 'EXPENSE' && category === 'Fuel';
 
@@ -528,10 +538,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 {/* Outflow / Inflow / Transfer Indicator */}
                 <div className="flex items-center justify-center gap-1.5 mb-2.5">
                   {initialData.type === 'EXPENSE' ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
-                      <ArrowUpRight size={14} className="stroke-[2.5]" />
-                      <span>Outflow · Expense</span>
-                    </span>
+                    initialData.amount < 0 ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                        <ArrowDownLeft size={14} className="stroke-[2.5]" />
+                        <span>Cashback / Refund · Expense Reduction</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                        <ArrowUpRight size={14} className="stroke-[2.5]" />
+                        <span>Outflow · Expense</span>
+                      </span>
+                    )
                   ) : initialData.type === 'INCOME' ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
                       <ArrowDownLeft size={14} className="stroke-[2.5]" />
@@ -551,15 +568,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     initialData.disabled
                       ? 'line-through text-slate-500 opacity-60'
                       : initialData.type === 'EXPENSE'
-                      ? 'text-rose-400'
+                      ? (initialData.amount < 0 ? 'text-emerald-400' : 'text-rose-400')
                       : initialData.type === 'INCOME'
                       ? 'text-emerald-400'
                       : 'text-blue-300'
                   }`}
                 >
-                  {initialData.type === 'EXPENSE' && '-'}
+                  {initialData.type === 'EXPENSE' && (initialData.amount < 0 ? '+' : '-')}
                   {initialData.type === 'INCOME' && '+'}
-                  {formatCurrency(initialData.amount)}
+                  {initialData.type === 'EXPENSE'
+                    ? formatCurrency(Math.abs(initialData.amount))
+                    : formatCurrency(initialData.amount)}
                 </div>
 
                 {initialData.disabled && (
@@ -921,7 +940,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <div className="grid grid-cols-3 gap-1 p-1 bg-slate-900 rounded-2xl border border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setType('EXPENSE')}
+                  onClick={() => { setType('EXPENSE'); setAmountError(''); }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                     type === 'EXPENSE'
                       ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
@@ -933,7 +952,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType('INCOME')}
+                  onClick={() => { setType('INCOME'); setAmountError(''); }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                     type === 'INCOME'
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -945,7 +964,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType('TRANSFER')}
+                  onClick={() => { setType('TRANSFER'); setAmountError(''); }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                     type === 'TRANSFER'
                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
@@ -959,10 +978,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
               {/* Amount Input */}
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Amount (₹ INR) *
-                </label>
-                <div className="relative">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Amount (₹ INR) *
+                  </label>
+                  {type === 'EXPENSE' && (
+                    <span className="text-[10px] text-slate-500">
+                      Use negative (e.g. -50) for cashback
+                    </span>
+                  )}
+                </div>
+                <div className="relative flex items-center">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-amber-400 font-mono">
                     ₹
                   </span>
@@ -973,10 +999,47 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     required
                     placeholder="0"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full bg-[#0e131a] border border-slate-700/80 rounded-2xl py-3 pl-10 pr-4 text-2xl font-bold text-white font-mono focus:outline-none focus:border-amber-500 transition"
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      if (amountError) setAmountError('');
+                    }}
+                    className={`w-full bg-[#0e131a] border border-slate-700/80 rounded-2xl py-3 pl-10 ${type === 'EXPENSE' ? 'pr-20' : 'pr-4'} text-2xl font-bold text-white font-mono focus:outline-none focus:border-amber-500 transition`}
                   />
+                  {type === 'EXPENSE' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = amount.trim();
+                        if (!trimmed) {
+                          setAmount('-');
+                        } else if (trimmed.startsWith('-')) {
+                          setAmount(trimmed.slice(1));
+                        } else {
+                          setAmount(`-${trimmed}`);
+                        }
+                        if (amountError) setAmountError('');
+                      }}
+                      title="Toggle negative sign for cashback / refund"
+                      className={`absolute right-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono border transition cursor-pointer ${
+                        amount.trim().startsWith('-')
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      +/−
+                    </button>
+                  )}
                 </div>
+                {type === 'EXPENSE' && parseFloat(amount) < 0 && (
+                  <p className="mt-1.5 text-[11px] text-emerald-400 font-medium">
+                    Cashback / Expense Reduction: credits +{formatCurrency(Math.abs(parseFloat(amount)))} back to account & reduces total expenses.
+                  </p>
+                )}
+                {amountError && (
+                  <p className="mt-1.5 text-[11px] text-rose-400 font-medium">
+                    {amountError}
+                  </p>
+                )}
               </div>
 
               {/* Description */}
@@ -1390,9 +1453,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   <span className="text-xs font-bold text-white truncate max-w-[170px]">
                     {description || initialData?.description || 'Transaction'}
                   </span>
-                  <span className="text-xs font-mono font-bold text-rose-400">
-                    {formatCurrency(Number(amount) || initialData?.amount || 0)}
-                  </span>
+                  {(() => {
+                    const delAmt = Number(amount) || initialData?.amount || 0;
+                    const isCashback = (initialData?.type || type) === 'EXPENSE' && delAmt < 0;
+                    return (
+                      <span className={`text-xs font-mono font-bold ${isCashback ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isCashback ? `+${formatCurrency(Math.abs(delAmt))}` : formatCurrency(delAmt)}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">
                   <span>{date || initialData?.date}</span>

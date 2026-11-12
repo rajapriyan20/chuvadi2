@@ -475,14 +475,14 @@ export const RecurringTab: React.FC<RecurringTabProps> = ({
                     <div className="text-left md:text-right">
                       <div className={`text-base sm:text-lg font-mono font-bold tabular-nums ${
                         isExpense
-                          ? 'text-rose-400'
+                          ? (rule.amount < 0 ? 'text-emerald-400' : 'text-rose-400')
                           : isIncome
                           ? 'text-emerald-400'
                           : 'text-blue-300'
                       }`}>
-                        {isExpense && '-'}
+                        {isExpense && (rule.amount < 0 ? '+' : '-')}
                         {isIncome && '+'}
-                        {formatCurrency(rule.amount)}
+                        {isExpense ? formatCurrency(Math.abs(rule.amount)) : formatCurrency(rule.amount)}
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium capitalize">
                         {rule.frequency.toLowerCase()}

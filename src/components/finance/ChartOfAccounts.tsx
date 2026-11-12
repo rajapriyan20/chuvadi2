@@ -630,9 +630,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
     // Type filter
     if (popupFilterType === 'INFLOW') {
-      list = list.filter(t => (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId));
+      list = list.filter(t => (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId) || (t.type === 'EXPENSE' && t.fromAccountId === accId && t.amount < 0));
     } else if (popupFilterType === 'OUTFLOW') {
-      list = list.filter(t => (t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId));
+      list = list.filter(t => (t.type === 'EXPENSE' && t.fromAccountId === accId && t.amount >= 0) || (t.type === 'TRANSFER' && t.fromAccountId === accId));
     } else if (popupFilterType === 'TRANSFER') {
       list = list.filter(t => t.type === 'TRANSFER');
     }
@@ -858,13 +858,17 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         const isTransfer = t.type === 'TRANSFER';
         const amt = Number(t.amount) || 0;
 
+        const isActualCredit = isCredit || (isDebit && amt < 0);
+        const isActualDebit = isDebit && amt >= 0;
+        const displayAmt = Math.abs(amt);
+
         if (!t.disabled) {
-          if (isDebit) {
-            periodDebits += amt;
-            runningBalance -= amt;
-          } else if (isCredit) {
-            periodCredits += amt;
-            runningBalance += amt;
+          if (isActualDebit) {
+            periodDebits += displayAmt;
+            runningBalance -= displayAmt;
+          } else if (isActualCredit) {
+            periodCredits += displayAmt;
+            runningBalance += displayAmt;
           }
         }
 
@@ -876,8 +880,8 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           formatDate(t.date),
           descText,
           t.category || (isTransfer ? 'Transfer' : '-'),
-          isDebit ? formatPdfAmount(amt) : '-',
-          isCredit ? formatPdfAmount(amt) : '-',
+          isActualDebit ? formatPdfAmount(displayAmt) : '-',
+          isActualCredit ? formatPdfAmount(displayAmt) : '-',
           formatPdfAmount(runningBalance)
         ];
 
@@ -1055,12 +1059,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
           const isTransfer = t.type === 'TRANSFER';
           const amt = Number(t.amount) || 0;
 
-          if (isDebit) {
-            totalUnsettledDebits += amt;
-            unsettledBalance -= amt;
-          } else if (isCredit) {
-            totalUnsettledCredits += amt;
-            unsettledBalance += amt;
+          const isActualCredit = isCredit || (isDebit && amt < 0);
+          const isActualDebit = isDebit && amt >= 0;
+          const displayAmt = Math.abs(amt);
+
+          if (isActualDebit) {
+            totalUnsettledDebits += displayAmt;
+            unsettledBalance -= displayAmt;
+          } else if (isActualCredit) {
+            totalUnsettledCredits += displayAmt;
+            unsettledBalance += displayAmt;
           }
 
           const fromAcc = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
@@ -1071,8 +1079,8 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             formatDate(t.date),
             descText,
             t.category || (isTransfer ? 'Transfer' : '-'),
-            isDebit ? formatPdfAmount(amt) : '-',
-            isCredit ? formatPdfAmount(amt) : '-',
+            isActualDebit ? formatPdfAmount(displayAmt) : '-',
+            isActualCredit ? formatPdfAmount(displayAmt) : '-',
             formatPdfAmount(unsettledBalance)
           ];
         });
@@ -3037,14 +3045,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                             className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
                               isParentTransfer
                                 ? parentTransferStyle?.badgeBgClass
-                                : isParentDebit
+                                : (isParentDebit && parent.amount >= 0)
                                 ? 'bg-rose-500/15 text-rose-400'
                                 : 'bg-emerald-500/15 text-emerald-400'
                             }`}
                           >
                             {isParentTransfer ? (
                               <ArrowRightLeft size={15} />
-                            ) : isParentDebit ? (
+                            ) : (isParentDebit && parent.amount >= 0) ? (
                               <ArrowUpRight size={15} />
                             ) : (
                               <ArrowDownLeft size={15} />
@@ -3090,16 +3098,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                 ? 'line-through text-slate-500 opacity-60'
                                 : isParentTransfer
                                 ? parentTransferStyle?.colorClass
-                                : isParentDebit
+                                : (isParentDebit && parent.amount >= 0)
                                 ? 'text-rose-400'
                                 : 'text-emerald-400'
                             }`}
                           >
                             {isParentTransfer 
                               ? `${parentTransferStyle?.sign}${formatCurrency(parent.amount)}` 
-                              : isParentDebit 
+                              : (isParentDebit && parent.amount >= 0) 
                               ? `-${formatCurrency(parent.amount)}` 
-                              : `+${formatCurrency(parent.amount)}`}
+                              : `+${formatCurrency(Math.abs(parent.amount))}`}
                           </div>
                           {parent.disabled && (
                             <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
@@ -3179,16 +3187,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                         ? 'line-through text-slate-500 opacity-60'
                                         : isChildTransfer
                                         ? childTransferStyle?.colorClass
-                                        : isChildDebit
+                                        : (isChildDebit && child.amount >= 0)
                                         ? 'text-rose-400'
                                         : 'text-emerald-400'
                                     }`}
                                   >
                                     {isChildTransfer 
                                       ? `${childTransferStyle?.sign}${formatCurrency(child.amount)}` 
-                                      : isChildDebit 
+                                      : (isChildDebit && child.amount >= 0) 
                                       ? `-${formatCurrency(child.amount)}` 
-                                      : `+${formatCurrency(child.amount)}`}
+                                      : `+${formatCurrency(Math.abs(child.amount))}`}
                                   </div>
                                   {child.disabled && (
                                     <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
@@ -3244,14 +3252,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                 className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center ${
                                   isTransfer
                                     ? transferStyle?.badgeBgClass
-                                    : isDebit
+                                    : (isDebit && txn.amount >= 0)
                                     ? 'bg-rose-500/15 text-rose-400'
                                     : 'bg-emerald-500/15 text-emerald-400'
                                 }`}
                               >
                                 {isTransfer ? (
                                   <ArrowRightLeft size={15} />
-                                ) : isDebit ? (
+                                ) : (isDebit && txn.amount >= 0) ? (
                                   <ArrowUpRight size={15} />
                                 ) : (
                                   <ArrowDownLeft size={15} />
@@ -3292,16 +3300,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                     ? 'line-through text-slate-500 opacity-60'
                                     : isTransfer
                                     ? transferStyle?.colorClass
-                                    : isDebit
+                                    : (isDebit && txn.amount >= 0)
                                     ? 'text-rose-400'
                                     : 'text-emerald-400'
                                 }`}
                               >
                                 {isTransfer 
                                   ? `${transferStyle?.sign}${formatCurrency(txn.amount)}` 
-                                  : isDebit 
+                                  : (isDebit && txn.amount >= 0) 
                                   ? `-${formatCurrency(txn.amount)}` 
-                                  : `+${formatCurrency(txn.amount)}`}
+                                  : `+${formatCurrency(Math.abs(txn.amount))}`}
                               </div>
                               {txn.disabled && (
                                 <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
@@ -3352,14 +3360,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                           isTransfer
                             ? transferStyle?.badgeBgClass
-                            : isDebit
+                            : (isDebit && t.amount >= 0)
                             ? 'bg-rose-500/15 text-rose-400'
                             : 'bg-emerald-500/15 text-emerald-400'
                         }`}
                       >
                         {isTransfer ? (
                           <ArrowRightLeft size={14} />
-                        ) : isDebit ? (
+                        ) : (isDebit && t.amount >= 0) ? (
                           <ArrowUpRight size={14} />
                         ) : (
                           <ArrowDownLeft size={14} />
@@ -3424,16 +3432,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                             ? 'line-through text-slate-500 opacity-60'
                             : isTransfer 
                             ? transferStyle?.colorClass 
-                            : isDebit 
+                            : (isDebit && t.amount >= 0) 
                             ? 'text-rose-400' 
                             : 'text-emerald-400'
                         }`}
                       >
                         {isTransfer 
                           ? `${transferStyle?.sign}${formatCurrency(t.amount)}` 
-                          : isDebit 
+                          : (isDebit && t.amount >= 0) 
                           ? `-${formatCurrency(t.amount)}` 
-                          : `+${formatCurrency(t.amount)}`}
+                          : `+${formatCurrency(Math.abs(t.amount))}`}
                       </div>
                       {t.disabled && (
                         <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">

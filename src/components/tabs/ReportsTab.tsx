@@ -118,7 +118,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       .map(([name, amount]) => ({
         name,
         amount,
-        percentage: exp > 0 ? (amount / exp) * 100 : 0
+        percentage: exp > 0 ? Math.max(0, (amount / exp) * 100) : 0
       }))
       .sort((a, b) => b.amount - a.amount);
 
@@ -157,7 +157,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
   // Top 5 largest expenses (active only)
   const topExpenses = useMemo(() => {
     return transactions
-      .filter(t => t.type === 'EXPENSE' && !t.disabled)
+      .filter(t => t.type === 'EXPENSE' && !t.disabled && t.amount > 0)
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
   }, [transactions]);
@@ -178,7 +178,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     {
       id: 'total-expense',
       label: 'Total Outflow',
-      value: `-${formatCurrency(totalExpense)}`,
+      value: totalExpense < 0 ? `+${formatCurrency(Math.abs(totalExpense))}` : `-${formatCurrency(totalExpense)}`,
       subtext: `${expenseCount} expenses logged`,
       icon: TrendingDown,
       accent: 'rose' as const,

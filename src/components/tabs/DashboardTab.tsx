@@ -248,7 +248,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     {
       id: 'outflow',
       label: 'Monthly Outflow',
-      value: `-${formatCurrency(monthlyExpense)}`,
+      value: monthlyExpense < 0 ? `+${formatCurrency(Math.abs(monthlyExpense))}` : `-${formatCurrency(monthlyExpense)}`,
       subtext: `Net: ${netSavings >= 0 ? '+' : ''}${formatCurrency(netSavings)} (${savingsRate}%)`,
       icon: TrendingDown,
       accent: 'rose' as const,
@@ -911,14 +911,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                           isTransfer
                             ? 'bg-blue-500/15 text-blue-400'
-                            : isExpense
+                            : isExpense && t.amount >= 0
                             ? 'bg-rose-500/15 text-rose-400'
                             : 'bg-emerald-500/15 text-emerald-400'
                         }`}
                       >
                         {isTransfer ? (
                           <ArrowRightLeft size={14} />
-                        ) : isExpense ? (
+                        ) : isExpense && t.amount >= 0 ? (
                           <ArrowUpRight size={14} />
                         ) : (
                           <ArrowDownLeft size={14} />
@@ -954,15 +954,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             ? 'line-through text-slate-500 opacity-60'
                             : isTransfer
                             ? 'text-slate-200'
-                            : isExpense
+                            : isExpense && t.amount >= 0
                             ? 'text-rose-400'
                             : 'text-emerald-400'
                         }`}
                       >
-                        {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
+                        {isTransfer ? '' : (isExpense && t.amount >= 0) ? '-' : '+'}{formatCurrency(isExpense ? Math.abs(t.amount) : t.amount)}
                       </div>
                       <div className="text-[10px] text-slate-500 capitalize flex items-center justify-end gap-1 mt-0.5">
-                        <span>{t.type.toLowerCase()}</span>
+                        <span>{isExpense && t.amount < 0 ? 'cashback' : t.type.toLowerCase()}</span>
                         {t.disabled && (
                           <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                             Disabled

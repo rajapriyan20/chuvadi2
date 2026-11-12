@@ -964,7 +964,7 @@ export const CoaDiagramView: React.FC<CoaDiagramViewProps> = ({
                   ) : (
                     <div className="space-y-1">
                       {selectedAccountTxns.map((txn) => {
-                        const isCredit = txn.type === 'INCOME' || (txn.type === 'TRANSFER' && txn.toAccountId === selectedAccount.id);
+                        const isCredit = txn.type === 'INCOME' || (txn.type === 'TRANSFER' && txn.toAccountId === selectedAccount.id) || (txn.type === 'EXPENSE' && txn.amount < 0);
                         return (
                           <div 
                             key={txn.id}
@@ -981,7 +981,7 @@ export const CoaDiagramView: React.FC<CoaDiagramViewProps> = ({
                               </div>
                             </div>
                             <div className={`font-mono font-bold shrink-0 ${isCredit ? 'text-emerald-400' : 'text-slate-300'}`}>
-                              {isCredit ? '+' : '-'}{formatCurrency(txn.amount)}
+                              {isCredit ? '+' : '-'}{formatCurrency(Math.abs(txn.amount))}
                             </div>
                           </div>
                         );

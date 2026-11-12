@@ -220,7 +220,8 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmt = parseFloat(amount);
-    if (!numAmt || numAmt <= 0) return;
+    if (isNaN(numAmt) || numAmt === 0) return;
+    if (type !== 'EXPENSE' && numAmt < 0) return;
     if (!description.trim()) return;
 
     const resolvedStartDate = initialData?.startDate || computedNextDueDate;

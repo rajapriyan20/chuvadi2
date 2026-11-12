@@ -871,11 +871,11 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                         <div className={`font-mono font-bold ${
                           t.disabled 
                             ? 'line-through text-slate-500 opacity-60' 
-                            : t.type === 'INCOME' 
+                            : (t.type === 'INCOME' || (t.type === 'EXPENSE' && t.amount < 0))
                             ? 'text-emerald-400' 
                             : 'text-rose-400'
                         }`}>
-                          {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                          {(t.type === 'INCOME' || (t.type === 'EXPENSE' && t.amount < 0)) ? '+' : '-'}{formatCurrency(Math.abs(t.amount))}
                         </div>
                         {t.disabled && (
                           <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
@@ -1105,11 +1105,11 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                           <div className={`font-mono font-bold ${
                             t.disabled 
                               ? 'line-through text-slate-500 opacity-60' 
-                              : t.type === 'INCOME' 
+                              : (t.type === 'INCOME' || (t.type === 'EXPENSE' && t.amount < 0))
                               ? 'text-emerald-400' 
                               : 'text-rose-400'
                           }`}>
-                            {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                            {(t.type === 'INCOME' || (t.type === 'EXPENSE' && t.amount < 0)) ? '+' : '-'}{formatCurrency(Math.abs(t.amount))}
                           </div>
                           {t.disabled && (
                             <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
