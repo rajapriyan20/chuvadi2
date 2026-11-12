@@ -253,6 +253,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
     let birthdaysCount = 0;
 
     for (const t of transactions) {
+      if (t.disabled) continue; // Excluded from calendar month totals
       if (t.date && t.date.startsWith(prefix)) {
         if (t.type === 'EXPENSE') exp += t.amount;
         if (t.type === 'INCOME') inc += t.amount;
@@ -866,8 +867,21 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                           <div className="text-[10px] text-slate-400">{t.category}</div>
                         </div>
                       </div>
-                      <div className={`font-mono font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                      <div className="text-right shrink-0 ml-2">
+                        <div className={`font-mono font-bold ${
+                          t.disabled 
+                            ? 'line-through text-slate-500 opacity-60' 
+                            : t.type === 'INCOME' 
+                            ? 'text-emerald-400' 
+                            : 'text-rose-400'
+                        }`}>
+                          {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                        </div>
+                        {t.disabled && (
+                          <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            Disabled
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1087,8 +1101,21 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                             <div className="text-[10px] text-slate-400">{t.category}</div>
                           </div>
                         </div>
-                        <div className={`font-mono font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                        <div className="text-right shrink-0 ml-2">
+                          <div className={`font-mono font-bold ${
+                            t.disabled 
+                              ? 'line-through text-slate-500 opacity-60' 
+                              : t.type === 'INCOME' 
+                              ? 'text-emerald-400' 
+                              : 'text-rose-400'
+                          }`}>
+                            {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
+                          </div>
+                          {t.disabled && (
+                            <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Disabled
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}

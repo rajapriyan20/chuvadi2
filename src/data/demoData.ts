@@ -10,7 +10,8 @@ import {
   MenstrualLog,
   MenstrualCycleSettings,
   MenstrualPeriodRecord,
-  BodyProfileLog 
+  BodyProfileLog,
+  RecurringTransaction 
 } from '../types';
 
 export const DEMO_ACCOUNTS: Account[] = [
@@ -370,5 +371,82 @@ export const DEMO_BODY_PROFILES: BodyProfileLog[] = [
     createdAt: Date.now() - 86400000 * 25
   }
 ];
+
+export const DEMO_RECURRING_TRANSACTIONS: RecurringTransaction[] = [
+  {
+    id: 'demo-rec-1',
+    type: 'EXPENSE',
+    amount: 22000,
+    description: 'Apartment Rent & Maintenance',
+    category: 'Housing',
+    fromAccountId: 'demo-acc-1',
+    frequency: 'MONTHLY',
+    interval: 1,
+    startDate: '2026-01-01',
+    nextDueDate: '2026-12-01',
+    lastPostedDate: '2026-11-01',
+    isActive: true,
+    autoPost: true,
+    notes: 'Transferred via UPI to landlord by 1st of each month',
+    createdAt: Date.now() - 86400000 * 90,
+    updatedAt: Date.now()
+  },
+  {
+    id: 'demo-rec-2',
+    type: 'INCOME',
+    amount: 85000,
+    description: 'Monthly Tech Consulting Salary',
+    category: 'Salary',
+    toAccountId: 'demo-acc-1',
+    frequency: 'MONTHLY',
+    interval: 1,
+    startDate: '2026-01-01',
+    nextDueDate: '2026-12-01',
+    lastPostedDate: '2026-11-01',
+    isActive: true,
+    autoPost: true,
+    notes: 'Direct deposit into HDFC Salary Account',
+    createdAt: Date.now() - 86400000 * 90,
+    updatedAt: Date.now()
+  },
+  {
+    id: 'demo-rec-3',
+    type: 'TRANSFER',
+    amount: 10000,
+    description: 'Nifty 50 Index Fund SIP',
+    category: 'Investment',
+    fromAccountId: 'demo-acc-1',
+    toAccountId: 'demo-acc-2',
+    frequency: 'MONTHLY',
+    interval: 1,
+    startDate: '2026-02-10',
+    nextDueDate: '2026-12-10',
+    lastPostedDate: '2026-11-10',
+    isActive: true,
+    autoPost: true,
+    notes: 'Mutual fund automatic SIP debit',
+    createdAt: Date.now() - 86400000 * 60,
+    updatedAt: Date.now()
+  },
+  {
+    id: 'demo-rec-4',
+    type: 'EXPENSE',
+    amount: 999,
+    description: 'High-Speed Fiber Broadband',
+    category: 'Utilities',
+    fromAccountId: 'demo-acc-3',
+    frequency: 'MONTHLY',
+    interval: 1,
+    startDate: '2026-03-15',
+    nextDueDate: '2026-11-15',
+    lastPostedDate: '2026-10-15',
+    isActive: true,
+    autoPost: true,
+    notes: 'Airtel Xstream Fiber Auto-Pay on Credit Card',
+    createdAt: Date.now() - 86400000 * 45,
+    updatedAt: Date.now()
+  }
+];
+
 
 

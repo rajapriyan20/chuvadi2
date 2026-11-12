@@ -49,6 +49,34 @@ export interface Transaction {
   notes?: string;
   tags?: string[];
   receiptUrl?: string;
+  disabled?: boolean;
+  recurringTransactionId?: string | null;
+  isRecurringGenerated?: boolean;
+}
+
+export type RecurringFrequency = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+
+export interface RecurringTransaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  description: string;
+  category: string;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+  frequency: RecurringFrequency;
+  interval?: number; // e.g., 1 for every month, 2 for every 2 months
+  startDate: string; // ISO YYYY-MM-DD
+  nextDueDate: string; // ISO YYYY-MM-DD
+  lastPostedDate?: string | null; // ISO YYYY-MM-DD
+  endDate?: string | null; // Optional end date
+  isActive: boolean;
+  autoPost?: boolean; // Defaults to true
+  notes?: string;
+  vehicleId?: string | null;
+  isFuel?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface Vehicle {
@@ -156,12 +184,14 @@ export interface GmailExpenseEmail {
   subject: string;
   from: string;
   date: string; // ISO or YYYY-MM-DD
+  time?: string; // HH:mm
   snippet: string;
   bodyText: string;
   timestamp: number;
   // Suggested extracted expense entry
   suggestedAmount?: number;
   suggestedDate?: string;
+  suggestedTime?: string;
   suggestedDescription?: string;
   suggestedCategory?: string;
   suggestedAccountId?: string;

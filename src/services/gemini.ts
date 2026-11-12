@@ -261,7 +261,7 @@ export function generateLocalFinancialAdvice(
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
 
-  const currentMonthTxns = transactions.filter(t => (t.date || '').startsWith(currentMonth));
+  const currentMonthTxns = transactions.filter(t => !t.disabled && (t.date || '').startsWith(currentMonth));
   const totalExpense = currentMonthTxns
     .filter(t => t.type === 'EXPENSE')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);

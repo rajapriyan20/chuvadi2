@@ -43,7 +43,8 @@ import type {
   CalendarEvent,
   MenstrualLog,
   MenstrualPeriodRecord,
-  MenstrualCycleSettings
+  MenstrualCycleSettings,
+  RecurringTransaction
 } from '../types';
 import {
   DEMO_ACCOUNTS,
@@ -56,7 +57,8 @@ import {
   DEMO_CALENDAR_EVENTS,
   DEMO_MENSTRUAL_SETTINGS,
   DEMO_MENSTRUAL_PERIODS,
-  DEMO_MENSTRUAL_LOGS
+  DEMO_MENSTRUAL_LOGS,
+  DEMO_RECURRING_TRANSACTIONS
 } from '../data/demoData';
 import appletConfig from '../../firebase-applet-config.json';
 
@@ -297,6 +299,10 @@ export async function seedUserStarterData(user: User): Promise<void> {
   }
   batch.set(doc(db, 'users', user.uid, 'settings', 'menstrual'), DEMO_MENSTRUAL_SETTINGS);
 
+  for (const rec of DEMO_RECURRING_TRANSACTIONS) {
+    batch.set(doc(db, 'users', user.uid, 'recurring_transactions', rec.id), rec);
+  }
+
   await batch.commit();
 
   // Also update local cache for instant UI refresh
@@ -311,6 +317,7 @@ export async function seedUserStarterData(user: User): Promise<void> {
   setCached(getUserCacheKey('menstrual_periods', user), DEMO_MENSTRUAL_PERIODS);
   setCached(getUserCacheKey('menstrual_logs', user), DEMO_MENSTRUAL_LOGS);
   setCached(getUserCacheKey('menstrual_settings', user), DEMO_MENSTRUAL_SETTINGS);
+  setCached(getUserCacheKey('recurring_transactions', user), DEMO_RECURRING_TRANSACTIONS);
 }
 
 /**
@@ -327,7 +334,8 @@ export async function clearUserData(user: User): Promise<void> {
     'exercise_logs',
     'calendar_events',
     'menstrual_logs',
-    'menstrual_periods'
+    'menstrual_periods',
+    'recurring_transactions'
   ];
 
   for (const colName of collectionsToClear) {
@@ -416,8 +424,8 @@ export async function saveTransactionAtomic(
         }
       }
 
-      // Revert old transaction effects if editing
-      if (resolvedExisting) {
+      // Revert old transaction effects if editing (only if it was not disabled)
+      if (resolvedExisting && !resolvedExisting.disabled) {
         const oldAmt = Number(resolvedExisting.amount) || 0;
         if (resolvedExisting.type === 'EXPENSE' && resolvedExisting.fromAccountId) {
           const acc = accountDocs.get(resolvedExisting.fromAccountId);
@@ -437,22 +445,24 @@ export async function saveTransactionAtomic(
         }
       }
 
-      // Apply new transaction effects
+      // Apply new transaction effects (only if not disabled)
       const newAmt = Number(txnData.amount) || 0;
-      if (txnData.type === 'EXPENSE' && txnData.fromAccountId) {
-        const acc = accountDocs.get(txnData.fromAccountId);
-        if (acc) acc.data.balance = (acc.data.balance || 0) - newAmt;
-      } else if (txnData.type === 'INCOME' && txnData.toAccountId) {
-        const acc = accountDocs.get(txnData.toAccountId);
-        if (acc) acc.data.balance = (acc.data.balance || 0) + newAmt;
-      } else if (txnData.type === 'TRANSFER') {
-        if (txnData.fromAccountId) {
+      if (!txnData.disabled) {
+        if (txnData.type === 'EXPENSE' && txnData.fromAccountId) {
           const acc = accountDocs.get(txnData.fromAccountId);
           if (acc) acc.data.balance = (acc.data.balance || 0) - newAmt;
-        }
-        if (txnData.toAccountId) {
+        } else if (txnData.type === 'INCOME' && txnData.toAccountId) {
           const acc = accountDocs.get(txnData.toAccountId);
           if (acc) acc.data.balance = (acc.data.balance || 0) + newAmt;
+        } else if (txnData.type === 'TRANSFER') {
+          if (txnData.fromAccountId) {
+            const acc = accountDocs.get(txnData.fromAccountId);
+            if (acc) acc.data.balance = (acc.data.balance || 0) - newAmt;
+          }
+          if (txnData.toAccountId) {
+            const acc = accountDocs.get(txnData.toAccountId);
+            if (acc) acc.data.balance = (acc.data.balance || 0) + newAmt;
+          }
         }
       }
 
@@ -533,26 +543,9 @@ export async function deleteTransactionAtomic(txn: Transaction, user?: User | nu
     await runTransaction(db, async (t) => {
       const amt = Number(txn.amount) || 0;
       
-      if (txn.type === 'EXPENSE' && txn.fromAccountId) {
-        const accRef = doc(db, 'users', uid, 'accounts', txn.fromAccountId);
-        const snap = await t.get(accRef);
-        if (snap.exists()) {
-          t.update(accRef, { 
-            balance: (snap.data().balance || 0) + amt,
-            updatedAt: Date.now()
-          });
-        }
-      } else if (txn.type === 'INCOME' && txn.toAccountId) {
-        const accRef = doc(db, 'users', uid, 'accounts', txn.toAccountId);
-        const snap = await t.get(accRef);
-        if (snap.exists()) {
-          t.update(accRef, { 
-            balance: (snap.data().balance || 0) - amt,
-            updatedAt: Date.now()
-          });
-        }
-      } else if (txn.type === 'TRANSFER') {
-        if (txn.fromAccountId) {
+      // Only revert account balances if the transaction was not disabled
+      if (!txn.disabled) {
+        if (txn.type === 'EXPENSE' && txn.fromAccountId) {
           const accRef = doc(db, 'users', uid, 'accounts', txn.fromAccountId);
           const snap = await t.get(accRef);
           if (snap.exists()) {
@@ -561,8 +554,7 @@ export async function deleteTransactionAtomic(txn: Transaction, user?: User | nu
               updatedAt: Date.now()
             });
           }
-        }
-        if (txn.toAccountId) {
+        } else if (txn.type === 'INCOME' && txn.toAccountId) {
           const accRef = doc(db, 'users', uid, 'accounts', txn.toAccountId);
           const snap = await t.get(accRef);
           if (snap.exists()) {
@@ -570,6 +562,27 @@ export async function deleteTransactionAtomic(txn: Transaction, user?: User | nu
               balance: (snap.data().balance || 0) - amt,
               updatedAt: Date.now()
             });
+          }
+        } else if (txn.type === 'TRANSFER') {
+          if (txn.fromAccountId) {
+            const accRef = doc(db, 'users', uid, 'accounts', txn.fromAccountId);
+            const snap = await t.get(accRef);
+            if (snap.exists()) {
+              t.update(accRef, { 
+                balance: (snap.data().balance || 0) + amt,
+                updatedAt: Date.now()
+              });
+            }
+          }
+          if (txn.toAccountId) {
+            const accRef = doc(db, 'users', uid, 'accounts', txn.toAccountId);
+            const snap = await t.get(accRef);
+            if (snap.exists()) {
+              t.update(accRef, { 
+                balance: (snap.data().balance || 0) - amt,
+                updatedAt: Date.now()
+              });
+            }
           }
         }
       }
@@ -1015,6 +1028,49 @@ export async function saveMenstrualSettings(settings: MenstrualCycleSettings, us
   setCached(cacheKey, settings);
 }
 
+export async function saveRecurringTransaction(
+  item: Omit<RecurringTransaction, 'id'> & { id?: string },
+  user?: User | null
+): Promise<string> {
+  const uid = resolveUserUid(user);
+  const id = item.id || (uid ? doc(collection(db, 'users', uid, 'recurring_transactions')).id : `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const payload: RecurringTransaction = {
+    ...item,
+    id,
+    amount: Number(item.amount) || 0,
+    interval: Math.max(1, item.interval || 1),
+    isActive: item.isActive !== false,
+    autoPost: item.autoPost !== false,
+    createdAt: item.createdAt || Date.now(),
+    updatedAt: Date.now()
+  };
+
+  const cacheKey = getUserCacheKey('recurring_transactions', user);
+  const current = getCached<RecurringTransaction[]>(cacheKey, []);
+  const idx = current.findIndex(r => r.id === id);
+  const nextList = idx >= 0 ? current.map(r => r.id === id ? payload : r) : [...current, payload];
+  setCached(cacheKey, nextList);
+
+  if (uid) {
+    const ref = doc(db, 'users', uid, 'recurring_transactions', id);
+    await setDoc(ref, payload, { merge: true });
+  }
+
+  return id;
+}
+
+export async function deleteRecurringTransaction(id: string, user?: User | null): Promise<void> {
+  const uid = resolveUserUid(user);
+  const cacheKey = getUserCacheKey('recurring_transactions', user);
+  const current = getCached<RecurringTransaction[]>(cacheKey, []);
+  setCached(cacheKey, current.filter(r => r.id !== id));
+
+  if (uid) {
+    const ref = doc(db, 'users', uid, 'recurring_transactions', id);
+    await deleteDoc(ref);
+  }
+}
+
 // ==========================================
 // REAL-TIME FIRESTORE LISTENERS (USER SCOPED)
 // ==========================================
@@ -1262,6 +1318,28 @@ export function subscribeToMenstrualSettings(user: User | null, onUpdate: (setti
     }
   }, (err) => {
     console.warn('Menstrual settings snapshot error:', err);
+  });
+}
+
+export function subscribeToRecurringTransactions(user: User | null, onUpdate: (items: RecurringTransaction[]) => void) {
+  const cacheKey = getUserCacheKey('recurring_transactions', user);
+  const cached = getCached<RecurringTransaction[]>(cacheKey, []);
+  if (cached.length > 0) onUpdate(cached);
+
+  const uid = resolveUserUid(user);
+  if (!uid) {
+    onUpdate(cached);
+    return () => {};
+  }
+
+  const q = query(collection(db, 'users', uid, 'recurring_transactions'), orderBy('nextDueDate', 'asc'));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as RecurringTransaction));
+    setCached(cacheKey, data);
+    onUpdate(data);
+  }, (err) => {
+    console.warn('Recurring transactions snapshot error:', err);
+    onUpdate(getCached<RecurringTransaction[]>(cacheKey, []));
   });
 }
 

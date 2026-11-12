@@ -539,13 +539,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
       });
   }, [selectedAccountForPopup, transactions]);
 
-  // Compute total credits, total debits, and net transaction total for this account
+  // Compute total credits, total debits, and net transaction total for this account (active only)
   const { totalCredits, totalDebits, netTransactions } = useMemo(() => {
     if (!selectedAccountForPopup) return { totalCredits: 0, totalDebits: 0, netTransactions: 0 };
     const accId = selectedAccountForPopup.id;
     let credits = 0;
     let debits = 0;
     for (const t of selectedAccountTxns) {
+      if (t.disabled) continue; // Excluded from account balance totals
       if ((t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId)) {
         credits += Number(t.amount) || 0;
       } else if ((t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId)) {
@@ -584,13 +585,15 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
     let current = openingAccountBalance;
     for (const t of chronologicalTxns) {
-      const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId);
-      const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId);
-      const amt = Number(t.amount) || 0;
-      if (isCredit) {
-        current += amt;
-      } else if (isDebit) {
-        current -= amt;
+      if (!t.disabled) {
+        const isCredit = (t.type === 'INCOME' && t.toAccountId === accId) || (t.type === 'TRANSFER' && t.toAccountId === accId);
+        const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === accId) || (t.type === 'TRANSFER' && t.fromAccountId === accId);
+        const amt = Number(t.amount) || 0;
+        if (isCredit) {
+          current += amt;
+        } else if (isDebit) {
+          current -= amt;
+        }
       }
       map.set(t.id, current);
     }
@@ -804,6 +807,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         t.date < sDate
       );
       for (const t of priorTxns) {
+        if (t.disabled) continue;
         if ((t.type === 'INCOME' && t.toAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.toAccountId === selectedAccountForPopup.id)) {
           periodOpening += Number(t.amount) || 0;
         } else if ((t.type === 'EXPENSE' && t.fromAccountId === selectedAccountForPopup.id) || (t.type === 'TRANSFER' && t.fromAccountId === selectedAccountForPopup.id)) {
@@ -854,12 +858,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         const isTransfer = t.type === 'TRANSFER';
         const amt = Number(t.amount) || 0;
 
-        if (isDebit) {
-          periodDebits += amt;
-          runningBalance -= amt;
-        } else if (isCredit) {
-          periodCredits += amt;
-          runningBalance += amt;
+        if (!t.disabled) {
+          if (isDebit) {
+            periodDebits += amt;
+            runningBalance -= amt;
+          } else if (isCredit) {
+            periodCredits += amt;
+            runningBalance += amt;
+          }
         }
 
         const fromAcc = accounts.find(a => a.id === t.fromAccountId)?.name || 'Source';
@@ -3073,7 +3079,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                         <div className="text-right shrink-0">
                           <div
                             className={`text-sm font-bold font-mono tabular-nums ${
-                              isParentTransfer
+                              parent.disabled
+                                ? 'line-through text-slate-500 opacity-60'
+                                : isParentTransfer
                                 ? parentTransferStyle?.colorClass
                                 : isParentDebit
                                 ? 'text-rose-400'
@@ -3086,6 +3094,11 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                               ? `-${formatCurrency(parent.amount)}` 
                               : `+${formatCurrency(parent.amount)}`}
                           </div>
+                          {parent.disabled && (
+                            <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Disabled
+                            </span>
+                          )}
                           {parentRunningBal !== undefined && (
                             <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                               Bal: {formatCurrency(parentRunningBal)}
@@ -3155,7 +3168,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                 <div className="text-right shrink-0">
                                   <div
                                     className={`text-xs font-bold font-mono tabular-nums ${
-                                      isChildTransfer
+                                      child.disabled
+                                        ? 'line-through text-slate-500 opacity-60'
+                                        : isChildTransfer
                                         ? childTransferStyle?.colorClass
                                         : isChildDebit
                                         ? 'text-rose-400'
@@ -3168,6 +3183,11 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                       ? `-${formatCurrency(child.amount)}` 
                                       : `+${formatCurrency(child.amount)}`}
                                   </div>
+                                  {child.disabled && (
+                                    <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                      Disabled
+                                    </span>
+                                  )}
                                   {childRunningBal !== undefined && (
                                     <div className="text-[10px] font-mono text-slate-500 font-medium tabular-nums mt-0.5">
                                       Bal: {formatCurrency(childRunningBal)}
@@ -3261,7 +3281,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                             <div className="text-right shrink-0 ml-3">
                               <div
                                 className={`text-xs font-bold font-mono tabular-nums ${
-                                  isTransfer
+                                  txn.disabled
+                                    ? 'line-through text-slate-500 opacity-60'
+                                    : isTransfer
                                     ? transferStyle?.colorClass
                                     : isDebit
                                     ? 'text-rose-400'
@@ -3274,6 +3296,11 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                                   ? `-${formatCurrency(txn.amount)}` 
                                   : `+${formatCurrency(txn.amount)}`}
                               </div>
+                              {txn.disabled && (
+                                <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                  Disabled
+                                </span>
+                              )}
                               {runningBal !== undefined && (
                                 <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                                   Bal: {formatCurrency(runningBal)}
@@ -3386,7 +3413,9 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                     <div className="text-right shrink-0 ml-3">
                       <div
                         className={`text-sm sm:text-base font-bold font-mono tabular-nums ${
-                          isTransfer 
+                          t.disabled
+                            ? 'line-through text-slate-500 opacity-60'
+                            : isTransfer 
                             ? transferStyle?.colorClass 
                             : isDebit 
                             ? 'text-rose-400' 
@@ -3399,6 +3428,11 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
                           ? `-${formatCurrency(t.amount)}` 
                           : `+${formatCurrency(t.amount)}`}
                       </div>
+                      {t.disabled && (
+                        <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          Disabled
+                        </span>
+                      )}
                       {runningBal !== undefined && (
                         <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                           Bal: {formatCurrency(runningBal)}

@@ -46,11 +46,13 @@ const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
     subject: 'Order Delivered: Swiggy #8921',
     from: 'no-reply@swiggy.in',
     date: new Date().toISOString().split('T')[0],
+    time: '13:45',
     snippet: 'Your order #8921 from Paradise Biryani was delivered. Paid ₹540 via UPI.',
     bodyText: 'Your order #8921 from Paradise Biryani was delivered. Paid ₹540 via UPI.',
-    timestamp: Date.now(),
+    timestamp: Date.now() - 3600000 * 2,
     suggestedAmount: 540,
     suggestedDate: new Date().toISOString().split('T')[0],
+    suggestedTime: '13:45',
     suggestedDescription: 'Swiggy - Paradise Biryani #8921',
     suggestedCategory: 'Food & Dining',
     suggestedType: 'EXPENSE',
@@ -62,11 +64,13 @@ const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
     subject: 'Transaction Alert: Shell Fuel Station',
     from: 'alerts@hdfcbank.net',
     date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-    snippet: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI.',
-    bodyText: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI.',
+    time: '18:20',
+    snippet: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI at 18:20.',
+    bodyText: 'INR 1,650.00 spent on Card ending 4091 at SHELL VELACHERY CHENNAI at 18:20.',
     timestamp: Date.now() - 86400000 * 2,
     suggestedAmount: 1650,
     suggestedDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+    suggestedTime: '18:20',
     suggestedDescription: 'Shell Fuel Station Velachery',
     suggestedCategory: 'Fuel',
     suggestedType: 'EXPENSE',
@@ -78,11 +82,13 @@ const DEMO_GMAIL_EXPENSES: GmailExpenseEmail[] = [
     subject: 'Amazon.in: Order Confirmation',
     from: 'auto-confirm@amazon.in',
     date: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0],
+    time: '11:15',
     snippet: 'Your order of Motorcycle Chain Lube & Cleaner Kit has shipped. Total: ₹899.',
     bodyText: 'Your order of Motorcycle Chain Lube & Cleaner Kit has shipped. Total: ₹899.',
     timestamp: Date.now() - 86400000 * 4,
     suggestedAmount: 899,
     suggestedDate: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0],
+    suggestedTime: '11:15',
     suggestedDescription: 'Amazon India - Motorcycle Chain Lube & Cleaner',
     suggestedCategory: 'Maintenance',
     suggestedType: 'EXPENSE',
@@ -216,6 +222,16 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
     const resolvedCategory = liveSuggestions.suggestedCategory || email.suggestedCategory || 'Food & Dining';
     const resolvedDescription = liveSuggestions.suggestedDescription || email.suggestedDescription || email.subject;
 
+    const resolvedTime = email.suggestedTime || email.time || (() => {
+      if (email.timestamp) {
+        const d = new Date(email.timestamp);
+        if (!isNaN(d.getTime())) {
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+      }
+      return '00:00';
+    })();
+
     onOpenNewTxnWithDefaults({
       type: email.suggestedType || 'EXPENSE',
       amount: email.suggestedAmount || 0,
@@ -223,7 +239,9 @@ export const InboxReviewTab: React.FC<InboxReviewTabProps> = ({
       category: resolvedCategory,
       fromAccountId: resolvedAccountId,
       date: email.suggestedDate || email.date,
-      notes: `Imported from Gmail email "${email.subject}" (${email.from})`
+      time: resolvedTime,
+      timestamp: email.timestamp || Date.now(),
+      notes: resolvedDescription
     }, email.id);
   };
 

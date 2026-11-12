@@ -94,6 +94,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     const expenseDates = new Set<string>();
 
     for (const t of transactions) {
+      if (t.disabled) continue; // Excluded from reports and expense analytics
       if (t.type === 'EXPENSE') {
         exp += t.amount;
         expCount++;
@@ -153,10 +154,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     return { totalNetWorth: nw, liquidBalance: liquid };
   }, [accounts]);
 
-  // Top 5 largest expenses
+  // Top 5 largest expenses (active only)
   const topExpenses = useMemo(() => {
     return transactions
-      .filter(t => t.type === 'EXPENSE')
+      .filter(t => t.type === 'EXPENSE' && !t.disabled)
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
   }, [transactions]);

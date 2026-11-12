@@ -950,7 +950,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <div className="text-right shrink-0 ml-2">
                       <div
                         className={`text-xs font-bold font-mono ${
-                          isTransfer
+                          t.disabled
+                            ? 'line-through text-slate-500 opacity-60'
+                            : isTransfer
                             ? 'text-slate-200'
                             : isExpense
                             ? 'text-rose-400'
@@ -959,7 +961,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       >
                         {isTransfer ? '' : isExpense ? '-' : '+'}{formatCurrency(t.amount)}
                       </div>
-                      <div className="text-[10px] text-slate-500 capitalize">{t.type.toLowerCase()}</div>
+                      <div className="text-[10px] text-slate-500 capitalize flex items-center justify-end gap-1 mt-0.5">
+                        <span>{t.type.toLowerCase()}</span>
+                        {t.disabled && (
+                          <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

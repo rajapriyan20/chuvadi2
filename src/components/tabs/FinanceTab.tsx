@@ -23,7 +23,8 @@ import {
   TrendingUp,
   Calendar,
   Fuel,
-  CreditCard
+  CreditCard,
+  Repeat
 } from 'lucide-react';
 import { 
   formatCurrency, 
@@ -33,10 +34,11 @@ import {
   getAllExpenseCategories,
   getTransferFlowStyle
 } from '../../utils/formatters';
-import type { Account, Transaction, Entity, AccountType, Vehicle } from '../../types';
+import type { Account, Transaction, Entity, AccountType, Vehicle, RecurringTransaction } from '../../types';
 import type { User } from 'firebase/auth';
 import { ChartOfAccounts } from '../finance/ChartOfAccounts';
 import { InboxReviewTab } from '../finance/InboxReviewTab';
+import { RecurringTab } from '../finance/RecurringTab';
 import { ReportsTab } from './ReportsTab';
 
 export type TransactionSortOption = 
@@ -84,6 +86,7 @@ interface FinanceTabProps {
   transactions: Transaction[];
   vehicles?: Vehicle[];
   entities: Entity[];
+  recurringTransactions?: RecurringTransaction[];
   onOpenNewAccount: (defaultType?: AccountType) => void;
   onEditAccount: (account: Account) => void;
   onSaveAccount: (account: Account) => Promise<void>;
@@ -94,10 +97,16 @@ interface FinanceTabProps {
   onOpenNewEntity: () => void;
   onDeleteEntity: (id: string) => Promise<void>;
   onOpenNewTxnWithDefaults?: (defaults: Partial<Transaction>, emailId?: string) => void;
+  onOpenCreateRecurringModal?: () => void;
+  onOpenEditRecurringModal?: (rule: RecurringTransaction) => void;
+  onToggleRecurringActive?: (rule: RecurringTransaction) => Promise<void>;
+  onDeleteRecurringRule?: (id: string) => Promise<void>;
+  onPostRecurringNow?: (rule: RecurringTransaction) => Promise<void>;
+  onRunRecurringCheck?: () => Promise<void>;
   isGuestMode?: boolean;
   user?: User | null;
-  activeSubTab?: 'coa' | 'transactions' | 'reports' | 'inbox';
-  onSubTabChange?: (tab: 'coa' | 'transactions' | 'reports' | 'inbox') => void;
+  activeSubTab?: 'coa' | 'transactions' | 'recurring' | 'reports' | 'inbox';
+  onSubTabChange?: (tab: 'coa' | 'transactions' | 'recurring' | 'reports' | 'inbox') => void;
 }
 
 export const FinanceTab: React.FC<FinanceTabProps> = ({
@@ -105,6 +114,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   transactions,
   vehicles = [],
   entities: _entities,
+  recurringTransactions = [],
   onOpenNewAccount,
   onEditAccount,
   onSaveAccount,
@@ -115,15 +125,21 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
   onOpenNewEntity: _onOpenNewEntity,
   onDeleteEntity: _onDeleteEntity,
   onOpenNewTxnWithDefaults,
+  onOpenCreateRecurringModal,
+  onOpenEditRecurringModal,
+  onToggleRecurringActive,
+  onDeleteRecurringRule,
+  onPostRecurringNow,
+  onRunRecurringCheck,
   isGuestMode = false,
   user,
   activeSubTab,
   onSubTabChange
 }) => {
   // Subtab switcher state
-  const [internalSubTab, setInternalSubTab] = useState<'coa' | 'transactions' | 'reports' | 'inbox'>('coa');
+  const [internalSubTab, setInternalSubTab] = useState<'coa' | 'transactions' | 'recurring' | 'reports' | 'inbox'>('coa');
   const subTab = activeSubTab || internalSubTab;
-  const setSubTab = (t: 'coa' | 'transactions' | 'reports' | 'inbox') => {
+  const setSubTab = (t: 'coa' | 'transactions' | 'recurring' | 'reports' | 'inbox') => {
     setInternalSubTab(t);
     onSubTabChange?.(t);
   };
@@ -199,12 +215,13 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
     });
   }, [transactions, typeFilter, categoryFilter, selectedAccountId, searchTerm, sortBy]);
 
-  // Summary Metrics computed from filtered transactions
+  // Summary Metrics computed from filtered transactions (excluding disabled)
   const summaryMetrics = useMemo(() => {
     let expenses = 0;
     let income = 0;
     let transfers = 0;
     for (const t of filteredTransactions) {
+      if (t.disabled) continue; // Excluded from ledger balance calculations
       if (t.type === 'EXPENSE') expenses += (t.amount || 0);
       else if (t.type === 'INCOME') income += (t.amount || 0);
       else if (t.type === 'TRANSFER') transfers += (t.amount || 0);
@@ -242,6 +259,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
       let dayIncome = 0;
       let dayTransfers = 0;
       for (const item of items) {
+        if (item.disabled) continue; // Excluded from daily totals
         if (item.type === 'EXPENSE') dayExpenses += (item.amount || 0);
         else if (item.type === 'INCOME') dayIncome += (item.amount || 0);
         else if (item.type === 'TRANSFER') dayTransfers += (item.amount || 0);
@@ -298,6 +316,25 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <span>Transactions</span>
           </button>
           <button
+            id="finance-subtab-recurring-btn"
+            onClick={() => setSubTab('recurring')}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+              subTab === 'recurring'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            <Repeat size={14} />
+            <span>Recurring</span>
+            {recurringTransactions && recurringTransactions.length > 0 && (
+              <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-mono ${
+                subTab === 'recurring' ? 'bg-slate-950/25 text-slate-950 font-bold' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {recurringTransactions.length}
+              </span>
+            )}
+          </button>
+          <button
             id="finance-subtab-reports-btn"
             onClick={() => setSubTab('reports')}
             className={`flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
@@ -326,6 +363,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         <div className="text-xs text-slate-400 hidden lg:block">
           {subTab === 'coa' && <span>Categorised, Table & PowerBI Decomposition Views</span>}
           {subTab === 'transactions' && <span>Chronological Ledger, High-Density Table & Financial Auditing</span>}
+          {subTab === 'recurring' && <span>Scheduled Subscriptions, Inflows & Automated Posting Engine</span>}
           {subTab === 'reports' && <span>Visual Charts, Category Cash Flow & Analytics</span>}
           {subTab === 'inbox' && <span>Gmail Expense Extraction & Rule Filters</span>}
         </div>
@@ -790,7 +828,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                               <div className="text-right shrink-0 ml-3">
                                 <div
                                   className={`text-sm font-bold font-mono tabular-nums ${
-                                    isTransfer 
+                                    t.disabled
+                                      ? 'line-through text-slate-500 opacity-60'
+                                      : isTransfer 
                                       ? transferStyle?.colorClass 
                                       : isExpense 
                                       ? 'text-rose-400' 
@@ -803,8 +843,13 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                     ? `-${formatCurrency(t.amount)}` 
                                     : `+${formatCurrency(t.amount)}`}
                                 </div>
-                                <div className="text-[10px] text-slate-500 capitalize">
-                                  {t.type.toLowerCase()}
+                                <div className="text-[10px] text-slate-500 capitalize flex items-center justify-end gap-1 mt-0.5">
+                                  <span>{t.type.toLowerCase()}</span>
+                                  {t.disabled && (
+                                    <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                      Disabled
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -915,7 +960,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                             <td className="py-2.5 px-3.5 whitespace-nowrap text-right font-mono font-bold tabular-nums">
                               <span
                                 className={
-                                  isTransfer
+                                  t.disabled
+                                    ? 'line-through text-slate-500 opacity-60'
+                                    : isTransfer
                                     ? transferStyle?.colorClass
                                     : isExpense
                                     ? 'text-rose-400'
@@ -928,6 +975,11 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
                                   ? `-${formatCurrency(t.amount)}` 
                                   : `+${formatCurrency(t.amount)}`}
                               </span>
+                              {t.disabled && (
+                                <span className="ml-1.5 text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                  Disabled
+                                </span>
+                              )}
                             </td>
 
                             {/* Action / Inspect */}
@@ -956,7 +1008,25 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         </div>
       )}
 
-      {/* View 3: Reports & Analytics Tab */}
+      {/* View 3: Recurring Transactions Command Center */}
+      {subTab === 'recurring' && (
+        <div className="pt-1">
+          <RecurringTab
+            recurringTransactions={recurringTransactions}
+            accounts={accounts}
+            allTransactions={transactions}
+            onOpenCreateModal={onOpenCreateRecurringModal || (() => {})}
+            onOpenEditModal={onOpenEditRecurringModal || (() => {})}
+            onToggleActive={onToggleRecurringActive || (async () => {})}
+            onDeleteRule={onDeleteRecurringRule || (async () => {})}
+            onPostNow={onPostRecurringNow || (async () => {})}
+            onRunAutoPostCheck={onRunRecurringCheck || (async () => {})}
+            onSelectTxn={onSelectTxn}
+          />
+        </div>
+      )}
+
+      {/* View 4: Reports & Analytics Tab */}
       {subTab === 'reports' && (
         <div className="pt-2">
           <ReportsTab

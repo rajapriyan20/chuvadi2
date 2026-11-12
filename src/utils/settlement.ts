@@ -48,8 +48,8 @@ export const getSettlementStatus = (
   if (txn.mappedTransactionId) {
     const parent = allTxns.find(t => t.id === txn.mappedTransactionId);
     if (parent) {
-      // Calculate parent's overall settlement
-      const siblingChildren = allTxns.filter(t => t.mappedTransactionId === parent.id);
+      // Calculate parent's overall settlement (excluding disabled children)
+      const siblingChildren = allTxns.filter(t => t.mappedTransactionId === parent.id && !t.disabled);
       const totalSettledAgainstParent = siblingChildren.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
       const diff = Math.abs(parent.amount - totalSettledAgainstParent);
       const isParentSettled = totalSettledAgainstParent > 0 && diff <= tolerance;
@@ -75,7 +75,7 @@ export const getSettlementStatus = (
   }
 
   // Case 2: Primary transaction (may have 0 or more child settling transactions mapped to it)
-  const childTxns = allTxns.filter(t => t.mappedTransactionId === txn.id);
+  const childTxns = allTxns.filter(t => t.mappedTransactionId === txn.id && !t.disabled);
   const totalSettled = childTxns.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
   if (childTxns.length > 0) {
@@ -119,8 +119,9 @@ export const getUnsettledTransactionsForAccount = (
 ): UnsettledTransactionItem[] => {
   if (!accountId) return [];
 
-  // Find all transactions that touched this account
+  // Find all transactions that touched this account (excluding disabled and child-mapped)
   const accountTxns = allTxns.filter(t => 
+    !t.disabled &&
     (t.fromAccountId === accountId || t.toAccountId === accountId) &&
     t.id !== excludeTxnId &&
     !t.mappedTransactionId // Only primary transactions can be mapped to

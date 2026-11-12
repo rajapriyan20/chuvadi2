@@ -5,6 +5,7 @@ import {
   CreditCard, 
   Tag, 
   Edit3, 
+  Clock, 
   AlertCircle,
   Settings as SettingsIcon,
   Check,
@@ -249,6 +250,15 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
                         <Calendar size={11} />
                         {formatDate(email.date)}
                       </span>
+                      {(email.suggestedTime || email.time) && (
+                        <>
+                          <span>•</span>
+                          <span className="flex items-center gap-1 text-slate-400 font-mono text-[10px]">
+                            <Clock size={11} className="text-slate-500" />
+                            {email.suggestedTime || email.time}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -348,7 +358,7 @@ export const ReviewTab: React.FC<ReviewTabProps> = ({
             <div className="p-6 space-y-3 overflow-y-auto max-h-[70vh] text-xs">
               <div className="text-[11px] text-slate-400 space-y-1">
                 <div><strong>From:</strong> {selectedEmailForPreview.from}</div>
-                <div><strong>Date:</strong> {selectedEmailForPreview.date}</div>
+                <div><strong>Date:</strong> {selectedEmailForPreview.date} {(selectedEmailForPreview.suggestedTime || selectedEmailForPreview.time) ? `at ${selectedEmailForPreview.suggestedTime || selectedEmailForPreview.time}` : ''}</div>
               </div>
               <div>
                 <strong className="text-slate-300 block mb-1">Snippet:</strong>

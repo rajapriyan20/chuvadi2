@@ -11,6 +11,9 @@ import {
   subscribeToMenstrualLogs,
   subscribeToMenstrualPeriods,
   subscribeToMenstrualSettings,
+  subscribeToRecurringTransactions,
+  saveRecurringTransaction,
+  deleteRecurringTransaction,
   saveTransactionAtomic,
   deleteTransactionAtomic,
   saveAccount,
@@ -69,11 +72,13 @@ import {
   DEMO_MENSTRUAL_SETTINGS,
   DEMO_MENSTRUAL_PERIODS,
   DEMO_MENSTRUAL_LOGS,
-  DEMO_BODY_PROFILES
+  DEMO_BODY_PROFILES,
+  DEMO_RECURRING_TRANSACTIONS
 } from './data/demoData';
 
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
+import { RecurringModal } from './components/modals/RecurringModal';
 import { AccountModal } from './components/modals/AccountModal';
 import { PassbookModal } from './components/modals/PassbookModal';
 import { VehicleModal } from './components/modals/VehicleModal';
@@ -97,6 +102,7 @@ import {
   type NotificationSettings,
   type AppNotification
 } from './services/notificationService';
+import { processDueRecurringTransactions, computeNextDueDate } from './services/recurring';
 import { ChuvadiLogo } from './components/ChuvadiLogo';
 
 // Components & Tabs
@@ -110,7 +116,7 @@ import { ExerciseLogView } from './components/exercise/ExerciseLogView';
 import { CalendarTab } from './components/tabs/CalendarTab';
 import { MenstrualTrackerTab } from './components/tabs/MenstrualTrackerTab';
 
-import { getDaysRemaining } from './utils/formatters';
+import { getDaysRemaining, getTodayLocalDateString } from './utils/formatters';
 import type { 
   ActiveTab, 
   Account, 
@@ -125,7 +131,8 @@ import type {
   MenstrualPeriodRecord,
   MenstrualCycleSettings,
   BodyProfileLog,
-  TabVisibilityMap
+  TabVisibilityMap,
+  RecurringTransaction
 } from './types';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { triggerBackNavigation } from './utils/backNavigation';
@@ -191,7 +198,7 @@ export function App() {
     }
     return 'dashboard';
   });
-  const [financeSubTab, setFinanceSubTab] = useState<'coa' | 'transactions' | 'reports' | 'inbox'>('coa');
+  const [financeSubTab, setFinanceSubTab] = useState<'coa' | 'transactions' | 'recurring' | 'reports' | 'inbox'>('coa');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState<boolean>(false);
 
   const handleSelectTab = (tab: ActiveTab) => {
@@ -217,6 +224,7 @@ export function App() {
   // Domain State (Isolated: Demo data in Guest Mode, User-scoped Firestore in Auth Mode)
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehicleLogs, setVehicleLogs] = useState<VehicleLog[]>([]);
   const [todos, setTodos] = useState<TodoNote[]>([]);
@@ -244,6 +252,10 @@ export function App() {
   const [isTxnModalOpen, setIsTxnModalOpen] = useState(false);
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
   const [pendingEmailImportId, setPendingEmailImportId] = useState<string | null>(null);
+
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
+  const [editingRecurringRule, setEditingRecurringRule] = useState<RecurringTransaction | null>(null);
+  const [recurringPrefillDefaults, setRecurringPrefillDefaults] = useState<Partial<RecurringTransaction> | null>(null);
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -291,6 +303,7 @@ export function App() {
   // Global modal lock to completely prevent background page scroll bleed
   const isAnyGlobalModalOpen = Boolean(
     isTxnModalOpen ||
+    isRecurringModalOpen ||
     isAccountModalOpen ||
     isPassbookOpen ||
     isVehicleModalOpen ||
@@ -358,6 +371,12 @@ export function App() {
     if (isAccountModalOpen) {
       setIsAccountModalOpen(false);
       setEditingAccount(null);
+      return true;
+    }
+    if (isRecurringModalOpen) {
+      setIsRecurringModalOpen(false);
+      setEditingRecurringRule(null);
+      setRecurringPrefillDefaults(null);
       return true;
     }
     if (isTxnModalOpen) {
@@ -577,6 +596,7 @@ export function App() {
 
     const unsubAccounts = subscribeToAccounts(user, setAccounts);
     const unsubTxns = subscribeToTransactions(user, setTransactions);
+    const unsubRecurring = subscribeToRecurringTransactions(user, setRecurringTransactions);
     const unsubVehicles = subscribeToVehicles(user, setVehicles);
     const unsubLogs = subscribeToVehicleLogs(user, setVehicleLogs);
     const unsubTodos = subscribeToTodos(user, setTodos);
@@ -590,6 +610,7 @@ export function App() {
     return () => {
       unsubAccounts();
       unsubTxns();
+      unsubRecurring();
       unsubVehicles();
       unsubLogs();
       unsubTodos();
@@ -607,6 +628,7 @@ export function App() {
     if (guestMode && !user) {
       setAccounts(JSON.parse(JSON.stringify(DEMO_ACCOUNTS)));
       setTransactions(JSON.parse(JSON.stringify(DEMO_TRANSACTIONS)));
+      setRecurringTransactions(JSON.parse(JSON.stringify(DEMO_RECURRING_TRANSACTIONS)));
       setVehicles(JSON.parse(JSON.stringify(DEMO_VEHICLES)));
       setVehicleLogs(JSON.parse(JSON.stringify(DEMO_VEHICLE_LOGS)));
       setTodos(JSON.parse(JSON.stringify(DEMO_TODOS)));
@@ -620,7 +642,7 @@ export function App() {
     }
   }, [guestMode, user]);
 
-  // Computed Accounts: Current balance is dynamically calculated as Opening Balance + all transactions in the account
+  // Computed Accounts: Current balance is dynamically calculated as Opening Balance + all active transactions in the account
   const computedAccounts = useMemo(() => {
     return accounts.map(acc => {
       const opening = typeof acc.openingBalance === 'number'
@@ -629,6 +651,7 @@ export function App() {
       let credits = 0;
       let debits = 0;
       for (const t of transactions) {
+        if (t.disabled) continue; // Exclude disabled transactions from balance calculations
         if ((t.type === 'INCOME' && t.toAccountId === acc.id) || (t.type === 'TRANSFER' && t.toAccountId === acc.id)) {
           credits += Number(t.amount) || 0;
         } else if ((t.type === 'EXPENSE' && t.fromAccountId === acc.id) || (t.type === 'TRANSFER' && t.fromAccountId === acc.id)) {
@@ -648,7 +671,7 @@ export function App() {
     return computedAccounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
   }, [computedAccounts]);
 
-  // Compute Current Month Inflow & Outflow
+  // Compute Current Month Inflow & Outflow (active transactions only)
   const { monthlyIncome, monthlyExpense } = useMemo(() => {
     const now = new Date();
     const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
@@ -656,6 +679,7 @@ export function App() {
     let expense = 0;
 
     for (const t of transactions) {
+      if (t.disabled) continue; // Excluded from monthly income/expense totals
       if (t.date && t.date.startsWith(currentMonth)) {
         if (t.type === 'INCOME') income += t.amount;
         if (t.type === 'EXPENSE') expense += t.amount;
@@ -707,10 +731,11 @@ export function App() {
       return idx >= 0 ? prev.map(t => t.id === id ? payload : t) : [payload, ...prev];
     });
 
-    // Immediate optimistic update of account balances
+    // Immediate optimistic update of account balances (only if active)
     setAccounts(prev => prev.map(acc => {
       let bal = acc.balance;
-      if (existing) {
+      // Revert previous transaction effect if it was active
+      if (existing && !existing.disabled) {
         if (existing.type === 'EXPENSE' && existing.fromAccountId === acc.id) bal += oldAmt;
         if (existing.type === 'INCOME' && existing.toAccountId === acc.id) bal -= oldAmt;
         if (existing.type === 'TRANSFER') {
@@ -718,11 +743,14 @@ export function App() {
           if (existing.toAccountId === acc.id) bal -= oldAmt;
         }
       }
-      if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal -= newAmt;
-      if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal += newAmt;
-      if (txn.type === 'TRANSFER') {
-        if (txn.fromAccountId === acc.id) bal -= newAmt;
-        if (txn.toAccountId === acc.id) bal += newAmt;
+      // Apply new transaction effect only if not disabled
+      if (!txn.disabled) {
+        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal -= newAmt;
+        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal += newAmt;
+        if (txn.type === 'TRANSFER') {
+          if (txn.fromAccountId === acc.id) bal -= newAmt;
+          if (txn.toAccountId === acc.id) bal += newAmt;
+        }
       }
       return { ...acc, balance: bal, updatedAt: Date.now() };
     }));
@@ -764,11 +792,14 @@ export function App() {
     const amt = Number(txn.amount) || 0;
     setAccounts(prev => prev.map(acc => {
       let bal = acc.balance;
-      if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal += amt;
-      if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal -= amt;
-      if (txn.type === 'TRANSFER') {
-        if (txn.fromAccountId === acc.id) bal += amt;
-        if (txn.toAccountId === acc.id) bal += amt;
+      // Revert account balance only if deleted transaction was active
+      if (!txn.disabled) {
+        if (txn.type === 'EXPENSE' && txn.fromAccountId === acc.id) bal += amt;
+        if (txn.type === 'INCOME' && txn.toAccountId === acc.id) bal -= amt;
+        if (txn.type === 'TRANSFER') {
+          if (txn.fromAccountId === acc.id) bal += amt;
+          if (txn.toAccountId === acc.id) bal -= amt;
+        }
       }
       return { ...acc, balance: bal, updatedAt: Date.now() };
     }));
@@ -790,6 +821,7 @@ export function App() {
     let credits = 0;
     let debits = 0;
     for (const t of transactions) {
+      if (t.disabled) continue;
       if ((t.type === 'INCOME' && t.toAccountId === id) || (t.type === 'TRANSFER' && t.toAccountId === id)) {
         credits += Number(t.amount) || 0;
       } else if ((t.type === 'EXPENSE' && t.fromAccountId === id) || (t.type === 'TRANSFER' && t.fromAccountId === id)) {
@@ -829,6 +861,126 @@ export function App() {
     } catch (err) {
       console.error('Error deleting account:', err);
     }
+  };
+
+  // Recurring Transactions Operations
+  const handleSaveRecurringRule = async (ruleData: Omit<RecurringTransaction, 'id'> & { id?: string }) => {
+    const id = ruleData.id || createDocId('recurring_transactions', user);
+    const payload: RecurringTransaction = {
+      ...ruleData,
+      id,
+      amount: Number(ruleData.amount) || 0,
+      updatedAt: Date.now()
+    };
+
+    setRecurringTransactions(prev => {
+      const idx = prev.findIndex(r => r.id === id);
+      return idx >= 0 ? prev.map(r => r.id === id ? payload : r) : [payload, ...prev];
+    });
+
+    if (guestMode && !user) return;
+    try {
+      await saveRecurringTransaction(payload, user);
+    } catch (err) {
+      console.error('Error saving recurring transaction rule:', err);
+    }
+  };
+
+  const handleDeleteRecurringRule = async (id: string) => {
+    setRecurringTransactions(prev => prev.filter(r => r.id !== id));
+    if (guestMode && !user) return;
+    try {
+      await deleteRecurringTransaction(id, user);
+    } catch (err) {
+      console.error('Error deleting recurring transaction rule:', err);
+    }
+  };
+
+  const handleToggleRecurringActive = async (rule: RecurringTransaction) => {
+    await handleSaveRecurringRule({ ...rule, isActive: !rule.isActive });
+  };
+
+  const handlePostRecurringNow = async (rule: RecurringTransaction) => {
+    const today = getTodayLocalDateString();
+    const occurrenceDate = (rule.nextDueDate && rule.nextDueDate <= today) ? rule.nextDueDate : today;
+
+    await handleSaveTransaction({
+      type: rule.type,
+      amount: rule.amount,
+      description: rule.description,
+      category: rule.category || (rule.type === 'TRANSFER' ? 'Transfer' : 'General'),
+      fromAccountId: rule.fromAccountId,
+      toAccountId: rule.toAccountId,
+      date: occurrenceDate,
+      time: '09:00',
+      timestamp: Date.now(),
+      notes: rule.notes ? `${rule.notes} (Recurring: ${rule.frequency})` : `Recurring ${rule.frequency} entry`,
+      recurringTransactionId: rule.id,
+      isRecurringGenerated: true
+    });
+
+    const nextDate = computeNextDueDate(occurrenceDate, rule.frequency);
+    await handleSaveRecurringRule({
+      ...rule,
+      nextDueDate: nextDate,
+      lastPostedDate: occurrenceDate
+    });
+  };
+
+  const isProcessingDueRef = React.useRef(false);
+  const handleCheckAndProcessDueRecurring = async () => {
+    if (isProcessingDueRef.current) return;
+    if (!recurringTransactions || recurringTransactions.length === 0) return;
+
+    isProcessingDueRef.current = true;
+    try {
+      await processDueRecurringTransactions({
+        recurringRules: recurringTransactions,
+        existingTransactions: transactions,
+        onPostTransaction: handleSaveTransaction,
+        onUpdateRecurring: handleSaveRecurringRule,
+        todayStr: getTodayLocalDateString()
+      });
+    } catch (err) {
+      console.error('Error auto-processing due recurring transactions:', err);
+    } finally {
+      isProcessingDueRef.current = false;
+    }
+  };
+
+  // Automated recurring posting engine: runs on app open and when user focuses back to the window
+  useEffect(() => {
+    if (!recurringTransactions || recurringTransactions.length === 0) return;
+    handleCheckAndProcessDueRecurring();
+
+    const handleWindowFocus = () => {
+      handleCheckAndProcessDueRecurring();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [recurringTransactions.length, transactions.length]);
+
+  // Convert an existing transaction into a recurring schedule prefill
+  const handleConvertToRecurring = (txn: Transaction) => {
+    const defaults: Partial<RecurringTransaction> = {
+      type: txn.type,
+      amount: txn.amount,
+      description: txn.description,
+      category: txn.category,
+      fromAccountId: txn.fromAccountId,
+      toAccountId: txn.toAccountId,
+      frequency: 'MONTHLY',
+      startDate: txn.date || getTodayLocalDateString(),
+      nextDueDate: txn.date || getTodayLocalDateString(),
+      autoPost: true,
+      isActive: true,
+      notes: txn.notes || ''
+    };
+    setEditingRecurringRule(null);
+    setRecurringPrefillDefaults(defaults);
+    setIsRecurringModalOpen(true);
   };
 
   // Vehicle Operations
@@ -1460,6 +1612,7 @@ export function App() {
             transactions={transactions}
             vehicles={vehicles}
             entities={entities}
+            recurringTransactions={recurringTransactions}
             onOpenNewAccount={(defaultType) => {
               setEditingAccount(defaultType ? ({ id: '', name: '', type: defaultType, balance: 0 } as any) : null);
               setIsAccountModalOpen(true);
@@ -1483,6 +1636,20 @@ export function App() {
               setEditingTxn(defaults as any);
               setIsTxnModalOpen(true);
             }}
+            onOpenCreateRecurringModal={() => {
+              setEditingRecurringRule(null);
+              setRecurringPrefillDefaults(null);
+              setIsRecurringModalOpen(true);
+            }}
+            onOpenEditRecurringModal={(rule) => {
+              setEditingRecurringRule(rule);
+              setRecurringPrefillDefaults(null);
+              setIsRecurringModalOpen(true);
+            }}
+            onToggleRecurringActive={handleToggleRecurringActive}
+            onDeleteRecurringRule={handleDeleteRecurringRule}
+            onPostRecurringNow={handlePostRecurringNow}
+            onRunRecurringCheck={handleCheckAndProcessDueRecurring}
             isGuestMode={isCurrentGuest}
             user={user}
             activeSubTab={financeSubTab}
@@ -1577,6 +1744,7 @@ export function App() {
             transactions={transactions}
             vehicles={vehicles}
             entities={entities}
+            recurringTransactions={recurringTransactions}
             onOpenNewAccount={(defaultType) => {
               setEditingAccount(defaultType ? ({ id: '', name: '', type: defaultType, balance: 0 } as any) : null);
               setIsAccountModalOpen(true);
@@ -1600,6 +1768,20 @@ export function App() {
               setEditingTxn(defaults as any);
               setIsTxnModalOpen(true);
             }}
+            onOpenCreateRecurringModal={() => {
+              setEditingRecurringRule(null);
+              setRecurringPrefillDefaults(null);
+              setIsRecurringModalOpen(true);
+            }}
+            onOpenEditRecurringModal={(rule) => {
+              setEditingRecurringRule(rule);
+              setRecurringPrefillDefaults(null);
+              setIsRecurringModalOpen(true);
+            }}
+            onToggleRecurringActive={handleToggleRecurringActive}
+            onDeleteRecurringRule={handleDeleteRecurringRule}
+            onPostRecurringNow={handlePostRecurringNow}
+            onRunRecurringCheck={handleCheckAndProcessDueRecurring}
             isGuestMode={isCurrentGuest}
             user={user}
             activeSubTab="reports"
@@ -1642,6 +1824,22 @@ export function App() {
         vehicles={vehicles}
         initialData={editingTxn}
         allTransactions={transactions}
+        onConvertToRecurring={handleConvertToRecurring}
+      />
+
+      {/* 2. Recurring Transaction Rule Create / Edit Modal */}
+      <RecurringModal
+        isOpen={isRecurringModalOpen}
+        onClose={() => {
+          setIsRecurringModalOpen(false);
+          setEditingRecurringRule(null);
+          setRecurringPrefillDefaults(null);
+        }}
+        onSave={handleSaveRecurringRule}
+        onDelete={handleDeleteRecurringRule}
+        accounts={computedAccounts}
+        initialData={editingRecurringRule}
+        prefillDefaults={recurringPrefillDefaults}
       />
 
       {/* 2. Account Create / Edit Modal */}

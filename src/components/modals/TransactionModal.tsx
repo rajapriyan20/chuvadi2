@@ -23,7 +23,10 @@ import {
   CheckCheck,
   ChevronRight,
   Layers,
-  Landmark
+  Landmark,
+  Ban,
+  CheckCircle,
+  Repeat
 } from 'lucide-react';
 import { 
   DEFAULT_CATEGORIES, 
@@ -49,6 +52,7 @@ interface TransactionModalProps {
   accounts: Account[];
   vehicles: Vehicle[];
   allTransactions?: Transaction[];
+  onConvertToRecurring?: (txn: Transaction) => void;
 }
 
 function getRelativeDateLabel(dateStr: string): string {
@@ -82,7 +86,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   initialData,
   accounts,
   vehicles,
-  allTransactions = []
+  allTransactions = [],
+  onConvertToRecurring
 }) => {
   useBodyScrollLock(isOpen);
 
@@ -161,7 +166,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setToAccountId(initialData.toAccountId || '');
         setMappedTransactionId(initialData.mappedTransactionId || null);
         setDate(initialData.date || getTodayLocalDateString());
-        setTime(initialData.time || '00:00');
+        let initialTime = initialData.time;
+        if (!initialTime && initialData.timestamp) {
+          const d = new Date(initialData.timestamp);
+          if (!isNaN(d.getTime())) {
+            initialTime = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          }
+        }
+        setTime(initialTime || '00:00');
         setVehicleId(initialData.vehicleId || '');
         setIsFuel(!!initialData.isFuel);
         setFuelLiters(initialData.fuelLiters ? String(initialData.fuelLiters) : '');
@@ -363,6 +375,25 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setTimeout(() => setCopiedId(false), 2000);
   };
 
+  const handleToggleDisabled = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!initialData || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await onSave({
+        ...initialData,
+        disabled: !initialData.disabled
+      });
+      onClose();
+    } catch (err) {
+      console.error('Error toggling transaction disabled state:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -404,7 +435,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         isFuel: isFuelRecord,
         fuelLiters: isFuelRecord && fuelLiters ? parseFloat(fuelLiters) : null,
         odometer: isFuelRecord && odometer ? parseFloat(odometer) : null,
-        notes: notes.trim()
+        notes: notes.trim(),
+        disabled: isDuplicateNewRecord ? false : (initialData?.disabled ?? false)
       });
       onClose();
     } catch (err) {
@@ -460,6 +492,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <span className="text-amber-400 font-bold text-base tracking-tight">
                   Transaction Details
                 </span>
+                {initialData.disabled && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                    Disabled
+                  </span>
+                )}
                 <span className="text-slate-500 text-xs font-mono">
                   #{initialData.id ? initialData.id.slice(-6) : ''}
                 </span>
@@ -508,10 +545,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   )}
                 </div>
 
-                {/* Prominent Formatted Amount */}
+                {/* Prominent Formatted Amount (strikethrough when disabled) */}
                 <div 
                   className={`text-3xl sm:text-4xl font-extrabold font-mono tabular-nums tracking-tight ${
-                    initialData.type === 'EXPENSE'
+                    initialData.disabled
+                      ? 'line-through text-slate-500 opacity-60'
+                      : initialData.type === 'EXPENSE'
                       ? 'text-rose-400'
                       : initialData.type === 'INCOME'
                       ? 'text-emerald-400'
@@ -522,6 +561,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   {initialData.type === 'INCOME' && '+'}
                   {formatCurrency(initialData.amount)}
                 </div>
+
+                {initialData.disabled && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <Ban size={12} />
+                    <span>Disabled · Excluded from all balance calculations</span>
+                  </div>
+                )}
+
+                {Boolean(initialData.recurringTransactionId || initialData.isRecurringGenerated) && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <Repeat size={12} className="text-amber-400" />
+                    <span>Auto-Posted from Recurring Rule</span>
+                  </div>
+                )}
 
                 {/* Primary Description / Payee */}
                 <h3 className="text-base sm:text-lg font-bold text-white mt-2 break-words">
@@ -760,6 +813,40 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               >
                 Close
               </button>
+
+              <button
+                key="toggle-disable-txn-btn"
+                id="toggle-disable-txn-btn"
+                type="button"
+                onClick={handleToggleDisabled}
+                disabled={isSaving}
+                className={`py-2.5 px-3 sm:px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 border ${
+                  initialData.disabled
+                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border-amber-500/30 shadow-sm'
+                }`}
+                title={initialData.disabled ? "Enable transaction to re-include in all balance calculations" : "Disable transaction to exclude from balance calculations"}
+              >
+                {initialData.disabled ? <CheckCircle size={15} /> : <Ban size={15} />}
+                <span>{initialData.disabled ? 'Enable' : 'Disable'}</span>
+              </button>
+
+              {onConvertToRecurring && (
+                <button
+                  key="make-recurring-txn-btn"
+                  id="make-recurring-txn-btn"
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onConvertToRecurring(initialData);
+                  }}
+                  className="py-2.5 px-3 sm:px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  title="Create recurring rule based on this transaction"
+                >
+                  <Repeat size={14} className="text-amber-400" />
+                  <span className="hidden sm:inline">Set Recurring</span>
+                </button>
+              )}
 
               <button
                 key="duplicate-txn-btn"

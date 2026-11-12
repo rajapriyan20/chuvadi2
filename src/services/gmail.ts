@@ -754,6 +754,42 @@ function detectTransactionType(text: string): TransactionType {
 }
 
 /**
+ * Extract transaction time from email body or subject (e.g. "at 14:30:15", "at 02:45 PM", "time: 11:20")
+ * Returns "HH:mm" in 24-hour format if found, otherwise undefined.
+ */
+export function extractTimeFromText(text: string): string | undefined {
+  if (!text) return undefined;
+
+  // 1. 12-hour format with AM/PM (e.g. "at 02:30 PM", "10:15 AM", "9:45pm")
+  const ampmRegex = /\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i;
+  const ampmMatch = text.match(ampmRegex);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const meridiem = ampmMatch[3].toUpperCase();
+
+    if (hours >= 1 && hours <= 12 && minutes >= 0 && minutes <= 59) {
+      if (meridiem === 'PM' && hours < 12) hours += 12;
+      if (meridiem === 'AM' && hours === 12) hours = 0;
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+  }
+
+  // 2. 24-hour format with context keyword (e.g. "at 14:30", "time: 18:25", "on 11-11-2026 15:40")
+  const contextual24Regex = /(?:at|time:?|on\s+[\d\w/-]+\s+)(\d{1,2}):(\d{2})(?::\d{2})?\b/i;
+  const match24 = text.match(contextual24Regex);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const minutes = parseInt(match24[2], 10);
+    if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Extract the last 4 digits from an account's account number or name
  */
 export function extractAccountLast4Digits(accountNumber?: string): string | null {
@@ -1118,15 +1154,24 @@ export async function fetchExpenseEmailsFromGmail(
       const from = getHeader('From') || '(Unknown Sender)';
       const rawDate = getHeader('Date');
       
-      let dateIso = new Date().toISOString().split('T')[0];
       let timestamp = Number(raw.internalDate) || Date.now();
       if (rawDate) {
         const d = new Date(rawDate);
         if (!isNaN(d.getTime())) {
-          dateIso = d.toISOString().split('T')[0];
           timestamp = d.getTime();
         }
       }
+
+      // Convert timestamp to local YYYY-MM-DD and HH:mm
+      const emailDateObj = new Date(timestamp);
+      const localYear = emailDateObj.getFullYear();
+      const localMonth = String(emailDateObj.getMonth() + 1).padStart(2, '0');
+      const localDay = String(emailDateObj.getDate()).padStart(2, '0');
+      const dateIso = `${localYear}-${localMonth}-${localDay}`;
+
+      const emailHours = String(emailDateObj.getHours()).padStart(2, '0');
+      const emailMinutes = String(emailDateObj.getMinutes()).padStart(2, '0');
+      const fallbackEmailTime = `${emailHours}:${emailMinutes}`;
 
       const snippet = raw.snippet || '';
       const bodyText = extractBodyFromPayload(raw.payload);
@@ -1135,6 +1180,10 @@ export async function fetchExpenseEmailsFromGmail(
       const amount = extractAmountFromText(combinedText);
       const merchant = extractMerchantFromText(subject, bodyText);
       const detectedType = detectTransactionType(combinedText);
+
+      // Check if email body/subject explicitly specifies a transaction time (e.g. "at 14:32:00")
+      const textTime = extractTimeFromText(combinedText);
+      const finalSuggestedTime = textTime || fallbackEmailTime;
 
       const { suggestedAccountId, suggestedCategory, suggestedDescription, matchedDescriptionRuleLabel } = applyFieldSuggestionRules(
         { subject, bodyText, snippet },
@@ -1150,11 +1199,13 @@ export async function fetchExpenseEmailsFromGmail(
         subject,
         from,
         date: dateIso,
+        time: finalSuggestedTime,
         snippet,
         bodyText: bodyText.slice(0, 500),
         timestamp,
         suggestedAmount: amount || 0,
         suggestedDate: dateIso,
+        suggestedTime: finalSuggestedTime,
         suggestedDescription: suggestedDescription || merchant,
         matchedDescriptionRuleLabel,
         suggestedCategory: suggestedCategory || 'Other',

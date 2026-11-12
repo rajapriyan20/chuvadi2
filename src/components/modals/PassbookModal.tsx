@@ -159,13 +159,15 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
     let current = openingBalance;
     for (const t of chronologicalTxns) {
-      const isCredit = (t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id);
-      const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id);
-      const amt = Number(t.amount) || 0;
-      if (isCredit) {
-        current += amt;
-      } else if (isDebit) {
-        current -= amt;
+      if (!t.disabled) {
+        const isCredit = (t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id);
+        const isDebit = (t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id);
+        const amt = Number(t.amount) || 0;
+        if (isCredit) {
+          current += amt;
+        } else if (isDebit) {
+          current -= amt;
+        }
       }
       map.set(t.id, current);
     }
@@ -243,6 +245,7 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
     let debits = 0;
     const allForAccount = transactions.filter(t => t.fromAccountId === account.id || t.toAccountId === account.id);
     for (const t of allForAccount) {
+      if (t.disabled) continue; // Excluded from passbook credit/debit totals and balance
       if ((t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id)) {
         credits += Number(t.amount) || 0;
       } else if ((t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id)) {
@@ -414,13 +417,14 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
       const sDate = pdfStartDate || '2000-01-01';
       const eDate = pdfEndDate || '2099-12-31';
 
-      // 1. Calculate Period Opening Balance (Base opening balance + credits before sDate - debits before sDate)
+      // 1. Calculate Period Opening Balance (Base opening balance + credits before sDate - debits before sDate, active only)
       let periodOpening = openingBalance;
       const priorTxns = transactions.filter(t => 
         (t.fromAccountId === account.id || t.toAccountId === account.id) && 
         t.date < sDate
       );
       for (const t of priorTxns) {
+        if (t.disabled) continue;
         if ((t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id)) {
           periodOpening += Number(t.amount) || 0;
         } else if ((t.type === 'EXPENSE' && t.fromAccountId === account.id) || (t.type === 'TRANSFER' && t.fromAccountId === account.id)) {
@@ -473,12 +477,14 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
         const isCredit = (t.type === 'INCOME' && t.toAccountId === account.id) || (t.type === 'TRANSFER' && t.toAccountId === account.id);
         const amt = Number(t.amount) || 0;
 
-        if (isDebit) {
-          periodDebits += amt;
-          runningBalance -= amt;
-        } else if (isCredit) {
-          periodCredits += amt;
-          runningBalance += amt;
+        if (!t.disabled) {
+          if (isDebit) {
+            periodDebits += amt;
+            runningBalance -= amt;
+          } else if (isCredit) {
+            periodCredits += amt;
+            runningBalance += amt;
+          }
         }
 
         const row = [
@@ -777,8 +783,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn overscroll-contain">
-      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden overscroll-contain">
+    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col overflow-hidden animate-fadeIn">
+      <div className="bg-[#121820] w-full h-full flex flex-col overflow-hidden">
         {/* Full-Screen Header */}
         <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0">
           <div>
@@ -825,10 +831,10 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
           </div>
         </div>
 
-        {/* Side-by-Side Current Balance & Date of Reco Strip */}
+        {/* Side-by-Side Cur Bal & Date of Reco Strip */}
         <div className="px-4 sm:px-8 py-2 bg-[#0d1217] border-b border-slate-800/80 shrink-0 flex items-center gap-2.5 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none">
           <div className="flex items-center gap-2 bg-[#161c24] px-3 py-1 rounded-xl border border-amber-500/30 bg-amber-500/5 shrink-0">
-            <span className="text-[10px] uppercase font-bold text-amber-400 shrink-0">Current Balance:</span>
+            <span className="text-[10px] uppercase font-bold text-amber-400 shrink-0">Cur Bal:</span>
             <span className="text-sm sm:text-base font-extrabold text-amber-200 font-mono shrink-0">
               {formatCurrency(currentBalance)}
             </span>
@@ -1074,7 +1080,13 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
         </div>
 
         {/* Transaction Ledger List */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 space-y-3">
+        <div 
+          className="flex-1 overflow-y-auto overscroll-y-contain touch-pan-y px-4 sm:px-8 py-4 pb-28 sm:pb-12 space-y-3 select-none sm:select-auto"
+          style={{ 
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain'
+          }}
+        >
           {accountTxns.length === 0 ? (
             <div className="text-center py-16 text-slate-500 text-xs">
               No transactions recorded for this account.
@@ -1176,7 +1188,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                       <div className="text-right shrink-0">
                         <div
                           className={`text-sm font-bold font-mono tabular-nums ${
-                            isParentTransfer
+                            parent.disabled
+                              ? 'line-through text-slate-500 opacity-60'
+                              : isParentTransfer
                               ? parentTransferStyle?.colorClass
                               : isParentDebit
                               ? 'text-rose-400'
@@ -1189,6 +1203,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                             ? `-${formatCurrency(parent.amount)}` 
                             : `+${formatCurrency(parent.amount)}`}
                         </div>
+                        {parent.disabled && (
+                          <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            Disabled
+                          </span>
+                        )}
                         {runningBal !== undefined && (
                           <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                             Bal: {formatCurrency(runningBal)}
@@ -1254,7 +1273,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                               <div className="text-right shrink-0">
                                 <div
                                   className={`text-xs font-bold font-mono tabular-nums ${
-                                    isChildTransfer
+                                    child.disabled
+                                      ? 'line-through text-slate-500 opacity-60'
+                                      : isChildTransfer
                                       ? childTransferStyle?.colorClass
                                       : isChildDebit
                                       ? 'text-rose-400'
@@ -1267,6 +1288,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                                     ? `-${formatCurrency(child.amount)}` 
                                     : `+${formatCurrency(child.amount)}`}
                                 </div>
+                                {child.disabled && (
+                                  <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                    Disabled
+                                  </span>
+                                )}
                                 {childRunningBal !== undefined && (
                                   <div className="text-[10px] font-mono text-slate-500 font-medium tabular-nums mt-0.5">
                                     Bal: {formatCurrency(childRunningBal)}
@@ -1356,7 +1382,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                           <div className="text-right shrink-0 ml-3">
                             <div
                               className={`text-xs font-bold font-mono tabular-nums ${
-                                isTransfer
+                                txn.disabled
+                                  ? 'line-through text-slate-500 opacity-60'
+                                  : isTransfer
                                   ? transferStyle?.colorClass
                                   : isDebit
                                   ? 'text-rose-400'
@@ -1369,6 +1397,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                                 ? `-${formatCurrency(txn.amount)}` 
                                 : `+${formatCurrency(txn.amount)}`}
                             </div>
+                            {txn.disabled && (
+                              <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                Disabled
+                              </span>
+                            )}
                             {runningBal !== undefined && (
                               <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                                 Bal: {formatCurrency(runningBal)}
@@ -1494,7 +1527,9 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                     <div className="text-right shrink-0 ml-3">
                       <div
                         className={`text-xs font-bold font-mono tabular-nums ${
-                          isTransfer
+                          txn.disabled
+                            ? 'line-through text-slate-500 opacity-60'
+                            : isTransfer
                             ? transferStyle?.colorClass
                             : isDebit
                             ? 'text-rose-400'
@@ -1507,6 +1542,11 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
                           ? `-${formatCurrency(txn.amount)}` 
                           : `+${formatCurrency(txn.amount)}`}
                       </div>
+                      {txn.disabled && (
+                        <span className="inline-block text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          Disabled
+                        </span>
+                      )}
                       {runningBal !== undefined && (
                         <div className="text-[11px] font-mono text-slate-400 font-medium tabular-nums mt-0.5">
                           Bal: {formatCurrency(runningBal)}
