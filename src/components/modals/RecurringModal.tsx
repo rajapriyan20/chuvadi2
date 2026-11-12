@@ -268,11 +268,11 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn overscroll-contain">
-      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col relative overscroll-contain">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden h-[90dvh] sm:h-auto sm:max-h-[88vh] flex flex-col min-h-0 relative">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
               <Repeat size={17} />
@@ -297,7 +297,11 @@ export const RecurringModal: React.FC<RecurringModalProps> = ({
         </div>
 
         {/* Scrollable Form */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+        <form 
+          onSubmit={handleSubmit} 
+          className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 min-h-0 pb-32 sm:pb-8"
+          style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
+        >
           {/* Type Selector */}
           <div className="grid grid-cols-3 gap-2 p-1 bg-[#0b0f15] rounded-2xl border border-slate-800/80">
             <button

@@ -1997,7 +1997,7 @@ export function App() {
       <DailyInstallToast />
 
       {/* 15. Guest Mode Floating Overlay Action Pill */}
-      {isCurrentGuest && (
+      {isCurrentGuest && !isAnyGlobalModalOpen && (
         <GuestModeOverlay 
           onExitGuestMode={handleExitGuestMode}
           onLogin={loginWithGoogle}

@@ -14,9 +14,7 @@ export function useBodyScrollLock(isLocked: boolean): void {
 
     if (lockCount === 0) {
       originalBodyOverflow = document.body.style.overflow;
-      originalHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = 'hidden';
-      document.documentElement.style.overflow = 'hidden';
       document.body.classList.add('modal-open');
     }
     lockCount++;
@@ -26,7 +24,6 @@ export function useBodyScrollLock(isLocked: boolean): void {
       if (lockCount <= 0) {
         lockCount = 0;
         document.body.style.overflow = originalBodyOverflow;
-        document.documentElement.style.overflow = originalHtmlOverflow;
         document.body.classList.remove('modal-open');
       }
     };

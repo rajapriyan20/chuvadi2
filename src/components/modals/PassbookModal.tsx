@@ -1,17 +1,18 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   X, 
   ArrowUpRight, 
   ArrowDownLeft, 
   ArrowRightLeft, 
   ArrowRight,
+  ArrowUp,
   Download, 
   Search, 
   FileText, 
   Calendar, 
   CheckCircle2, 
   Clock, 
-  AlertCircle,
+  AlertCircle, 
   Link2,
   Filter,
   ArrowUpDown,
@@ -59,6 +60,13 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   const [pdfStartDate, setPdfStartDate] = useState('');
   const [pdfEndDate, setPdfEndDate] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const ledgerListRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const handleLedgerScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    setShowScrollTop(target.scrollTop > 300);
+  };
 
   useBodyScrollLock(isOpen);
 
@@ -783,8 +791,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col min-h-0 overflow-hidden animate-fadeIn">
-      <div className="bg-[#121820] w-full h-full flex flex-col min-h-0 overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#0d1217] flex flex-col min-h-0 h-[100dvh] overflow-hidden animate-fadeIn">
+      <div className="bg-[#121820] w-full h-full flex flex-col min-h-0 overflow-hidden relative">
         {/* Full-Screen Header */}
         <div className="px-4 sm:px-8 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#161e28] shrink-0">
           <div>
@@ -1081,9 +1089,13 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
 
         {/* Transaction Ledger List */}
         <div 
-          className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-4 pb-28 sm:pb-12 space-y-3"
+          ref={ledgerListRef}
+          onScroll={handleLedgerScroll}
+          className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-4 pb-36 sm:pb-16 space-y-3"
           style={{ 
-            WebkitOverflowScrolling: 'touch'
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain'
           }}
         >
           {accountTxns.length === 0 ? (
@@ -1558,6 +1570,19 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Floating Scroll to Top Quick-Action Button */}
+        {showScrollTop && (
+          <button
+            type="button"
+            onClick={() => ledgerListRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="fixed bottom-6 right-6 z-40 p-3 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-2xl transition-all active:scale-95 flex items-center justify-center cursor-pointer border border-amber-400/60"
+            title="Scroll to Top"
+            aria-label="Scroll to Top"
+          >
+            <ArrowUp size={18} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
 
       {/* Date Filter Modal for PDF Export */}
