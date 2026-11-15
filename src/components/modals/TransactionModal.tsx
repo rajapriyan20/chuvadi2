@@ -1104,12 +1104,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               )}
 
               {type === 'TRANSFER' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                       Transfer From
                     </label>
                     <select
+                      id="txn-modal-transfer-from"
                       value={fromAccountId}
                       onChange={(e) => setFromAccountId(e.target.value)}
                       required
@@ -1117,7 +1118,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     >
                       <option value="">Source</option>
                       {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({formatCurrency(a.balance)})
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1126,6 +1129,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       Transfer To
                     </label>
                     <select
+                      id="txn-modal-transfer-to"
                       value={toAccountId}
                       onChange={(e) => setToAccountId(e.target.value)}
                       required
@@ -1133,7 +1137,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     >
                       <option value="">Destination</option>
                       {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({formatCurrency(a.balance)})
+                        </option>
                       ))}
                     </select>
                   </div>
