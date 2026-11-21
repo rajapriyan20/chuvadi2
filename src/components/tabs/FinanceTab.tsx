@@ -384,6 +384,13 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
           onDeleteAccount={onDeleteAccount}
           onOpenPassbook={onOpenPassbook}
           onSelectTxn={onSelectTxn}
+          onAddTransaction={(acc) => {
+            if (onOpenNewTxnWithDefaults && acc) {
+              onOpenNewTxnWithDefaults({ type: 'EXPENSE', fromAccountId: acc.id });
+            } else {
+              onOpenNewTxn();
+            }
+          }}
         />
       )}
 

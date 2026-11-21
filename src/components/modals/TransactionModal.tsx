@@ -93,7 +93,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    return registerBackHandler('transaction-modal', 45, () => {
+    return registerBackHandler('transaction-modal', 70, () => {
       onClose();
       return true;
     });
@@ -160,12 +160,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setIsEditing(!initialData?.id);
 
       if (initialData) {
-        setType(initialData.type);
-        setAmount(String(initialData.amount || ''));
+        const resolvedType: TransactionType = initialData.type || 'EXPENSE';
+        const resolvedFrom = initialData.fromAccountId || accounts[0]?.id || '';
+        const resolvedTo =
+          initialData.toAccountId ||
+          (resolvedType === 'INCOME' && initialData.fromAccountId
+            ? initialData.fromAccountId
+            : accounts.find((a) => a.id !== resolvedFrom)?.id || accounts[0]?.id || '');
+        setType(resolvedType);
+        setAmount(initialData.amount !== undefined && initialData.amount !== null ? String(initialData.amount) : '');
         setDescription(initialData.description || '');
-        setCategory(initialData.category || 'Other');
-        setFromAccountId(initialData.fromAccountId || '');
-        setToAccountId(initialData.toAccountId || '');
+        setCategory(initialData.category || 'Food & Dining');
+        setFromAccountId(resolvedFrom);
+        setToAccountId(resolvedTo);
         setMappedTransactionId(initialData.mappedTransactionId || null);
         setDate(initialData.date || getTodayLocalDateString());
         let initialTime = initialData.time;
@@ -488,7 +495,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn overscroll-contain">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn overscroll-contain">
       <div className="bg-[#121820] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col relative overscroll-contain">
         
         {/* ================================================================= */}
@@ -952,7 +959,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setType('INCOME'); setAmountError(''); }}
+                  onClick={() => {
+                    setType('INCOME');
+                    setAmountError('');
+                    if (!initialData?.id && initialData?.fromAccountId && !initialData?.toAccountId) {
+                      setToAccountId(initialData.fromAccountId);
+                    }
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
                     type === 'INCOME'
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -1439,7 +1452,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         {/* Delete Confirmation Popup */}
         {showDeleteConfirm && (
           <div 
-            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
             onClick={() => setShowDeleteConfirm(false)}
           >
             <div 

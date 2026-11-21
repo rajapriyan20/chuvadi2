@@ -1920,6 +1920,10 @@ export function App() {
         transactions={transactions}
         accounts={computedAccounts}
         onSelectTxn={handleSelectTxn}
+        onAddTransaction={(acc) => {
+          setEditingTxn({ type: 'EXPENSE', fromAccountId: acc.id } as any);
+          setIsTxnModalOpen(true);
+        }}
       />
 
       {/* 4. Vehicle Create / Edit Modal */}

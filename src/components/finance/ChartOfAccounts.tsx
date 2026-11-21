@@ -62,6 +62,7 @@ interface ChartOfAccountsProps {
   onDeleteAccount?: (id: string) => Promise<void>;
   onOpenPassbook: (account: Account) => void;
   onSelectTxn?: (txn: Transaction) => void;
+  onAddTransaction?: (account?: Account) => void;
 }
 
 export interface CategoryDefinition {
@@ -211,7 +212,8 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
   onSaveAccount,
   onDeleteAccount,
   onOpenPassbook,
-  onSelectTxn
+  onSelectTxn,
+  onAddTransaction
 }) => {
   // Category List state (combines default categories and user-created custom categories)
   const [categoriesList, setCategoriesList] = useState<CategoryDefinition[]>(() => {
@@ -2681,12 +2683,25 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
             </div>
 
             {/* Header Action Buttons */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {onAddTransaction && (
+                <button
+                  type="button"
+                  onClick={() => onAddTransaction(selectedAccountForPopup)}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition active:scale-95 shadow-sm shadow-amber-500/20 cursor-pointer"
+                  title="Add Transaction for this Account"
+                >
+                  <Plus size={15} strokeWidth={2.5} />
+                  <span className="sm:hidden">Add</span>
+                  <span className="hidden sm:inline">Add Transaction</span>
+                </button>
+              )}
+
               {/* Export as PDF button */}
               <button
                 type="button"
                 onClick={handleOpenPdfExport}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition active:scale-95 shadow-sm cursor-pointer"
                 title="Export Statement as PDF"
               >
                 <FileText size={15} />

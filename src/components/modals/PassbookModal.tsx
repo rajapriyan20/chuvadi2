@@ -16,7 +16,8 @@ import {
   Link2,
   Filter,
   ArrowUpDown,
-  Check
+  Check,
+  Plus
 } from 'lucide-react';
 import { formatCurrency, formatDate, getTransferFlowStyle } from '../../utils/formatters';
 import type { Account, Transaction } from '../../types';
@@ -33,6 +34,7 @@ interface PassbookModalProps {
   transactions: Transaction[];
   accounts?: Account[];
   onSelectTxn: (txn: Transaction) => void;
+  onAddTransaction?: (account: Account) => void;
 }
 
 type DatePreset = 'all' | 'this_month' | 'last_month' | 'last_30_days' | 'this_year' | 'custom';
@@ -43,7 +45,8 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   account,
   transactions,
   accounts = [],
-  onSelectTxn
+  onSelectTxn,
+  onAddTransaction
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [tolerance, setTolerance] = useState<number>(() => getStoredSettlementTolerance());
@@ -827,17 +830,31 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {onAddTransaction && (
+              <button
+                type="button"
+                onClick={() => onAddTransaction(account)}
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-amber-500/20 transition active:scale-95 cursor-pointer"
+                title="Add Transaction for this Account"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                <span className="sm:hidden">Add</span>
+                <span className="hidden sm:inline">Add Transaction</span>
+              </button>
+            )}
             {/* PDF Export Button (Opens Date Filter Modal) */}
             <button
+              type="button"
               onClick={() => setShowPdfModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition active:scale-95 cursor-pointer"
               title="Export Passbook to PDF"
             >
-              <FileText size={14} className="stroke-[2.5]" />
-              <span>Export PDF</span>
+              <FileText size={14} className="stroke-[2.2]" />
+              <span className="hidden sm:inline">Export PDF</span>
             </button>
             <button
+              type="button"
               onClick={exportCSV}
               className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 border border-slate-700 transition cursor-pointer"
               title="Export Passbook CSV"
