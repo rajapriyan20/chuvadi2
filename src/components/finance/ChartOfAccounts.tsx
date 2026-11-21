@@ -496,9 +496,14 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
     setPopupAccountInstitution(acc.institution || '');
     setPopupAccountAccountNumber(acc.accountNumber || '');
     setPopupAccountColor(acc.color || '#0284c7');
-    const op = typeof acc.openingBalance === 'number'
-      ? acc.openingBalance
-      : (typeof acc.balance === 'number' ? acc.balance : 0);
+    const parsedOp = Number(acc.openingBalance);
+    const op =
+      acc.openingBalance !== undefined &&
+      acc.openingBalance !== null &&
+      String(acc.openingBalance).trim() !== '' &&
+      Number.isFinite(parsedOp)
+        ? parsedOp
+        : (Number.isFinite(Number(acc.balance)) ? Number(acc.balance) : 0);
     setPopupAccountOpeningBalance(String(op));
     setPopupAccountEnableMapping(!!acc.enableMapping);
     setIsEditingAccountInPopup(false);
@@ -558,9 +563,16 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
 
   const openingAccountBalance = useMemo(() => {
     if (!selectedAccountForPopup) return 0;
-    return typeof selectedAccountForPopup.openingBalance === 'number'
-      ? selectedAccountForPopup.openingBalance
-      : (typeof selectedAccountForPopup.balance === 'number' ? selectedAccountForPopup.balance : 0);
+    const parsedOp = Number(selectedAccountForPopup.openingBalance);
+    if (
+      selectedAccountForPopup.openingBalance !== undefined &&
+      selectedAccountForPopup.openingBalance !== null &&
+      String(selectedAccountForPopup.openingBalance).trim() !== '' &&
+      Number.isFinite(parsedOp)
+    ) {
+      return parsedOp;
+    }
+    return Number.isFinite(Number(selectedAccountForPopup.balance)) ? Number(selectedAccountForPopup.balance) : 0;
   }, [selectedAccountForPopup]);
 
   const currentAccountBalance = useMemo(() => {
@@ -1204,6 +1216,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         openingBalance: opNum,
         balance: finalBalance,
         enableMapping: popupAccountEnableMapping,
+        openingBalanceUpdatedAt: Date.now(),
         updatedAt: Date.now()
       };
 
@@ -1280,6 +1293,7 @@ export const ChartOfAccounts: React.FC<ChartOfAccountsProps> = ({
         color: newAccountColor,
         enableMapping: newAccountEnableMapping,
         reconciledDate: undefined,
+        openingBalanceUpdatedAt: Date.now(),
         updatedAt: Date.now()
       };
       await onSaveAccount(newAccount);

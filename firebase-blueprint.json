@@ -9,6 +9,8 @@
         "name": { "type": "string" },
         "type": { "type": "string" },
         "balance": { "type": "number" },
+        "openingBalance": { "type": "number" },
+        "openingBalanceUpdatedAt": { "type": "number" },
         "institution": { "type": "string" },
         "color": { "type": "string" },
         "updatedAt": { "type": "number" }

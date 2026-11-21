@@ -144,9 +144,16 @@ export const PassbookModal: React.FC<PassbookModalProps> = ({
   // Base opening balance
   const openingBalance = useMemo(() => {
     if (!account) return 0;
-    return typeof account.openingBalance === 'number' 
-      ? account.openingBalance 
-      : (typeof account.balance === 'number' ? account.balance : 0);
+    const parsedOp = Number(account.openingBalance);
+    if (
+      account.openingBalance !== undefined &&
+      account.openingBalance !== null &&
+      String(account.openingBalance).trim() !== '' &&
+      Number.isFinite(parsedOp)
+    ) {
+      return parsedOp;
+    }
+    return Number.isFinite(Number(account.balance)) ? Number(account.balance) : 0;
   }, [account]);
 
   // Running balance calculated strictly chronologically based on transaction date & time

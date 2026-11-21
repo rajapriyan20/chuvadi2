@@ -25,6 +25,7 @@ export interface Account {
   reconciledDate?: string;
   categoryId?: string;
   enableMapping?: boolean;
+  openingBalanceUpdatedAt?: number;
   updatedAt?: number;
 }
 

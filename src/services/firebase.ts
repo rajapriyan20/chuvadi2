@@ -27,8 +27,6 @@ import {
   runTransaction,
   writeBatch,
   query,
-  orderBy,
-  limit,
   type Firestore,
   type Query
 } from 'firebase/firestore';
@@ -140,6 +138,25 @@ export function stripUndefinedDeep<T>(value: T): T {
     }
   }
   return result as T;
+}
+
+export function parseFiniteNumber(val: unknown): number | null {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  if (typeof val === 'string' && val.trim() !== '') {
+    const parsed = Number(val);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function normalizeAccountRecord(raw: any): Account {
+  const parsedOp = parseFiniteNumber(raw?.openingBalance);
+  const parsedBal = parseFiniteNumber(raw?.balance);
+  return {
+    ...raw,
+    balance: parsedBal !== null ? parsedBal : 0,
+    ...(parsedOp !== null ? { openingBalance: parsedOp } : {})
+  } as Account;
 }
 
 // ==========================================
@@ -414,6 +431,10 @@ function createInitialCollectionsMap(): Record<SyncedCollectionKey, CollectionSy
 
 const syncListeners = new Set<(status: CloudSyncStatus) => void>();
 const activeFirestoreListeners = new Set<SyncedCollectionKey>();
+const activeCollectionSubscribers = new Map<
+  SyncedCollectionKey,
+  { onUpdate: (items: any[]) => void; sort?: (a: any, b: any) => number }
+>();
 const autoSyncCompletedByUid = new Set<string>();
 const activeReconcilePromises = new Map<string, Promise<void>>();
 
@@ -779,11 +800,14 @@ export async function autoSyncUserWorkspace(user?: User | null): Promise<void> {
         const serverSnap = await getDocsFromServer(colRef);
         const serverMap = new Map<string, any>();
         serverSnap.forEach((d) => {
-          serverMap.set(d.id, { ...d.data(), id: d.id });
+          const raw = { ...d.data(), id: d.id };
+          serverMap.set(d.id, colKey === 'accounts' ? normalizeAccountRecord(raw) : raw);
         });
 
         const cacheKey = getUserCacheKey(colMeta.cacheSuffix, activeUser);
-        const localItems = getCached<any[]>(cacheKey, []);
+        const localItems = getCached<any[]>(cacheKey, []).map((item) =>
+          colKey === 'accounts' ? normalizeAccountRecord(item) : item
+        );
         const knownIds = new Set<string>(knownStore[colKey] || []);
         const pendingDeletes = new Set<string>(pendingStore.deletes[colKey] || []);
         const pendingUpserts = pendingStore.upserts[colKey] || {};
@@ -802,7 +826,8 @@ export async function autoSyncUserWorkspace(user?: User | null): Promise<void> {
         // 2. Determine items to push to Cloud:
         //    - Explicitly queued pending upserts
         //    - Local cached items that do NOT exist on server AND were never previously confirmed in knownIds
-        //      (recovers legacy local-only data that failed to write earlier)
+        //    - Local cached items whose local edit timestamp is newer than server (e.g. edited while rules expired)
+        //    - Accounts whose openingBalance is present locally while missing on server, or edited more recently locally
         const itemsToPush = new Map<string, any>();
         for (const [id, data] of Object.entries(pendingUpserts)) {
           if (!pendingDeletes.has(id)) {
@@ -810,13 +835,46 @@ export async function autoSyncUserWorkspace(user?: User | null): Promise<void> {
           }
         }
         for (const item of localItems) {
-          if (
-            item &&
-            item.id &&
-            !pendingDeletes.has(item.id) &&
-            !serverMap.has(item.id) &&
-            !knownIds.has(item.id)
-          ) {
+          if (!item || !item.id || pendingDeletes.has(item.id)) continue;
+
+          const serverItem = serverMap.get(item.id);
+          if (!serverItem) {
+            if (!knownIds.has(item.id)) {
+              itemsToPush.set(item.id, item);
+            }
+            continue;
+          }
+
+          const localUpdated = Number(item.updatedAt || item.timestamp || 0);
+          const serverUpdated = Number(serverItem.updatedAt || serverItem.timestamp || 0);
+
+          if (colKey === 'accounts') {
+            const localOp = parseFiniteNumber(item.openingBalance);
+            const serverOp = parseFiniteNumber(serverItem.openingBalance);
+            const localOpUpdated = Number(item.openingBalanceUpdatedAt || item.updatedAt || 0);
+            const serverOpUpdated = Number(serverItem.openingBalanceUpdatedAt || serverItem.updatedAt || 0);
+
+            if (localOp !== null && serverOp === null) {
+              // Cloud account is missing openingBalance while local has it -> restore openingBalance to Cloud
+              itemsToPush.set(item.id, {
+                ...serverItem,
+                ...item,
+                openingBalance: localOp,
+                openingBalanceUpdatedAt: localOpUpdated || Date.now(),
+                updatedAt: Math.max(localUpdated, serverUpdated, Date.now())
+              });
+            } else if (localOp !== null && serverOp !== null && localOp !== serverOp && localOpUpdated > serverOpUpdated) {
+              itemsToPush.set(item.id, {
+                ...serverItem,
+                ...item,
+                openingBalance: localOp,
+                openingBalanceUpdatedAt: localOpUpdated,
+                updatedAt: Math.max(localUpdated, serverUpdated, Date.now())
+              });
+            } else if (localUpdated > serverUpdated) {
+              itemsToPush.set(item.id, item);
+            }
+          } else if (localUpdated > serverUpdated) {
             itemsToPush.set(item.id, item);
           }
         }
@@ -848,8 +906,15 @@ export async function autoSyncUserWorkspace(user?: User | null): Promise<void> {
         setKnownCloudIdsForCollection(uid, colKey, confirmedIds);
         setCached(cacheKey, mergedList);
 
+        const activeSub = activeCollectionSubscribers.get(colKey);
+        if (activeSub) {
+          const sorted = activeSub.sort ? [...mergedList].sort(activeSub.sort) : mergedList;
+          activeSub.onUpdate(sorted);
+        }
+
         updateCollectionStat(colKey, {
           cloudCount: confirmedIds.length,
+          localCount: mergedList.length,
           fromCache: false,
           hasPendingWrites: false,
           status: 'synced',
@@ -1350,7 +1415,29 @@ export async function saveTransactionAtomic(
     // Also update local cached account balances for offline consistency
     const localAccs = getCached<Account[]>(accCacheKey, []);
     if (localAccs.length > 0) {
-      setCached(accCacheKey, localAccs);
+      const updatedAccs = localAccs.map((acc) => {
+        let bal = Number(acc.balance) || 0;
+        if (resolvedExisting && !resolvedExisting.disabled) {
+          const oldAmt = Number(resolvedExisting.amount) || 0;
+          if (resolvedExisting.type === 'EXPENSE' && resolvedExisting.fromAccountId === acc.id) bal += oldAmt;
+          if (resolvedExisting.type === 'INCOME' && resolvedExisting.toAccountId === acc.id) bal -= oldAmt;
+          if (resolvedExisting.type === 'TRANSFER') {
+            if (resolvedExisting.fromAccountId === acc.id) bal += oldAmt;
+            if (resolvedExisting.toAccountId === acc.id) bal -= oldAmt;
+          }
+        }
+        if (!sanitizedPayload.disabled) {
+          const newAmt = Number(sanitizedPayload.amount) || 0;
+          if (sanitizedPayload.type === 'EXPENSE' && sanitizedPayload.fromAccountId === acc.id) bal -= newAmt;
+          if (sanitizedPayload.type === 'INCOME' && sanitizedPayload.toAccountId === acc.id) bal += newAmt;
+          if (sanitizedPayload.type === 'TRANSFER') {
+            if (sanitizedPayload.fromAccountId === acc.id) bal -= newAmt;
+            if (sanitizedPayload.toAccountId === acc.id) bal += newAmt;
+          }
+        }
+        return { ...acc, balance: bal, updatedAt: Date.now() };
+      });
+      setCached(accCacheKey, updatedAccs);
     }
 
     reportFirestoreError(err, OperationType.WRITE, `users/${uid}/transactions/${txnId}`, 'transactions');
@@ -1528,17 +1615,17 @@ async function deleteDocWithAutoQueue(
 export async function saveAccount(acc: Omit<Account, 'id'> & { id?: string }, user?: User | null): Promise<string> {
   const uid = resolveUserUid(user);
   const id = acc.id || (uid ? doc(collection(db, 'users', uid, 'accounts')).id : 'acc-' + Date.now());
+  const parsedOp = parseFiniteNumber(acc.openingBalance);
+  const parsedBal = parseFiniteNumber(acc.balance) ?? 0;
+  const resolvedOpening = parsedOp !== null ? parsedOp : parsedBal;
+  const now = Date.now();
   const payload: Account = stripUndefinedDeep({
     ...acc,
     id,
-    balance: Number(acc.balance) || 0,
-    openingBalance:
-      typeof acc.openingBalance === 'number'
-        ? acc.openingBalance
-        : acc.openingBalance !== undefined
-        ? Number(acc.openingBalance) || 0
-        : undefined,
-    updatedAt: Date.now()
+    balance: parsedBal,
+    openingBalance: resolvedOpening,
+    openingBalanceUpdatedAt: acc.openingBalanceUpdatedAt || now,
+    updatedAt: now
   });
 
   await upsertDocWithAutoQueue('accounts', 'accounts', payload, user, 'push');
@@ -1813,10 +1900,16 @@ function subscribeToUserCollection<T extends { id: string }>(
   colKey: SyncedCollectionKey,
   cacheSuffix: string,
   buildQuery: (uid: string) => Query,
-  onUpdate: (items: T[]) => void
+  onUpdate: (items: T[]) => void,
+  sortItems?: (a: T, b: T) => number
 ): () => void {
+  const normalizeItem = (item: any): T =>
+    (colKey === 'accounts' ? normalizeAccountRecord(item) : item) as T;
+
+  const sortList = (list: T[]): T[] => (sortItems ? [...list].sort(sortItems) : list);
+
   const cacheKey = getUserCacheKey(cacheSuffix, user);
-  const cached = getCached<T[]>(cacheKey, []);
+  const cached = sortList(getCached<T[]>(cacheKey, []).map(normalizeItem));
   if (cached.length > 0) onUpdate(cached);
 
   const uid = resolveUserUid(user);
@@ -1826,6 +1919,10 @@ function subscribeToUserCollection<T extends { id: string }>(
   }
 
   activeFirestoreListeners.add(colKey);
+  activeCollectionSubscribers.set(colKey, {
+    onUpdate: onUpdate as (items: any[]) => void,
+    sort: sortItems as ((a: any, b: any) => number) | undefined
+  });
   updateCollectionStat(colKey, { status: 'syncing', localCount: cached.length });
   recomputeAndNotifySyncStatus();
 
@@ -1840,7 +1937,7 @@ function subscribeToUserCollection<T extends { id: string }>(
       const pendingDeletes = new Set(pendingStore.deletes[colKey] || []);
       const pendingUpserts = pendingStore.upserts[colKey] || {};
 
-      const latestCached = getCached<T[]>(cacheKey, []);
+      const latestCached = sortList(getCached<T[]>(cacheKey, []).map(normalizeItem));
 
       // Protect local-only records from being wiped by an empty cached/initial snapshot before autoSync finishes
       if (snapshot.docs.length === 0 && latestCached.length > 0 && (fromCache || !autoSyncCompletedByUid.has(uid))) {
@@ -1857,16 +1954,16 @@ function subscribeToUserCollection<T extends { id: string }>(
       const mergedMap = new Map<string, T>();
       for (const d of snapshot.docs) {
         if (!pendingDeletes.has(d.id)) {
-          mergedMap.set(d.id, { ...d.data(), id: d.id } as T);
+          mergedMap.set(d.id, normalizeItem({ ...d.data(), id: d.id }));
         }
       }
       for (const [id, pendingItem] of Object.entries(pendingUpserts)) {
         if (!pendingDeletes.has(id)) {
-          mergedMap.set(id, { ...pendingItem, id } as T);
+          mergedMap.set(id, normalizeItem({ ...pendingItem, id }));
         }
       }
 
-      const data = Array.from(mergedMap.values());
+      const data = sortList(Array.from(mergedMap.values()));
       setCached(cacheKey, data);
 
       if (!fromCache) {
@@ -1897,12 +1994,13 @@ function subscribeToUserCollection<T extends { id: string }>(
     },
     (err) => {
       reportFirestoreError(err, OperationType.LIST, `users/${uid}/${colKey}`, colKey);
-      onUpdate(getCached<T[]>(cacheKey, []));
+      onUpdate(sortList(getCached<T[]>(cacheKey, []).map(normalizeItem)));
     }
   );
 
   return () => {
     activeFirestoreListeners.delete(colKey);
+    activeCollectionSubscribers.delete(colKey);
     unsub();
     recomputeAndNotifySyncStatus();
   };
@@ -1913,8 +2011,9 @@ export function subscribeToAccounts(user: User | null, onUpdate: (accounts: Acco
     user,
     'accounts',
     'accounts',
-    (uid) => query(collection(db, 'users', uid, 'accounts'), orderBy('name', 'asc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'accounts')),
+    onUpdate,
+    (a, b) => (a.name || '').localeCompare(b.name || '')
   );
 }
 
@@ -1923,8 +2022,15 @@ export function subscribeToTransactions(user: User | null, onUpdate: (txns: Tran
     user,
     'transactions',
     'transactions',
-    (uid) => query(collection(db, 'users', uid, 'transactions'), orderBy('date', 'desc'), limit(2000)),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'transactions')),
+    onUpdate,
+    (a, b) => {
+      const dateCmp = (b.date || '').localeCompare(a.date || '');
+      if (dateCmp !== 0) return dateCmp;
+      const timeCmp = (b.time || '00:00').localeCompare(a.time || '00:00');
+      if (timeCmp !== 0) return timeCmp;
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    }
   );
 }
 
@@ -1933,8 +2039,9 @@ export function subscribeToVehicles(user: User | null, onUpdate: (vehicles: Vehi
     user,
     'vehicles',
     'vehicles',
-    (uid) => query(collection(db, 'users', uid, 'vehicles'), orderBy('name', 'asc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'vehicles')),
+    onUpdate,
+    (a, b) => (a.name || '').localeCompare(b.name || '')
   );
 }
 
@@ -1943,8 +2050,9 @@ export function subscribeToVehicleLogs(user: User | null, onUpdate: (logs: Vehic
     user,
     'vehicle_logs',
     'vehicle_logs',
-    (uid) => query(collection(db, 'users', uid, 'vehicle_logs'), orderBy('date', 'desc'), limit(500)),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'vehicle_logs')),
+    onUpdate,
+    (a, b) => (b.date || '').localeCompare(a.date || '')
   );
 }
 
@@ -1953,8 +2061,9 @@ export function subscribeToTodos(user: User | null, onUpdate: (todos: TodoNote[]
     user,
     'todos',
     'todos',
-    (uid) => query(collection(db, 'users', uid, 'todos'), orderBy('createdAt', 'desc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'todos')),
+    onUpdate,
+    (a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
   );
 }
 
@@ -1963,8 +2072,9 @@ export function subscribeToEntities(user: User | null, onUpdate: (entities: Enti
     user,
     'receivables_payables',
     'entities',
-    (uid) => query(collection(db, 'users', uid, 'receivables_payables'), orderBy('name', 'asc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'receivables_payables')),
+    onUpdate,
+    (a, b) => (a.name || '').localeCompare(b.name || '')
   );
 }
 
@@ -1973,8 +2083,9 @@ export function subscribeToExerciseLogs(user: User | null, onUpdate: (logs: Exer
     user,
     'exercise_logs',
     'exercise_logs',
-    (uid) => query(collection(db, 'users', uid, 'exercise_logs'), orderBy('date', 'desc'), limit(500)),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'exercise_logs')),
+    onUpdate,
+    (a, b) => (b.date || '').localeCompare(a.date || '')
   );
 }
 
@@ -1983,8 +2094,9 @@ export function subscribeToCalendarEvents(user: User | null, onUpdate: (events: 
     user,
     'calendar_events',
     'calendar_events',
-    (uid) => query(collection(db, 'users', uid, 'calendar_events'), orderBy('date', 'asc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'calendar_events')),
+    onUpdate,
+    (a, b) => (a.date || '').localeCompare(b.date || '')
   );
 }
 
@@ -1993,8 +2105,9 @@ export function subscribeToMenstrualLogs(user: User | null, onUpdate: (logs: Men
     user,
     'menstrual_logs',
     'menstrual_logs',
-    (uid) => query(collection(db, 'users', uid, 'menstrual_logs'), orderBy('date', 'desc'), limit(500)),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'menstrual_logs')),
+    onUpdate,
+    (a, b) => (b.date || '').localeCompare(a.date || '')
   );
 }
 
@@ -2003,8 +2116,9 @@ export function subscribeToMenstrualPeriods(user: User | null, onUpdate: (period
     user,
     'menstrual_periods',
     'menstrual_periods',
-    (uid) => query(collection(db, 'users', uid, 'menstrual_periods'), orderBy('startDate', 'desc'), limit(100)),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'menstrual_periods')),
+    onUpdate,
+    (a, b) => (b.startDate || '').localeCompare(a.startDate || '')
   );
 }
 
@@ -2066,8 +2180,9 @@ export function subscribeToRecurringTransactions(user: User | null, onUpdate: (i
     user,
     'recurring_transactions',
     'recurring_transactions',
-    (uid) => query(collection(db, 'users', uid, 'recurring_transactions'), orderBy('nextDueDate', 'asc')),
-    onUpdate
+    (uid) => query(collection(db, 'users', uid, 'recurring_transactions')),
+    onUpdate,
+    (a, b) => (a.nextDueDate || '').localeCompare(b.nextDueDate || '')
   );
 }
 

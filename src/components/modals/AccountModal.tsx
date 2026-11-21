@@ -83,9 +83,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setName(initialData.name);
       const isLiab = initialData.type === 'CREDIT_CARD' || initialData.type === 'LOAN';
       setIsLiability(isLiab);
-      const op = typeof initialData.openingBalance === 'number'
-        ? initialData.openingBalance
-        : (typeof initialData.balance === 'number' ? initialData.balance : 0);
+      const parsedOp = Number(initialData.openingBalance);
+      const op =
+        initialData.openingBalance !== undefined &&
+        initialData.openingBalance !== null &&
+        String(initialData.openingBalance).trim() !== '' &&
+        Number.isFinite(parsedOp)
+          ? parsedOp
+          : (Number.isFinite(Number(initialData.balance)) ? Number(initialData.balance) : 0);
       setOpeningBalance(String(op));
       setInstitution(initialData.institution || '');
       setAccountNumber(initialData.accountNumber || '');
@@ -114,6 +119,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     let credits = 0;
     let debits = 0;
     for (const t of transactions) {
+      if (t.disabled) continue;
       if ((t.type === 'INCOME' && t.toAccountId === initialData.id) || (t.type === 'TRANSFER' && t.toAccountId === initialData.id)) {
         credits += Number(t.amount) || 0;
       } else if ((t.type === 'EXPENSE' && t.fromAccountId === initialData.id) || (t.type === 'TRANSFER' && t.fromAccountId === initialData.id)) {

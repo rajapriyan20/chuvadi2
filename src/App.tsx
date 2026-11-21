@@ -48,7 +48,8 @@ import {
   subscribeSyncStatus,
   getCloudSyncStatus,
   setSyncGuestMode,
-  autoSyncUserWorkspace
+  autoSyncUserWorkspace,
+  parseFiniteNumber
 } from './services/firebase';
 import type { User } from 'firebase/auth';
 
@@ -683,9 +684,9 @@ export function App() {
   // Computed Accounts: Current balance is dynamically calculated as Opening Balance + all active transactions in the account
   const computedAccounts = useMemo(() => {
     return accounts.map(acc => {
-      const opening = typeof acc.openingBalance === 'number'
-        ? acc.openingBalance
-        : (typeof acc.balance === 'number' ? acc.balance : 0);
+      const parsedOpening = parseFiniteNumber(acc.openingBalance);
+      const parsedBalance = parseFiniteNumber(acc.balance) ?? 0;
+      const opening = parsedOpening !== null ? parsedOpening : parsedBalance;
       let credits = 0;
       let debits = 0;
       for (const t of transactions) {
@@ -866,17 +867,22 @@ export function App() {
         debits += Number(t.amount) || 0;
       }
     }
-    const op = typeof acc.openingBalance === 'number'
-      ? acc.openingBalance
-      : (typeof acc.balance === 'number' ? acc.balance : 0);
+    const existingAcc = accounts.find(a => a.id === id);
+    const parsedOp = parseFiniteNumber(acc.openingBalance);
+    const parsedBal = parseFiniteNumber(acc.balance) ?? 0;
+    const op = parsedOp !== null ? parsedOp : parsedBal;
     const calculatedBalance = op + credits - debits;
+    const prevOp = existingAcc ? parseFiniteNumber(existingAcc.openingBalance) : null;
+    const now = Date.now();
+    const openingChanged = !existingAcc || prevOp === null || prevOp !== op;
 
     const payload: Account = { 
       ...acc, 
       id, 
       openingBalance: op,
       balance: calculatedBalance, 
-      updatedAt: Date.now() 
+      openingBalanceUpdatedAt: openingChanged ? now : (acc.openingBalanceUpdatedAt || existingAcc?.openingBalanceUpdatedAt || now),
+      updatedAt: now 
     };
     setAccounts(prev => {
       const idx = prev.findIndex(a => a.id === id);
