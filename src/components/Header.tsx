@@ -5,14 +5,16 @@ import {
   User as UserIcon,
   Menu,
   Eye,
-  Bell
+  Bell,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { ChuvadiLogo } from './ChuvadiLogo';
 import { WhatsAppLogo } from './common/WhatsAppLogo';
 import { LogoModal } from './common/LogoModal';
 import { LogoutConfirmModal } from './modals/LogoutConfirmModal';
 import type { User } from 'firebase/auth';
-import type { ActiveTab } from '../types';
+import type { ActiveTab, CloudSyncStatus } from '../types';
 
 interface HeaderProps {
   totalNetWorth: number;
@@ -28,6 +30,8 @@ interface HeaderProps {
   onOpenAi: () => void;
   onOpenExport?: () => void;
   onOpenSettings?: () => void;
+  onOpenSyncSettings?: () => void;
+  syncStatus?: CloudSyncStatus;
   onOpenNotificationSettings?: () => void;
   onOpenNotifications?: () => void;
   notificationsEnabled?: boolean;
@@ -52,6 +56,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAi,
   onOpenExport,
   onOpenSettings,
+  onOpenSyncSettings,
+  syncStatus,
   onOpenNotificationSettings,
   onOpenNotifications,
   notificationsEnabled = false,
@@ -132,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
             </a>
           </div>
 
-          {/* Sync & Online Status Indicator */}
+          {/* Real Cloud Sync Status Indicator */}
           <div className="flex items-center gap-2 text-[11px] text-slate-400 select-none">
             {isGuestMode ? (
               <button
@@ -144,26 +150,65 @@ export const Header: React.FC<HeaderProps> = ({
                 <Eye size={11} className="text-amber-400" />
                 <span className="text-[10px]">Guest Demo (Exit)</span>
               </button>
-            ) : (
-              <div 
-                className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-0.5 rounded-full border border-slate-800"
-                title={isOnline ? 'Cloud database is connected and syncing live.' : 'Offline: Changes are saved locally.'}
-              >
-                <span className="relative flex h-2 w-2">
-                  {isOnline ? (
-                    <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </>
+            ) : (() => {
+              const phase = syncStatus?.phase || (isOnline ? 'connecting' : 'offline');
+              const pending = syncStatus?.pendingCount || 0;
+              const lastErr = syncStatus?.lastError;
+
+              let label = 'Connecting...';
+              let dotClass = 'bg-slate-400';
+              let pillClass = 'bg-slate-900/80 border-slate-800 text-slate-300';
+              let tooltip = 'Checking cloud connection...';
+
+              if (phase === 'synced') {
+                label = 'Cloud Synced';
+                dotClass = 'bg-emerald-500';
+                pillClass = 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/15';
+                tooltip = syncStatus?.lastSyncedAt
+                  ? `Cloud synced at ${new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}. Tap for sync stats.`
+                  : 'All collections verified in Cloud Firestore. Tap for sync stats.';
+              } else if (phase === 'syncing' || phase === 'connecting') {
+                label = pending > 0 ? `Syncing (${pending})...` : 'Syncing...';
+                dotClass = 'bg-sky-400';
+                pillClass = 'bg-sky-500/10 border-sky-500/25 text-sky-300 hover:bg-sky-500/15';
+                tooltip = 'Synchronizing data with Cloud Firestore...';
+              } else if (phase === 'pending') {
+                label = pending > 0 ? `Pending (${pending})` : 'Pending Sync';
+                dotClass = 'bg-amber-400';
+                pillClass = 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/15';
+                tooltip = `${pending} local item(s) queued — auto-syncing to Cloud. Tap for stats.`;
+              } else if (phase === 'error') {
+                label = 'Sync Error';
+                dotClass = 'bg-rose-500';
+                pillClass = 'bg-rose-500/15 border-rose-500/40 text-rose-300 hover:bg-rose-500/20';
+                tooltip = lastErr ? `Sync error: ${lastErr}. Tap for details.` : 'Cloud sync encountered an error. Tap for details.';
+              } else if (phase === 'offline') {
+                label = pending > 0 ? `Offline • ${pending}` : 'Offline';
+                dotClass = 'bg-rose-400';
+                pillClass = 'bg-slate-900/90 border-rose-500/30 text-rose-300 hover:bg-slate-800';
+                tooltip = pending > 0
+                  ? `Offline: ${pending} change(s) queued locally and will auto-sync when online.`
+                  : 'Offline: Using cached data. Changes will auto-sync when back online.';
+              }
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => onOpenSyncSettings?.()}
+                  className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border transition cursor-pointer active:scale-95 ${pillClass}`}
+                  title={tooltip}
+                >
+                  {phase === 'syncing' || phase === 'connecting' ? (
+                    <RefreshCw size={10} className="animate-spin text-sky-400 shrink-0" />
+                  ) : phase === 'error' ? (
+                    <AlertTriangle size={10} className="text-rose-400 shrink-0" />
                   ) : (
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                    <span className={`inline-flex rounded-full h-2 w-2 shrink-0 ${dotClass}`} />
                   )}
-                </span>
-                <span className="text-[10px] font-medium text-slate-300">
-                  {isOnline ? 'Cloud Live' : 'Offline'}
-                </span>
-              </div>
-            )}
+                  <span className="text-[10px] font-semibold tracking-tight">{label}</span>
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -301,9 +346,32 @@ export const Header: React.FC<HeaderProps> = ({
                           <p className="text-[11px] text-slate-400 truncate">
                             {user.email || ''}
                           </p>
-                          <span className="inline-block mt-0.5 text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                            Cloud Sync Active
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowUserMenu(false);
+                              onOpenSyncSettings?.();
+                            }}
+                            className={`inline-block mt-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border cursor-pointer transition ${
+                              syncStatus?.phase === 'synced'
+                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                : syncStatus?.phase === 'error'
+                                ? 'text-rose-300 bg-rose-500/15 border-rose-500/30'
+                                : syncStatus?.phase === 'offline'
+                                ? 'text-rose-300 bg-slate-800 border-rose-500/25'
+                                : 'text-amber-300 bg-amber-500/10 border-amber-500/25'
+                            }`}
+                          >
+                            {syncStatus?.phase === 'synced'
+                              ? 'Cloud Synced'
+                              : syncStatus?.phase === 'error'
+                              ? 'Sync Error • View Stats'
+                              : syncStatus?.phase === 'offline'
+                              ? 'Offline (Cached)'
+                              : syncStatus?.phase === 'pending'
+                              ? `Pending Sync (${syncStatus.pendingCount})`
+                              : 'Syncing...'}
+                          </button>
                         </div>
                       </div>
 

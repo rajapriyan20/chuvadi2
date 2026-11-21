@@ -300,3 +300,68 @@ export interface BodyProfileLog {
 
 export type TabVisibilityMap = Record<ActiveTab, boolean>;
 
+export type CloudSyncPhase =
+  | 'guest'
+  | 'signed-out'
+  | 'connecting'
+  | 'syncing'
+  | 'synced'
+  | 'pending'
+  | 'offline'
+  | 'error';
+
+export type SyncedCollectionKey =
+  | 'accounts'
+  | 'transactions'
+  | 'recurring_transactions'
+  | 'vehicles'
+  | 'vehicle_logs'
+  | 'todos'
+  | 'receivables_payables'
+  | 'exercise_logs'
+  | 'calendar_events'
+  | 'menstrual_logs'
+  | 'menstrual_periods'
+  | 'settings';
+
+export interface CollectionSyncStat {
+  key: SyncedCollectionKey;
+  label: string;
+  cloudCount: number | null;
+  localCount: number;
+  pendingCount: number;
+  fromCache: boolean;
+  hasPendingWrites: boolean;
+  status: 'idle' | 'syncing' | 'synced' | 'cached' | 'pending' | 'error';
+  lastSyncedAt: number | null;
+  error?: string | null;
+}
+
+export interface SyncLogEntry {
+  id: string;
+  timestamp: number;
+  level: 'info' | 'success' | 'warn' | 'error';
+  message: string;
+  collection?: string;
+}
+
+export interface CloudSyncStatus {
+  phase: CloudSyncPhase;
+  isOnline: boolean;
+  serverReachable: boolean | null;
+  userId: string | null;
+  userEmail: string | null;
+  projectId: string;
+  lastSyncedAt: number | null;
+  lastReconciledAt: number | null;
+  pendingCount: number;
+  recoveredLocalCount: number;
+  connectedListeners: number;
+  totalListeners: number;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  collections: Record<SyncedCollectionKey, CollectionSyncStat>;
+  logs: SyncLogEntry[];
+}
+
+

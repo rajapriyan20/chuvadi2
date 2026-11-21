@@ -44,7 +44,11 @@ import {
   loginWithGoogle,
   logoutUser,
   subscribeAuth,
-  createDocId
+  createDocId,
+  subscribeSyncStatus,
+  getCloudSyncStatus,
+  setSyncGuestMode,
+  autoSyncUserWorkspace
 } from './services/firebase';
 import type { User } from 'firebase/auth';
 
@@ -132,7 +136,8 @@ import type {
   MenstrualCycleSettings,
   BodyProfileLog,
   TabVisibilityMap,
-  RecurringTransaction
+  RecurringTransaction,
+  CloudSyncStatus
 } from './types';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { triggerBackNavigation } from './utils/backNavigation';
@@ -276,6 +281,8 @@ export function App() {
   const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsInitialPage, setSettingsInitialPage] = useState<'main' | 'cloud-sync'>('main');
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>(() => getCloudSyncStatus());
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isNotificationsListOpen, setIsNotificationsListOpen] = useState(false);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
@@ -576,22 +583,24 @@ export function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    const unsubSyncStatus = subscribeSyncStatus(setSyncStatus);
+
     return () => {
       unsubAuth();
+      unsubSyncStatus();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
+  useEffect(() => {
+    setSyncGuestMode(Boolean(guestMode && !user));
+  }, [guestMode, user]);
+
   // Sync with Firestore ONLY WHEN Authenticated (Scoped per user!)
   useEffect(() => {
     if (!user) {
       return;
-    }
-
-    // If primary user rajapriyan20@gmail.com, migrate legacy root collections if not yet migrated
-    if (isPrimaryUser(user)) {
-      syncOrMigratePrimaryUserData(user);
     }
 
     const unsubAccounts = subscribeToAccounts(user, setAccounts);
@@ -607,7 +616,36 @@ export function App() {
     const unsubMenstrualPeriods = subscribeToMenstrualPeriods(user, setMenstrualPeriods);
     const unsubMenstrualSettings = subscribeToMenstrualSettings(user, setMenstrualSettings);
 
+    // Automatically reconcile local device cache & pending writes with Cloud Firestore
+    (async () => {
+      await autoSyncUserWorkspace(user);
+      if (isPrimaryUser(user)) {
+        await syncOrMigratePrimaryUserData(user);
+      }
+    })();
+
+    // Automatic retry on window focus / visibility return if any items are pending or previously errored
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      const current = getCloudSyncStatus();
+      if (navigator.onLine && (current.pendingCount > 0 || current.phase === 'error' || current.phase === 'offline')) {
+        autoSyncUserWorkspace(user);
+      }
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    const retryInterval = window.setInterval(() => {
+      const current = getCloudSyncStatus();
+      if (navigator.onLine && (current.pendingCount > 0 || current.phase === 'offline')) {
+        autoSyncUserWorkspace(user);
+      }
+    }, 20000);
+
     return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.clearInterval(retryInterval);
       unsubAccounts();
       unsubTxns();
       unsubRecurring();
@@ -1503,7 +1541,15 @@ export function App() {
         }}
         onOpenAi={() => handleSelectTab('ai')}
         onOpenExport={() => setIsExportModalOpen(true)}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenSettings={() => {
+          setSettingsInitialPage('main');
+          setIsSettingsModalOpen(true);
+        }}
+        onOpenSyncSettings={() => {
+          setSettingsInitialPage('cloud-sync');
+          setIsSettingsModalOpen(true);
+        }}
+        syncStatus={syncStatus}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenNotifications={() => setIsNotificationsListOpen(true)}
         notificationsEnabled={notificationSettings.enabled}
@@ -1530,7 +1576,10 @@ export function App() {
           setIsTxnModalOpen(true);
         }}
         onOpenExport={() => setIsExportModalOpen(true)}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenSettings={() => {
+          setSettingsInitialPage('main');
+          setIsSettingsModalOpen(true);
+        }}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         onOpenNotifications={() => setIsNotificationsListOpen(true)}
         notificationsEnabled={notificationSettings.enabled}
@@ -1934,7 +1983,12 @@ export function App() {
       {/* 9. Settings Modal */}
       <SettingsModal
         isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          setSettingsInitialPage('main');
+        }}
+        initialPage={settingsInitialPage}
+        syncStatus={syncStatus}
         user={user}
         isGuestMode={isCurrentGuest}
         onLogin={loginWithGoogle}

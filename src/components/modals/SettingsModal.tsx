@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Database, 
@@ -13,24 +13,29 @@ import {
   ArrowLeft,
   Eye,
   Check,
-  Palette
+  Palette,
+  LayoutGrid,
+  EyeOff,
+  Bell,
+  Sliders,
+  AlertTriangle,
+  ChevronRight,
+  Cloud,
+  CloudOff,
+  Activity
 } from 'lucide-react';
 import { ChuvadiLogo } from '../ChuvadiLogo';
 import { InstallAppModal } from './InstallAppModal';
 import { useTheme } from '../../context/ThemeContext';
-import { 
-  LayoutGrid, 
-  EyeOff,
-  Bell,
-  Sliders
-} from 'lucide-react';
 import appletConfig from '../../../firebase-applet-config.json';
 import { getStoredSettlementTolerance, saveStoredSettlementTolerance } from '../../utils/settlement';
-import type { ActiveTab, TabVisibilityMap } from '../../types';
+import type { ActiveTab, TabVisibilityMap, CloudSyncStatus, CollectionSyncStat } from '../../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialPage?: 'main' | 'cloud-sync';
+  syncStatus?: CloudSyncStatus;
   onSeedData: () => Promise<void>;
   onClearCache: () => void;
   onClearUserData?: () => Promise<void>;
@@ -57,6 +62,8 @@ const ALL_TABS_CONFIG: Array<{ id: ActiveTab; label: string; desc: string }> = [
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
+  initialPage = 'main',
+  syncStatus,
   onSeedData,
   onClearCache,
   onClearUserData,
@@ -79,6 +86,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenNotificationSettings
 }) => {
   const { theme, setTheme, themes, currentThemeConfig } = useTheme();
+  const [activePage, setActivePage] = useState<'main' | 'cloud-sync'>(initialPage);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -87,6 +95,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [clearedSuccess, setClearedSuccess] = useState(false);
   const [toleranceInput, setToleranceInput] = useState<string>(() => String(getStoredSettlementTolerance()));
   const [toleranceSaved, setToleranceSaved] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActivePage(initialPage);
+    }
+  }, [isOpen, initialPage]);
 
   if (!isOpen) return null;
 
@@ -121,18 +135,340 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setCacheReset(false), 3000);
   };
 
+  const collectionStatsList: CollectionSyncStat[] = syncStatus
+    ? (Object.values(syncStatus.collections) as CollectionSyncStat[])
+    : [];
+  const totalCloudDocs = collectionStatsList.reduce((sum, c) => sum + (c.cloudCount ?? 0), 0);
+  const totalLocalDocs = collectionStatsList.reduce((sum, c) => sum + (c.localCount ?? 0), 0);
+  const anyCloudFetched = collectionStatsList.some((c) => c.cloudCount !== null);
+
+  const formatSyncTime = (ts: number | null | undefined) => {
+    if (!ts) return 'Not yet synced';
+    try {
+      return new Date(ts).toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const getPhaseBadge = () => {
+    const phase = syncStatus?.phase || 'connecting';
+    switch (phase) {
+      case 'synced':
+        return {
+          label: 'Cloud Synced',
+          desc: 'All collections are verified and synchronized with Cloud Firestore.',
+          badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+          borderClass: 'border-emerald-500/30',
+          icon: <CheckCircle2 size={14} className="text-emerald-400" />
+        };
+      case 'syncing':
+      case 'connecting':
+        return {
+          label: 'Syncing Automatically',
+          desc: 'Reconciling local changes and listening to Cloud Firestore updates.',
+          badgeClass: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+          borderClass: 'border-sky-500/30',
+          icon: <RefreshCw size={14} className="text-sky-400 animate-spin" />
+        };
+      case 'pending':
+        return {
+          label: `Pending (${syncStatus?.pendingCount || 0})`,
+          desc: 'Local records are queued and will automatically push to Cloud Firestore.',
+          badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+          borderClass: 'border-amber-500/30',
+          icon: <RefreshCw size={14} className="text-amber-400" />
+        };
+      case 'offline':
+        return {
+          label: 'Offline (Local Cache)',
+          desc: 'Firestore server is unreachable. Changes stay queued locally and auto-sync when online.',
+          badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+          borderClass: 'border-rose-500/30',
+          icon: <CloudOff size={14} className="text-rose-400" />
+        };
+      case 'error':
+        return {
+          label: 'Sync Error',
+          desc: 'Cloud Firestore rejected one or more operations. See diagnostic details below.',
+          badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+          borderClass: 'border-rose-500/40',
+          icon: <AlertTriangle size={14} className="text-rose-400" />
+        };
+      default:
+        return {
+          label: 'Not Signed In',
+          desc: 'Sign in with Google to synchronize data with Cloud Firestore.',
+          badgeClass: 'bg-slate-800 text-slate-300 border-slate-700',
+          borderClass: 'border-slate-800',
+          icon: <Cloud size={14} className="text-slate-400" />
+        };
+    }
+  };
+
+  const phaseMeta = getPhaseBadge();
+
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
         <div className="bg-[#121820] w-full max-w-md rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#161d26]">
-            <div className="text-amber-300 font-bold text-base">Chuvadi Settings & App</div>
-            <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:text-white">
+            {activePage === 'cloud-sync' ? (
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setActivePage('main')}
+                  className="p-1.5 -ml-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                  title="Back to Settings"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <div className="text-amber-300 font-bold text-base">Cloud Sync Status & Stats</div>
+              </div>
+            ) : (
+              <div className="text-amber-300 font-bold text-base">Chuvadi Settings & App</div>
+            )}
+            <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:text-white cursor-pointer">
               <X size={18} />
             </button>
           </div>
 
-          <div className="p-6 space-y-5 overflow-y-auto">
+          {activePage === 'cloud-sync' ? (
+            <div className="p-5 space-y-4 overflow-y-auto">
+              {/* Live Sync Health Banner */}
+              <div className={`p-4 bg-[#141b24] rounded-2xl border ${phaseMeta.borderClass} space-y-2.5`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    <Cloud size={16} className="text-amber-400" />
+                    <span>Real-Time Cloud Status</span>
+                  </div>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1.5 ${phaseMeta.badgeClass}`}>
+                    {phaseMeta.icon}
+                    <span>{phaseMeta.label}</span>
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">{phaseMeta.desc}</p>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                  <span>Sync Mode:</span>
+                  <span className="text-emerald-300 font-semibold">Automatic (Live & Auto-Retry)</span>
+                </div>
+              </div>
+
+              {/* Error Diagnostics Alert (if any error occurred) */}
+              {syncStatus?.lastError && (
+                <div className="p-3.5 bg-rose-950/35 border border-rose-500/40 rounded-2xl space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
+                    <AlertTriangle size={14} className="shrink-0" />
+                    <span>Firestore Error Detected ({syncStatus.lastErrorCode || 'error'})</span>
+                  </div>
+                  <p className="text-[11px] text-rose-200/90 font-mono break-all bg-black/30 p-2 rounded-xl border border-rose-500/20">
+                    {syncStatus.lastError}
+                  </p>
+                  {syncStatus.lastErrorCode === 'permission-denied' && (
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Firestore Security Rules denied access. Deploy <code className="text-amber-300">firestore.rules</code> or verify rules in Firebase Console for project <code className="text-amber-300">{appletConfig.projectId}</code>.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Summary Stats Grid */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="p-3 bg-[#141b24] rounded-2xl border border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Cloud Records</div>
+                  <div className="text-lg font-extrabold text-emerald-400 mt-0.5 font-mono">
+                    {anyCloudFetched ? totalCloudDocs : '—'}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Confirmed on server</div>
+                </div>
+                <div className="p-3 bg-[#141b24] rounded-2xl border border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Local Cache</div>
+                  <div className="text-lg font-extrabold text-amber-300 mt-0.5 font-mono">
+                    {totalLocalDocs}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Stored on this device</div>
+                </div>
+                <div className="p-3 bg-[#141b24] rounded-2xl border border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Pending Queue</div>
+                  <div className={`text-lg font-extrabold mt-0.5 font-mono ${(syncStatus?.pendingCount || 0) > 0 ? 'text-amber-400' : 'text-slate-200'}`}>
+                    {syncStatus?.pendingCount || 0}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Auto-pushes when online</div>
+                </div>
+                <div className="p-3 bg-[#141b24] rounded-2xl border border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Live Streams</div>
+                  <div className="text-lg font-extrabold text-sky-400 mt-0.5 font-mono">
+                    {syncStatus ? `${syncStatus.connectedListeners}/${syncStatus.totalListeners}` : '0/12'}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Active Firestore listeners</div>
+                </div>
+              </div>
+
+              {(syncStatus?.recoveredLocalCount || 0) > 0 && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2 text-xs text-emerald-300 font-medium">
+                  <CheckCircle2 size={15} className="shrink-0 text-emerald-400" />
+                  <span>
+                    Automatically recovered & uploaded {syncStatus?.recoveredLocalCount} local-only record(s) to Cloud Firestore this session.
+                  </span>
+                </div>
+              )}
+
+              {/* Identity & Connection Metadata */}
+              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-slate-800 space-y-2">
+                <div className="text-xs font-bold text-white flex items-center gap-2">
+                  <ShieldCheck size={15} className="text-emerald-400" />
+                  <span>Account & Cloud Target</span>
+                </div>
+                <div className="text-[11px] text-slate-300 space-y-1.5 bg-[#0a0e14] p-3 rounded-xl border border-slate-800 font-mono">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Signed In As:</span>
+                    <span className="text-amber-300 font-bold truncate">{user?.email || syncStatus?.userEmail || 'Guest'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">User UID:</span>
+                    <span className="text-slate-300 truncate">{user?.uid || syncStatus?.userId || '—'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Workspace:</span>
+                    <span className={user?.email?.toLowerCase() === 'rajapriyan20@gmail.com' ? 'text-amber-400 font-bold' : 'text-sky-400'}>
+                      {user?.email?.toLowerCase() === 'rajapriyan20@gmail.com' ? 'Primary Workspace' : 'Private Isolated Space'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Project ID:</span>
+                    <span className="text-slate-300 font-bold truncate">{syncStatus?.projectId || appletConfig.projectId}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Server Reachable:</span>
+                    <span className={syncStatus?.serverReachable === true ? 'text-emerald-400 font-bold' : syncStatus?.serverReachable === false ? 'text-rose-400 font-bold' : 'text-slate-400'}>
+                      {syncStatus?.serverReachable === true ? 'Yes (Verified)' : syncStatus?.serverReachable === false ? 'No (Offline)' : 'Checking...'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Last Cloud Sync:</span>
+                    <span className="text-slate-200">{formatSyncTime(syncStatus?.lastSyncedAt)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-400 shrink-0">Last Auto-Check:</span>
+                    <span className="text-slate-200">{formatSyncTime(syncStatus?.lastReconciledAt)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-Collection Breakdown */}
+              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <Database size={15} className="text-amber-400" />
+                    <span>Collection Sync Breakdown</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">Cloud / Local</span>
+                </div>
+                <div className="space-y-1.5">
+                  {collectionStatsList.map((col) => {
+                    const badgeStyle =
+                      col.status === 'synced'
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        : col.status === 'error'
+                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                        : col.status === 'pending'
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : col.status === 'cached'
+                        ? 'bg-slate-800 text-amber-200 border-slate-700'
+                        : col.status === 'syncing'
+                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                        : 'bg-slate-900 text-slate-400 border-slate-800';
+
+                    const statusText =
+                      col.status === 'synced'
+                        ? 'Synced'
+                        : col.status === 'error'
+                        ? 'Error'
+                        : col.status === 'pending'
+                        ? `Pending (${col.pendingCount})`
+                        : col.status === 'cached'
+                        ? 'Cached'
+                        : col.status === 'syncing'
+                        ? 'Syncing'
+                        : 'Idle';
+
+                    return (
+                      <div
+                        key={col.key}
+                        className="p-2.5 rounded-xl bg-[#0e131a] border border-slate-800/90 space-y-1"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-200 truncate">{col.label}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] font-mono text-slate-300">
+                              <span className="text-emerald-400 font-bold">{col.cloudCount ?? '—'}</span>
+                              <span className="text-slate-600 mx-0.5">/</span>
+                              <span className="text-amber-300">{col.localCount}</span>
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${badgeStyle}`}>
+                              {statusText}
+                            </span>
+                          </div>
+                        </div>
+                        {col.error && (
+                          <div className="text-[10px] text-rose-300 font-mono break-all">
+                            {col.error}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recent Auto-Sync Activity Log */}
+              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-slate-800 space-y-2">
+                <div className="text-xs font-bold text-white flex items-center gap-2">
+                  <Activity size={15} className="text-sky-400" />
+                  <span>Recent Auto-Sync Activity</span>
+                </div>
+                {!syncStatus?.logs || syncStatus.logs.length === 0 ? (
+                  <div className="text-[11px] text-slate-500 py-2">No sync events logged yet in this session.</div>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {syncStatus.logs.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="p-2 rounded-xl bg-[#0a0e14] border border-slate-800/80 text-[11px] space-y-0.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider ${
+                              entry.level === 'error'
+                                ? 'text-rose-400'
+                                : entry.level === 'warn'
+                                ? 'text-amber-400'
+                                : entry.level === 'success'
+                                ? 'text-emerald-400'
+                                : 'text-sky-400'
+                            }`}
+                          >
+                            {entry.level}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {new Date(entry.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div className="text-slate-300 leading-snug break-words">{entry.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 space-y-5 overflow-y-auto">
             {/* Logo & Version Badge */}
             <div className="flex items-center gap-3 p-3.5 bg-[#161c24] rounded-2xl border border-slate-800">
               <ChuvadiLogo size={44} />
@@ -430,14 +766,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="p-3.5 bg-[#141b24] rounded-2xl border border-emerald-500/20 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-                    <Database size={15} />
-                    <span>Unified Cloud Project</span>
+              <div className={`p-3.5 bg-[#141b24] rounded-2xl border ${phaseMeta.borderClass} space-y-2.5`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    <Database size={15} className="text-emerald-400" />
+                    <span>Cloud Sync & Database</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                    <CheckCircle2 size={10} /> Active
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${phaseMeta.badgeClass}`}>
+                    {phaseMeta.icon}
+                    <span>{phaseMeta.label}</span>
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-300 space-y-1 bg-[#0a0e14] p-2.5 rounded-xl border border-slate-800 font-mono">
@@ -454,18 +791,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Project ID:</span>
-                    <span className="text-slate-300 font-bold">{appletConfig.projectId}</span>
+                    <span className="text-slate-400">Cloud / Local:</span>
+                    <span className="text-emerald-300 font-bold">
+                      {anyCloudFetched ? `${totalCloudDocs} cloud` : 'Checking...'} • {totalLocalDocs} local
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Database:</span>
-                    <span className="text-emerald-300">Firestore (Live)</span>
+                    <span className="text-slate-400">Last Sync:</span>
+                    <span className="text-slate-300">{formatSyncTime(syncStatus?.lastSyncedAt)}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 pt-1">
-                  <ShieldCheck size={13} />
-                  <span>Database, Authentication, and Gmail OAuth are unified in one project.</span>
-                </div>
+
+                {syncStatus?.lastError && (
+                  <div className="text-[11px] text-rose-300 bg-rose-950/30 border border-rose-500/30 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
+                    <AlertTriangle size={12} className="shrink-0" />
+                    <span className="truncate">{syncStatus.lastError}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setActivePage('cloud-sync')}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[#0e131a] hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/30 text-xs font-semibold text-amber-300 transition cursor-pointer active:scale-[0.99]"
+                >
+                  <span>View Cloud Sync Status & Stats</span>
+                  <ChevronRight size={15} />
+                </button>
               </div>
             )}
 
@@ -525,7 +876,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {cacheReset && <Check size={14} className="text-emerald-400" />}
               </button>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
