@@ -154,6 +154,23 @@
         "lutealPhaseLength": { "type": "number" }
       },
       "required": ["averageCycleLength", "averagePeriodDuration"]
+    },
+    "recurring_transaction": {
+      "title": "Recurring Transaction",
+      "description": "Scheduled recurring income, expense, or transfer rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "frequency": { "type": "string" },
+        "nextDueDate": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "autoPost": { "type": "boolean" }
+      },
+      "required": ["id", "type", "amount", "description", "frequency", "nextDueDate"]
     }
   },
   "firestore": {
@@ -164,6 +181,10 @@
     "/users/{userId}/transactions/{transactionId}": {
       "schema": "transaction",
       "description": "User specific transactions"
+    },
+    "/users/{userId}/recurring_transactions/{recurringId}": {
+      "schema": "recurring_transaction",
+      "description": "User specific recurring transaction schedules"
     },
     "/users/{userId}/vehicles/{vehicleId}": {
       "schema": "vehicle",

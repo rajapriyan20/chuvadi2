@@ -1,15 +1,77 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User-partitioned space: Users can only read and write their own documents
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+    // Default deny catch-all (no expiration date; strictly enforces explicit allow rules below)
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Root-level collections (legacy/migration collections)
-    match /{collectionName}/{docId} {
-      allow read, write: if request.auth != null;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isPrimaryAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'rajapriyan20@gmail.com';
+    }
+
+    function isAllowedUserCollection(col) {
+      return col in [
+        'accounts',
+        'transactions',
+        'recurring_transactions',
+        'vehicles',
+        'vehicle_logs',
+        'todos',
+        'receivables_payables',
+        'exercise_logs',
+        'calendar_events',
+        'menstrual_logs',
+        'menstrual_periods',
+        'settings'
+      ];
+    }
+
+    // Connection health-check document (read-only check used by startup ping)
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    // User-partitioned workspace: strictly isolated per authenticated & verified Google user UID
+    match /users/{userId}/{collectionName}/{docId} {
+      allow list: if isOwner(userId) && isAllowedUserCollection(collectionName);
+      allow get, delete: if isOwner(userId) && isAllowedUserCollection(collectionName) && isValidId(docId);
+      allow create, update: if isOwner(userId)
+        && isAllowedUserCollection(collectionName)
+        && isValidId(docId)
+        && request.resource.data is map;
+    }
+
+    // Legacy root-level collections (read-only for primary account migration)
+    match /{legacyCol}/{docId} {
+      allow read: if isPrimaryAdmin()
+        && legacyCol in [
+          'accounts',
+          'transactions',
+          'vehicles',
+          'vehicle_logs',
+          'todos',
+          'receivables_payables',
+          'exercise_logs'
+        ];
     }
   }
 }
